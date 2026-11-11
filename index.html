@@ -71,7 +71,7 @@
   <section class="sheet" id="sheet" hidden aria-label="Settings">
     <div class="sheethead"><h2>Settings</h2><button type="button" class="icon" id="sheetx" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <div class="sheetbody">
-      <nav class="snav" id="snav" aria-label="Settings sections"><button type="button" data-sg="start">Start</button><button type="button" data-sg="voice">Voice</button><button type="button" data-sg="brain">Brain</button><button type="button" data-sg="brief">Brief</button><button type="button" data-sg="away">Away</button><button type="button" data-sg="grok">Grok Bot</button><button type="button" data-sg="privacy">Privacy</button></nav>
+      <nav class="snav" id="snav" aria-label="Settings sections"><button type="button" data-sg="start">Start</button><button type="button" data-sg="voice">Voice</button><button type="button" data-sg="brain">Brain</button><button type="button" data-sg="pictures">Pictures</button><button type="button" data-sg="brief">Brief</button><button type="button" data-sg="away">Away</button><button type="button" data-sg="grok">Grok Bot</button><button type="button" data-sg="privacy">Privacy</button></nav>
 
       <div class="sgroup" id="sg-start" aria-label="Start">
       <p class="note warn" id="sharedNote" hidden></p>
@@ -118,12 +118,6 @@
       <p class="note">A self-test of 15 tasks: math, teaching, writing, and asks Kin should stop at or turn down. It runs only when you tap Run, uses your Claude key, counts toward the limits above, and stops before the budget cap you set (a full run is about $1). Nothing is sent, posted, bought, booked or called. Or say &ldquo;test yourself, Jarvis&rdquo;. Results stay on this device.</p>
       <div class="row"><span></span><div class="btns"><button type="button" class="lnk" id="gauntletOpen">Open the Gauntlet</button></div></div>
 
-      <h3>Pictures</h3>
-      <p class="note" id="hfNote"></p>
-      <div class="row"><span>Higgsfield</span><div class="btns"><button type="button" class="lnk" id="hfConnect">Connect Higgsfield</button><button type="button" class="lnk dim" id="hfDrop" hidden>Disconnect</button></div></div>
-      <label class="row"><span>Credits a day</span><input type="text" inputmode="decimal" id="hfCap" maxlength="6" autocomplete="off" aria-label="Higgsfield credits per day"></label>
-      <p class="note" id="hfCapNote"></p>
-
       <h3>What Kin remembers</h3>
       <p class="note">Kept in this browser on this device only. Kin adds to it when you say &ldquo;remember that&nbsp;&hellip;&rdquo;, when you correct an answer, and when you tap Good or Not right under one. It never keeps keys, passwords, your age or school, or family money.</p>
       <div id="memList"></div>
@@ -133,6 +127,14 @@
       <p class="note" id="packNote"></p>
       <div class="row"><span>Kin pack</span><div class="btns"><label class="lnk filebtn">Import Kin pack<input type="file" id="packFile" accept="application/json,.json"></label><button type="button" class="lnk dim" id="packDrop">Remove pack</button></div></div>
       <p class="note">The pack is a file you export from the Atlas. It is stored in this browser on this device and is never uploaded to this website. With a Claude key, its rules and brief and the entries Kin looks up are sent to Anthropic to answer you.</p>
+      </div>
+      <div class="sgroup" id="sg-pictures" aria-label="Pictures">
+      <h2 class="sgtitle">Pictures</h2>
+      <p class="hfstate" id="hfState" role="status"><span class="hfdot" aria-hidden="true"></span><span id="hfStateText">Not connected</span></p>
+      <div class="hfact"><button type="button" class="bigpill" id="hfConnect">Connect Higgsfield</button><button type="button" class="lnk dim" id="hfDrop" hidden>Disconnect</button></div>
+      <p class="note" id="hfNote"></p>
+      <label class="row"><span>Credits a day</span><input type="text" inputmode="decimal" id="hfCap" maxlength="6" autocomplete="off" aria-label="Higgsfield credits per day"></label>
+      <p class="note" id="hfCapNote"></p>
       </div>
       <div class="sgroup" id="sg-brief" aria-label="Morning brief">
       <h2 class="sgtitle">Morning brief</h2>
@@ -180,6 +182,17 @@
       <h2 class="sgtitle">Privacy &amp; data</h2>
       <p class="note warn" id="leaves">What leaves this device. Your speech goes to the browser maker (Google in Chrome, Microsoft in Edge, Apple in Safari) to be turned into text, whenever the mic is on, asleep or awake. With a Claude key, what you say or type, the last few exchanges, what Kin remembers that bears on the question, and the parts of your pack Kin uses go to Anthropic; web searches and page reads are run by Anthropic too. With a voice key, every sentence Kin speaks goes to ElevenLabs. With Higgsfield connected, the picture prompts of a design job you approve go, through Anthropic, to Higgsfield, and the finished pictures are fetched from Higgsfield into this page.<span id="leavesGB" hidden> With the Grok Bot bridge turned on, a question you start with &ldquo;ask Grok Bot&rdquo; goes to your relay and your private GitHub mailbox, as described under Grok Bot bridge.</span> Nothing is ever sent to this website.</p>
 
+      <h3>Move to another computer</h3>
+      <p class="note">One file with what Jarvis has learned and made here: what it remembers, the Made shelf, the logbook, and your settings for voice, wake phrase, morning brief, away mode and both contact lists, calls and the booking name, weather and limits. Keys, tokens and sign-ins are never in it, so add those again on the other computer. The file is saved by your browser and never uploaded. Keep it private: anyone with it can read what Jarvis remembers.</p>
+      <div class="row" id="moveTurnsRow"><span></span><label class="chkline"><input type="checkbox" id="moveTurns"> Include the recent conversation</label></div>
+      <div class="row"><span></span><div class="btns"><button type="button" class="lnk" id="moveExport">Export this device</button><label class="lnk filebtn" id="moveImportLbl">Import from another device<input type="file" id="moveFile" accept="application/json,.json"></label></div></div>
+      <p class="note" id="moveNote" role="status"></p>
+      <div class="movecard" id="movePreview" hidden>
+        <p class="movehead">From another device<span id="moveWhen"></span></p>
+        <ul class="movelist" id="moveList"></ul>
+        <div class="btns"><button type="button" class="lnk" id="moveApply">Bring it in</button><button type="button" class="lnk dim" id="moveCancel">Cancel</button></div>
+      </div>
+
       <h3>This device</h3>
       <div class="row"><span></span><div class="btns"><button type="button" class="lnk bad" id="erase">Erase everything on this device</button></div></div>
       <p class="note" id="about"></p>
@@ -206,6 +219,7 @@
 <script src="calls.js"></script>
 <script src="away-panel.js"></script>
 <script src="gauntlet.js"></script>
+<script src="move.js"></script>
 <script src="whatsnew.js"></script>
 <script src="desk.js"></script>
 <script src="bust.js"></script>

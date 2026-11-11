@@ -590,6 +590,8 @@
     if (k === 'talk') { settingsAt('voice'); return; }
     if (k === 'gauntlet') { if (Kin.gauntlet) gauntlet(false); return; }
     if (k === 'grok') { settingsAt('grok'); return; }
+    if (k === 'move') { settingsAt('privacy'); return; }
+    if (k === 'pictures') { settingsAt('pictures'); return; }
     if (k === 'settings') { settingsAt('start'); return; }
   }
   function whatsNew(said) {
@@ -965,6 +967,7 @@
     mem.slice().sort(function (a, b) { return b.at - a.at; }).forEach(function (m) { var r = document.createElement('div'); r.className = 'memrow'; var t = document.createElement('p'); var k = document.createElement('small'); k.textContent = { fact: 'Fact', preference: 'Preference', correction: 'Correction', good: 'Worked', bad: 'Not right', lesson: 'Lesson' }[m.kind] || m.kind; t.appendChild(k); t.appendChild(document.createTextNode(' ' + m.text)); var del = document.createElement('button'); del.type = 'button'; del.className = 'lnk dim'; del.textContent = 'Forget'; del.addEventListener('click', function () { Kin.mind.forget(m.id); refreshSettings(); }); r.appendChild(t); r.appendChild(del); ml.appendChild(r); });
     var u = brain.limits(); $('limH').value = u.perHour; $('limD').value = u.perDay;
     $('limNote').textContent = 'Kin stops sending questions to Claude after this many in an hour or in a day, says so, and goes to sleep. Used this hour: ' + u.hour + ' of ' + u.perHour + '. Today: ' + u.day + ' of ' + u.perDay + '.';
+    $('moveExport').disabled = $('moveFile').disabled = $('moveTurns').disabled = !!Kin.shared; if (Kin.shared) $('moveNote').textContent = Kin.SHARED_TEXT;
     $('sharedNote').hidden = !Kin.shared; $('sharedNote').textContent = Kin.shared ? Kin.SHARED_TEXT + ' You can still try it here without keys.' : '';
     $('apiKey').value = '';
     var p = Kin.pack.get(); $('packNote').textContent = p ? p.name + ': ' + p.nodes.length + ' entries, ' + p.skills.length + ' playbooks' + (p.exported ? ', exported ' + p.exported.slice(0, 10) : '') + '.' : Kin.shared ? Kin.SHARED_TEXT : 'No pack on this device yet. ' + brain.PACK_STEPS;
@@ -1016,6 +1019,7 @@
   function hfSettings() {
     var on = Kin.hf.connected(), st = Kin.hf.status();
     $('hfConnect').hidden = on; $('hfDrop').hidden = !on;
+    $('hfState').classList.toggle('on', on); $('hfStateText').textContent = Kin.shared ? 'Not available at this address' : on ? 'Connected' : 'Not connected';
     $('hfNote').textContent = Kin.shared ? Kin.SHARED_TEXT : (st.why ? st.why + ' ' : st.last && !on ? st.last + ' ' : '') + (on
       ? 'Connected on this device. Design jobs can use real pictures: Kin prices them first and asks you before any credits are spent. The sign-in token stays on this device and is handed to Anthropic with each picture job, which then talks to Higgsfield.'
       : 'Not connected. Without it, designs are drawn rather than photographed. Connecting opens Higgsfield\'s sign-in page and brings you back here. It needs a paid Higgsfield plan.');
@@ -1063,6 +1067,45 @@
   });
   $('packFile').addEventListener('change', function (e) { var f = e.target.files && e.target.files[0]; if (!f) return; $('packNote').textContent = 'Reading…'; Kin.pack.importFile(f).then(function () { refreshSettings(); }, function (err) { $('packNote').textContent = (err && err.message) || 'That file could not be read.'; }); e.target.value = ''; });
   $('packDrop').addEventListener('click', function () { clearTalk(); Kin.pack.remove().then(refreshSettings, refreshSettings).then(packCard); });
+  /* ------------------------------------------------------------ move to another computer: export, then a checked import that waits for a tap */
+  var movePlan = null;
+  function moveShow(plan) {
+    var list = $('moveList'); list.textContent = ''; movePlan = plan;
+    var pv = plan.preview, li = function (b, rest) { var x = document.createElement('li'), s = document.createElement('b'); s.textContent = b; x.appendChild(s); x.appendChild(document.createTextNode(rest)); list.appendChild(x); };
+    li(pv.memory + ' ', pv.memory === 1 ? 'thing it remembers, added' : 'things it remembers, added');
+    li(pv.made + ' ', pv.made === 1 ? 'piece for the Made shelf' : 'pieces for the Made shelf');
+    li(pv.log + ' ', pv.log === 1 ? 'logbook entry' : 'logbook entries');
+    if (pv.replaced.length) li('Replaced: ', pv.replaced.join(', '));
+    if (pv.added.length) li('Added: ', pv.added.join(', '));
+    if (pv.turns) li('Conversation: ', 'the recent conversation from that device replaces this one');
+    if (plan.rejected) li(plan.rejected + ' ', 'other items were left out, because this page does not move them');
+    $('moveWhen').textContent = plan.exported ? ' · exported ' + plan.exported.slice(0, 10) : '';
+    $('movePreview').hidden = false; $('moveNote').textContent = 'Nothing has changed yet. Tap Bring it in to apply it, or Cancel.';
+  }
+  function moveHide() { movePlan = null; $('movePreview').hidden = true; $('moveList').textContent = ''; }
+  $('moveExport').addEventListener('click', function (e) {
+    if (!e.isTrusted) return; gesture();
+    if (Kin.shared) { $('moveNote').textContent = Kin.SHARED_TEXT; return; }
+    $('moveNote').textContent = 'Preparing the file…';
+    Kin.move.exportNow({ turns: $('moveTurns').checked }).then(function (r) {
+      var c = r.counts; $('moveNote').textContent = 'Saved ' + r.name + ': ' + c.memory + ' remembered, ' + c.made + ' made, ' + c.log + ' logbook, ' + c.settings + ' settings' + (c.turns ? ', and the conversation' : '') + '. No keys or tokens are in it.';
+    }, function (err) { $('moveNote').textContent = (err && err.message) || 'The file could not be made.'; });
+  });
+  $('moveFile').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return; gesture(); moveHide();
+    if (Kin.shared) { $('moveNote').textContent = Kin.SHARED_TEXT; return; }
+    $('moveNote').textContent = 'Reading…';
+    Kin.move.read(f).then(moveShow, function (err) { $('moveNote').textContent = (err && err.message) || 'That file could not be read.'; });
+  });
+  $('moveCancel').addEventListener('click', function () { moveHide(); $('moveNote').textContent = 'Cancelled. Nothing changed.'; });
+  $('moveApply').addEventListener('click', function (e) {
+    if (!e.isTrusted || !movePlan) return; gesture();
+    var plan = movePlan; moveHide(); $('moveNote').textContent = 'Bringing it in…';
+    Kin.move.apply(plan).then(function (r) {
+      $('moveNote').textContent = 'Done: ' + r.memory + ' remembered, ' + r.made + ' made, ' + r.log + ' logbook, ' + r.settings + ' settings' + (r.refused ? '; ' + r.refused + ' left out by the never-keep rules' : '') + '. Reloading…';
+      setTimeout(function () { location.reload(); }, 1600);
+    }, function (err) { $('moveNote').textContent = (err && err.message) || 'It could not be applied.'; });
+  });
   $('erase').addEventListener('click', function () {
     var b = $('erase'); if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Tap again to erase the keys, tokens, the pack and the conversation'; setTimeout(function () { b.dataset.sure = ''; b.textContent = 'Erase everything on this device'; }, 5000); return; }
     if (Kin.gauntlet) Kin.gauntlet.stop();

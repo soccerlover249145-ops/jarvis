@@ -18,6 +18,8 @@
     { key: 'talk', title: 'Talk over me', say: 'Hey Jarvis… / Stop', note: 'Wake me with “hey Jarvis” or your own phrase. Start talking, or say “stop”, to cut in while I speak.' },
     { key: 'gauntlet', title: 'The Gauntlet', say: 'Test yourself, Jarvis', note: 'Fifteen tasks under a budget cap you set. Nothing runs until you tap Run.' },
     { key: 'grok', title: 'Ask Grok Bot', say: 'Ask Grok Bot what is due tomorrow', note: 'Off until you turn it on in Settings and paste your device token. Only a sentence that starts with “ask Grok Bot” goes to your relay; its reply shows here and is never passed to Claude.' },
+    { key: 'pictures', title: 'Connect Higgsfield for pictures', say: 'Settings, then Pictures', note: 'Connect your Higgsfield account so design jobs can use real pictures. I price them first and ask before any credits are spent.' },
+    { key: 'move', title: 'Move to another computer', say: 'Settings, then Privacy', note: 'Export one file with what I remember, the Made shelf and your settings, then import it on the other computer. Keys and tokens are never in it; nothing changes until you tap Bring it in.' },
     { key: 'settings', title: 'Settings in sections', say: 'Tap the gear', note: 'Start, Voice, Brain, Brief, Away, Grok Bot and Privacy, with a row of pills at the top to jump between them.' }
   ];
 

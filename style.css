@@ -408,3 +408,24 @@ body:has(#thread:not([hidden])) .loadcard { display: none; }
   .wn-item { flex-direction: column; align-items: stretch; gap: 14px; padding: 16px 18px; }
   .wn-try { align-self: flex-start; }
 }
+
+/* Move to another computer: the import preview, in the shared glass recipe */
+.movecard { margin: 12px 0 4px; padding: 18px 20px; border-radius: var(--r-lg); background: var(--glass); border: 1px solid var(--edge); box-shadow: var(--lift); }
+.movecard[hidden] { display: none; }
+.movehead { margin: 0 0 10px; font: var(--label); letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
+.movehead span { color: var(--dim); margin-left: 10px; letter-spacing: .08em; }
+.movelist { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 8px; }
+.movelist li { padding: 10px 14px; border-radius: var(--r-sm); background: rgba(255, 255, 255, .03); box-shadow: 0 0 0 1px rgba(150, 210, 255, .14) inset; color: var(--fg2); font-size: 14px; line-height: 1.45; }
+.movelist li b { color: var(--fg); font-weight: 500; }
+
+/* Pictures: a clear connected state and one big primary pill */
+.hfstate { display: inline-flex; align-items: center; gap: 10px; margin: 4px 0 14px; padding: 8px 16px; border-radius: var(--r-pill); background: rgba(255, 255, 255, .04); box-shadow: 0 0 0 1px rgba(255, 255, 255, .10) inset; font: var(--label); letter-spacing: .16em; text-transform: uppercase; color: var(--fg2); }
+.hfdot { width: 9px; height: 9px; border-radius: 50%; background: var(--dim); }
+.hfstate.on { color: #7CF0B4; box-shadow: 0 0 0 1px rgba(124, 240, 180, .35) inset; background: rgba(124, 240, 180, .07); }
+.hfstate.on .hfdot { background: #7CF0B4; box-shadow: 0 0 10px rgba(124, 240, 180, .7); }
+.hfstate.on #hfStateText::before { content: "\2713  "; }
+.hfact { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin: 0 0 12px; }
+.bigpill { display: inline-flex; align-items: center; justify-content: center; min-height: 52px; padding: 0 28px; border-radius: var(--r-pill); background: var(--accent); color: #000; font: var(--label); font-size: 13px; letter-spacing: .16em; text-transform: uppercase; box-shadow: 0 10px 30px -12px rgba(87, 230, 255, .8); }
+.bigpill:hover { filter: brightness(1.08); }
+.bigpill[hidden] { display: none; }
+.bigpill:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }

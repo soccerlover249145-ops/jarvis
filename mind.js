@@ -469,6 +469,71 @@
   function addWeb(n) { if (!n) return; var v = day('kin.web'); v.n += n; ls.set('kin.web', JSON.stringify(v)); }
   function webLeft() { return Math.max(0, webCap() - webToday()); }
 
+  /* ---------------------------------------------------------------- moving to another device
+     Items from another device's export (see move.js) are merged in, never trusted as they come:
+     memories are checked against the same never-keep rules as remember(), designs are cleaned again,
+     and the same caps apply. Returns how many of each were added. */
+  var MADE_KINDS = /^(document|plan|table|design|chart)$/, MADE_EXTRA = ['src', 'brief', 'concept', 'notes', 'why', 'caps', 'others', 'pictures', 'credits', 'usd', 'issues', 'spec', 'round', 'score'];
+  function str(v, max) { return typeof v === 'string' ? v.slice(0, max) : ''; }
+  function num(v, d) { return typeof v === 'number' && isFinite(v) ? v : d; }
+  function sid(v, p) { var t = str(v, 60); return /^[A-Za-z0-9_.:-]{1,60}$/.test(t) ? t : uid(p); }
+  function mergeIn(inc) {
+    var out = { memory: 0, made: 0, log: 0, refused: 0 };
+    if (Kin.shared || !inc || typeof inc !== 'object') return out;
+    var norm = function (t) { return Kin.ears ? Kin.ears.norm(t) : String(t).toLowerCase(); };
+    if (Array.isArray(inc.memory)) {
+      var seen = {}; data.memory.forEach(function (m) { seen[norm(m.text)] = 1; });
+      inc.memory.slice(0, 1000).forEach(function (m) {
+        if (!m || typeof m !== 'object') return;
+        var text = str(m.text, 500).replace(/\s+/g, ' ').trim(); if (!text) return;
+        if (refuse(text)) { out.refused++; return; }
+        var n = norm(text); if (seen[n]) return; seen[n] = 1;
+        var x = { id: sid(m.id, 'm'), text: text, kind: /^(fact|preference|lesson|correction|good|bad)$/.test(m.kind) ? m.kind : 'fact', at: num(m.at, Date.now()), uses: Math.max(0, num(m.uses, 0)) };
+        if (m.q) x.q = str(m.q, 300);
+        data.memory.push(x); out.memory++;
+      });
+      prune(); save('memory');
+    }
+    if (Array.isArray(inc.made)) {
+      var have = {}; data.made.forEach(function (m) { have[m.id] = m; });
+      inc.made.slice(0, 200).forEach(function (m) {
+        if (!m || typeof m !== 'object' || !MADE_KINDS.test(m.kind)) return;
+        var content = str(m.content, 2000000);
+        if (m.kind === 'design' || m.kind === 'chart') { var c = cleanSvg(content); if (!c.ok) { out.refused++; return; } content = c.svg; }
+        var id = sid(m.id, 'd'), old = have[id];
+        if (old && num(old.at, 0) >= num(m.at, 0)) return;
+        var x = { id: id, kind: m.kind, title: str(m.title, 200) || 'Untitled', note: str(m.note, 2000), content: content, at: num(m.at, Date.now()), round: 1, score: null };
+        MADE_EXTRA.forEach(function (k) { if (m[k] !== undefined) { try { x[k] = JSON.parse(JSON.stringify(m[k])); } catch (e) {} } });
+        if (old) data.made = data.made.filter(function (y) { return y.id !== id; });
+        data.made.push(x); have[id] = x; out.made++;
+      });
+      data.made.sort(function (a, b) { return num(b.at, 0) - num(a.at, 0); });
+      if (data.made.length > MADE_MAX) data.made.length = MADE_MAX;
+      save('made');
+    }
+    if (Array.isArray(inc.log)) {
+      var ids = {}; data.log.forEach(function (e) { ids[e.id] = 1; });
+      inc.log.slice(0, LOG_MAX).forEach(function (e) {
+        if (!e || typeof e !== 'object') return;
+        var text = str(e.text, 400); if (!text) return;
+        var id = sid(e.id, 'l'); if (ids[id]) return; ids[id] = 1;
+        var x = {}; Object.keys(e).slice(0, 20).forEach(function (k) { var v = e[k]; if (typeof v === 'string') x[k.slice(0, 30)] = v.slice(0, 400); else if (typeof v === 'number' && isFinite(v)) x[k.slice(0, 30)] = v; });
+        x.id = id; x.text = text; x.kind = str(e.kind, 30) || 'note'; x.at = num(e.at, Date.now());
+        data.log.push(x); out.log++;
+      });
+      data.log.sort(function (a, b) { return num(b.at, 0) - num(a.at, 0); });
+      if (data.log.length > LOG_MAX) data.log.length = LOG_MAX;
+      save('log');
+    }
+    return out;
+  }
+  /** flush pending saves now (an import reloads the page right after) */
+  function flush() {
+    var k = kv(); if (Kin.shared || !k) return Promise.resolve();
+    Object.keys(saveT).forEach(function (n) { clearTimeout(saveT[n]); });
+    return Promise.all(['memory', 'made', 'log'].map(function (n) { return k.set('mind.' + n, data[n]).catch(function () {}); }));
+  }
+
   Kin.mind = {
     load: load, loaded: function () { return loaded; },
     memory: function () { return data.memory.slice(); }, remember: remember, forget: forget, forgetAll: forgetAll, recall: recall, rate: rate, noteCorrection: noteCorrection, refuse: refuse,
@@ -478,6 +543,7 @@
     instant: instant, numify: numify, onTimer: onTimer, timer: function () { return timer ? { left: Math.ceil((timer.end - Date.now()) / 1000), label: timer.label } : null }, stopTimer: stopTimer, fmt: fmt,
     md: md,
     costOf: costOf, partialCost: partialCost, addSpend: addSpend, spendToday: spendToday, webCap: webCap, setWebCap: setWebCap, webToday: webToday, addWeb: addWeb, webLeft: webLeft,
+    mergeIn: mergeIn, flush: flush,
     wipe: function () { data = { memory: [], made: [], log: [] }; stopTimer(true); var k = kv(); if (k) ['memory', 'made', 'log'].forEach(function (n) { k.del('mind.' + n).catch(function () {}); }); }
   };
 })();
