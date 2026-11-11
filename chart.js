@@ -313,5 +313,11 @@
   }
 
   Kin.chart = { check: check, svg: svg, ticks: ticks, mount: mount, tsv: tsv, colors: C, KINDS: KINDS,
+    /* "Use my location": asks the browser once, on a tap; keeps only rounded coordinates (about a kilometre), never sent anywhere but Open-Meteo */
+    locate: function () { return new Promise(function (res, rej) {
+      if (!navigator.geolocation) { rej(new Error('This browser cannot share its location.')); return; }
+      navigator.geolocation.getCurrentPosition(function (pos) { var la = Math.round(pos.coords.latitude * 100) / 100, lo = Math.round(pos.coords.longitude * 100) / 100, tz = ''; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
+        if (setPlace({ name: 'Your location', lat: la, lon: lo, tz: tz })) res(place()); else rej(new Error('This browser would not save the place.')); },
+        function (e) { rej(new Error(e && e.code === 1 ? 'Location was not allowed. Set your town in Settings instead.' : 'The location could not be found just now.')); }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 600000 }); }); },
     place: place, setPlace: setPlace, dropPlace: function () { ls.del(PLACE); }, findPlace: findPlace, weatherToday: weatherToday, forecast: forecast, units: units, setUnits: setUnits };
 })();

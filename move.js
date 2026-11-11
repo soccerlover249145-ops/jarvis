@@ -14,14 +14,14 @@
   var ALLOW = {
     'kin.wake': 'Wake phrase', 'kin.vmode': 'Backup voice', 'kin.voice': 'Backup voice',
     'kin.tts.voice': 'Voice choice', 'kin.tts.voiceName': 'Voice choice', 'kin.tts.model': 'Voice model',
-    'kin.bb.settings': 'Morning brief settings', 'kin.bb.ticks': 'Brief priorities ticked', 'kin.bb.started': 'Brief jobs started today',
+    'kin.bb.settings': 'Morning brief settings', 'kin.bb.ticks': 'Brief priorities ticked', 'kin.bb.triage': 'Brief items snoozed or dropped', 'kin.bb.started': 'Brief jobs started today',
     'kin.away': 'Away mode and both contact lists', 'kin.calls': 'Calls settings and booking name',
     'kin.gauntlet': 'Last Gauntlet results', 'kin.gauntlet.cap': 'Gauntlet budget cap',
     'kin.figure': 'Figure or orb', 'kin.place': 'Weather place', 'kin.units': 'Weather units',
     'kin.limH': 'Hourly question limit', 'kin.limD': 'Daily question limit', 'kin.webcap': 'Daily web search limit'
   };
   var OPTIONAL = { 'kin.turns': 'Recent conversation' };
-  var JSONISH = { 'kin.bb.settings': 1, 'kin.bb.ticks': 1, 'kin.bb.started': 1, 'kin.away': 1, 'kin.calls': 1, 'kin.gauntlet': 1, 'kin.turns': 1 };
+  var JSONISH = { 'kin.bb.settings': 1, 'kin.bb.ticks': 1, 'kin.bb.triage': 1, 'kin.bb.started': 1, 'kin.away': 1, 'kin.calls': 1, 'kin.gauntlet': 1, 'kin.turns': 1 };
   /* where secrets live, only so the export can be checked for them */
   var SECRET_KEYS = /^kin\.(key|tts\.key|hf\..*|gb\.tok|gb\.jobs)$/;
 

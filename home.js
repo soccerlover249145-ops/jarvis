@@ -44,6 +44,7 @@
   /* the board never asks for the weather on its own: it shows the forecast the brief or a chart fetched, and asks
      Open-Meteo (coordinates only) only when the founder taps "Get the forecast" */
   var asking = false;
+  var locErr = '';
   function askWeather() {
     if (asking || Kin.shared || !Kin.chart || !Kin.chart.place || !Kin.chart.place()) return;
     asking = true; soon(); Kin.chart.forecast().then(function () { asking = false; soon(); }, function () { asking = false; wxErr = true; sig = ''; soon(); });
@@ -119,7 +120,9 @@
     var c = card('qwx', null);
     if (!d.wx) {
       c.appendChild(h('div', 'qlabel', 'Weather'));
-      if (!d.place) { empty(c, 'Set your town under Settings, Brief, and the forecast shows here. Only its coordinates are sent to Open-Meteo.', btn('Set your town', 'sm', function () { go('weather'); })); return c; }
+      if (!d.place) { c.classList.add('slim'); var row = h('div', 'qwx-slim'); row.appendChild(h('p', 'qempty', locErr || 'No town set yet. Only rounded coordinates go to Open-Meteo.'));
+        var acts = h('div', 'qrow'); if (Kin.chart && Kin.chart.locate) acts.appendChild(btn('Use my location', 'primary sm', function () { locErr = ''; Kin.chart.locate().then(function () { render(); askWeather(); }, function (e) { locErr = e.message; render(); }); }));
+        acts.appendChild(btn('Set your town', 'sm', function () { go('weather'); })); row.appendChild(acts); c.appendChild(row); return c; }
       empty(c, asking ? 'Asking Open-Meteo for ' + d.place + '…' : (wxErr ? 'The forecast did not come through. ' : '') + 'The forecast for ' + d.place + ' shows here once you ask for it or open the brief.', asking ? null : btn('Get the forecast', 'sm', function () { wxErr = false; askWeather(); }));
       return c;
     }

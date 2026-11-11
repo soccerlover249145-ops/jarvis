@@ -91,7 +91,17 @@
   }
 
   /* ------------------------------------------------------------ the pack */
+  /* market watch remembers its last real finds, so an empty day shows them with their date instead of a blank card */
+  function lastMarket() { var v = ls.get('kin.bb.marketLast', null); return v && Array.isArray(v.items) && v.items.length && v.d ? v : null; }
+  function saveMarket(items) { try { ls.set('kin.bb.marketLast', { d: new Date().toDateString(), items: items.slice(0, 4) }); } catch (e) {} }
   var DONE = /^(done|archived|cancelled)$/;
+  /* triage on this device only: Snooze a week or Drop an item; the Atlas is never changed.
+     kin.bb.triage: { id: { k: 'snooze', until: 'YYYY-MM-DD' } | { k: 'drop' } } */
+  var triage = {
+    all: function () { var v = ls.get('kin.bb.triage', {}); return v && typeof v === 'object' ? v : {}; },
+    hidden: function (id, t0) { var x = Object.prototype.hasOwnProperty.call(triage.all(), id) ? triage.all()[id] : null; if (!x) return false; if (x.k === 'drop') return true; return x.k === 'snooze' && String(x.until || '') > t0; },
+    set: function (id, x) { var v = triage.all(); if (x) v[id] = x; else delete v[id]; ls.set('kin.bb.triage', v); }
+  };
   function owner(n) {
     var all = [n.s || ''].concat(n.f || []);
     for (var i = 0; i < all.length; i++) { var m = /(?:^|\n|\.\s)(owner|who|assigned to|assignee|lead)\s*[:\-]\s*([^.\n]{1,40})/i.exec(all[i]); if (m) return m[2].trim(); }
@@ -105,7 +115,8 @@
     var bars = []; for (var i = 0; i < 7; i++) { var dd = new Date(today.getTime() + i * 864e5), key = iso(dd); bars.push({ label: i === 0 ? 'Today' : DAYS[dd.getDay()].slice(0, 3), n: up.filter(function (x) { return x.d === key; }).length }); }
     var rank = { blocked: 0, waiting: 1, active: 2, open: 2, live: 3, planned: 4, draft: 5 };
     var who = String(set.owner || '').trim().toLowerCase();
-    var tasks = dated.filter(function (n) { return n.k === 'task'; }).map(function (n) { return { n: n, who: owner(n) }; })
+    var ticks0 = ls.get('kin.bb.ticks', {}) || {};
+    var tasks = dated.filter(function (n) { return n.k === 'task' && !triage.hidden(n.id, t0) && !(n.d < t0 && ticks0[n.id]); }).map(function (n) { return { n: n, who: owner(n) }; })
       .filter(function (x) { return !who || x.who.toLowerCase().indexOf(who) >= 0; })
       .sort(function (a, b) { if (a.n.d !== b.n.d) return a.n.d < b.n.d ? -1 : 1; return (rank[a.n.st] == null ? 9 : rank[a.n.st]) - (rank[b.n.st] == null ? 9 : rank[b.n.st]); });
     var lateBlocked = tasks.filter(function (x) { return x.n.d < t0 && x.n.st === 'blocked'; })[0];
@@ -115,7 +126,8 @@
     var md = t0.slice(5), past = pack.nodes.filter(function (n) { return n.d && n.d.slice(5) === md && n.d < t0; }).sort(function (a, b) { return a.d < b.d ? 1 : -1; })[0] || null;
     var openTasks = pack.nodes.filter(function (n) { return n.k === 'task' && !DONE.test(n.st || ''); });
     var needs = { overdue: tasks.filter(function (x) { return x.n.d < t0; }).length, blocked: openTasks.filter(function (n) { return n.st === 'blocked'; }).length, waiting: openTasks.filter(function (n) { return n.st === 'waiting'; }).length };
-    var pri = tasks.slice(0, 4), priIds = {}; pri.forEach(function (x) { priIds[x.n.id] = 1; });
+    var late = tasks.filter(function (x) { return x.n.d < t0; }), soon = tasks.filter(function (x) { return x.n.d >= t0; });
+    var pri = late.slice(0, 3).concat(soon.slice(0, Math.max(1, 4 - Math.min(3, late.length)))), priIds = {}; pri.forEach(function (x) { priIds[x.n.id] = 1; });
     var coming = up.filter(function (n) { return n.k !== 'task'; }); up.forEach(function (n) { if (coming.length < 5 && n.k === 'task' && !priIds[n.id]) coming.push(n); });
     coming.sort(function (a, b) { return a.d < b.d ? -1 : a.d > b.d ? 1 : 0; });
     return {
@@ -124,6 +136,7 @@
       first: first ? { t: first.n.t, d: first.n.d, st: first.n.st || '', who: first.who || owner(first.n), k: first.n.k } : null,
       today: coming.slice(0, 5).map(function (n) { return { t: n.t, d: n.d, st: n.st || '', k: n.k || '', who: owner(n) }; }),
       priorities: pri.map(function (x) { return { id: x.n.id, t: x.n.t, d: x.n.d, st: x.n.st || '', who: x.who }; }),
+      lateMore: Math.max(0, late.length - 3), lateOld: late.filter(function (x) { return x.n.d < iso(new Date(today.getTime() - 30 * 864e5)); }).map(function (x) { return x.n.id; }),
       tasksTotal: tasks.length, onThisDay: past ? { t: past.t, d: past.d } : null
     };
   }
@@ -146,7 +159,7 @@
     opts = opts || {}; var set = settings.get(), now = opts.now || new Date(), t0 = iso(dayStart(now)), cap = opts.cap != null ? opts.cap : set.autoCap;
     if (!pack || !pack.nodes) return [];
     var who = String(opts.owner != null ? opts.owner : set.owner || '').trim().toLowerCase(), done = ls.get('kin.bb.ticks', {});
-    var tasks = pack.nodes.filter(function (n) { return n.k === 'task' && !DONE.test(n.st || '') && !done[n.id]; })
+    var tasks = pack.nodes.filter(function (n) { return n.k === 'task' && !DONE.test(n.st || '') && !done[n.id] && !triage.hidden(n.id, t0); })
       .map(function (n) { return { n: n, who: owner(n) }; })
       .filter(function (x) { return !who || x.who.toLowerCase().indexOf(who) >= 0; })
       .sort(function (a, b) { var ad = a.n.d || '9999', bd = b.n.d || '9999'; return ad < bd ? -1 : ad > bd ? 1 : 0; });
@@ -163,7 +176,7 @@
       /* "Write the follow-up note to the supplier" -> "drafting the follow-up note to the supplier" */
       var obj = job.lead.test(lead) ? title.replace(/^\s*[a-z-]+\s+/i, '') : title.charAt(0).toLowerCase() + title.slice(1);
       if (/^(look|check)$/i.test(lead)) obj = obj.replace(/^(into|up|on)\s+/i, '');
-      var phrase = job.ing + ' ' + obj, labelTxt = phrase.charAt(0).toUpperCase() + phrase.slice(1);
+      var phrase = job.ing + ' ' + obj, KIND = { draft: 'Draft', plan: 'Plan', research: 'Research', design: 'Design' }, labelTxt = KIND[job.kind] + ': ' + obj.charAt(0).toUpperCase() + obj.slice(1);
       var auto = !!(set.autoSmall && job.local && !outward && est <= cap);
       out.push({ id: 'job-' + n.id + '-' + job.kind, taskId: n.id, kind: job.kind, task: title, due: n.d || null,
         label: labelTxt, say: phrase, est: est, auto: auto,
@@ -313,11 +326,15 @@
   function empty(c, text, strong) { var p = h('p', 'bb-empty'); if (strong) { p.appendChild(h('b', '', strong)); p.appendChild(document.createTextNode(' ' + text)); } else p.textContent = text; c.appendChild(p); }
 
   var DRAW = {
-    weather: function (c, d) {
+    weather: function (c, d, ctx) {
       var w = d.weather;
       head(c, 'Weather', w && w.place ? w.place + (w.place ? ' · today' : '') : 'Today');
       var b = h('div', 'bb-body'); c.appendChild(b);
-      if (!w || w.error === 'noplace') { empty(b, 'in Settings and the weather for it will appear here. Only its coordinates are sent to Open-Meteo.', 'Set your town'); return; }
+      if (!w || w.error === 'noplace') { c.classList.add('bb-slim'); empty(b, 'No town set yet. Use your location, or set a town in Settings. Only rounded coordinates go to Open-Meteo.');
+        if (window.Kin && Kin.chart && Kin.chart.locate) { var lr = h('div', 'bb-chips'), lb = h('button', 'bb-pill bb-go', 'Use my location'); lb.type = 'button';
+          lb.addEventListener('click', function (e) { if (!e.isTrusted) return; lb.disabled = true; lb.textContent = 'Finding you…'; Kin.chart.locate().then(function () { if (ctx && ctx.refresh) ctx.refresh(); else lb.textContent = 'Saved. Tap Refresh.'; }, function (er) { lb.disabled = false; lb.textContent = 'Use my location'; var p2 = b.querySelector('.bb-empty'); if (p2) p2.textContent = er.message; }); });
+          lr.appendChild(lb); b.appendChild(lr); }
+        return; }
       if (w.error) { empty(b, 'The weather could not be loaded just now. ' + (w.why || ''), ''); return; }
       var cond = WMO(w.now.code), top = h('div', 'bb-wtop'), l = h('div');
       var t = h('div', 'bb-temp'); t.appendChild(document.createTextNode(Math.round(w.now.temp))); t.appendChild(h('sup', '', '°' + w.unit)); l.appendChild(t);
@@ -360,22 +377,37 @@
       b.appendChild(ul);
     },
     priorities: function (c, d) {
-      var n = d.nok, set = d.settings; head(c, 'Top priorities', set.owner ? 'Open tasks for ' + set.owner + ', soonest first' : 'Open tasks, soonest first'); var b = h('div', 'bb-body'); c.appendChild(b);
+      var n = d.nok, set = d.settings; head(c, 'Top priorities', set.owner ? 'Open tasks for ' + set.owner + ', the late ones first' : 'Open tasks, the late ones first'); var b = h('div', 'bb-body'); c.appendChild(b);
       if (!n) { empty(b, 'Import your pack to see your priorities.'); return; } if (!n.priorities.length) { empty(b, set.owner ? 'No open dated tasks for ' + set.owner + '.' : 'No open dated tasks.'); return; }
-      var ticks = ls.get('kin.bb.ticks', {}), ul = h('ul', 'bb-list');
+      var ticks = ls.get('kin.bb.ticks', {}), ul = h('ul', 'bb-list'), t0 = iso(dayStart(d.now));
+      function gone(li) { li.classList.add('bb-gone'); setTimeout(function () { li.remove(); }, 260); }
       n.priorities.forEach(function (x) { var li = h('li', 'bb-task' + (ticks[x.id] ? ' bb-done' : '')), bt = h('button', 'bb-check'); bt.type = 'button'; bt.setAttribute('role', 'checkbox'); bt.setAttribute('aria-checked', ticks[x.id] ? 'true' : 'false'); bt.setAttribute('aria-label', 'Mark done on this device: ' + x.t);
         bt.appendChild(s('svg', { viewBox: '0 0 16 16', 'aria-hidden': 'true' }, [s('path', { d: 'M3.5 8.5l3 3 6-7' })]));
         bt.addEventListener('click', function () { var t = ls.get('kin.bb.ticks', {}); if (t[x.id]) delete t[x.id]; else t[x.id] = Date.now(); ls.set('kin.bb.ticks', t); var on = !!t[x.id]; bt.setAttribute('aria-checked', on ? 'true' : 'false'); li.classList.toggle('bb-done', on); });
         li.appendChild(bt); var r = h('div'); r.appendChild(h('div', 'bb-rt', x.t)); var due = dueLabel(x.d, d.now), m = h('div', 'bb-rm');
         m.appendChild(h('span', 'bb-chip' + (due.late ? ' bb-bad' : due.top === 'Today' ? ' bb-warn' : ''), due.late ? 'Overdue · ' + due.sub : due.top === 'Today' || due.top === 'Tomorrow' ? due.top : due.top + ' ' + due.sub));
         if (x.st === 'blocked') m.appendChild(h('span', 'bb-chip bb-bad', 'Blocked')); else if (x.st === 'waiting') m.appendChild(h('span', 'bb-chip bb-warn', 'Waiting')); if (x.who && !set.owner) m.appendChild(h('span', '', x.who));
-        r.appendChild(m); li.appendChild(r); ul.appendChild(li); });
-      b.appendChild(ul); b.appendChild(h('p', 'bb-local', 'Ticks stay on this device. They do not change the Atlas.'));
+        r.appendChild(m);
+        if (due.late) { var tr = h('div', 'bb-triage');
+          var sz = h('button', 'bb-mini', 'Snooze a week'); sz.type = 'button'; sz.addEventListener('click', function (e) { if (!e.isTrusted) return; var u = iso(new Date(dayStart(d.now).getTime() + 7 * 864e5)); triage.set(x.id, { k: 'snooze', until: u }); gone(li); });
+          var dr = h('button', 'bb-mini', 'Drop'); dr.type = 'button'; dr.addEventListener('click', function (e) { if (!e.isTrusted) return; triage.set(x.id, { k: 'drop' }); gone(li); });
+          tr.appendChild(sz); tr.appendChild(dr); r.appendChild(tr); }
+        li.appendChild(r); ul.appendChild(li); });
+      b.appendChild(ul);
+      if (n.lateMore || (n.lateOld && n.lateOld.length)) { var more = h('div', 'bb-more');
+        if (n.lateMore) more.appendChild(h('span', '', 'and ' + n.lateMore + ' more overdue'));
+        if (n.lateOld && n.lateOld.length) { var cl = h('button', 'bb-mini', 'Clean up items older than 30 days (' + n.lateOld.length + ')'), armed = 0; cl.type = 'button';
+          cl.addEventListener('click', function (e) { if (!e.isTrusted) return; if (!armed) { armed = setTimeout(function () { armed = 0; cl.textContent = 'Clean up items older than 30 days (' + n.lateOld.length + ')'; }, 6000); cl.textContent = 'Tap again to drop ' + n.lateOld.length + ' old items'; return; }
+            clearTimeout(armed); n.lateOld.forEach(function (id) { triage.set(id, { k: 'drop' }); }); cl.disabled = true; cl.textContent = 'Dropped ' + n.lateOld.length + ' old items. Refresh to see the rest.'; });
+          more.appendChild(cl); }
+        b.appendChild(more); }
+      b.appendChild(h('p', 'bb-local', 'Done, Snooze and Drop stay on this device. They do not change the Atlas.'));
     },
     market: function (c, d) {
       var m = d.market; head(c, 'Market watch', 'Competitors and the category, from the web'); var b = h('div', 'bb-body'); c.appendChild(b);
       if (m.error) { empty(b, 'The web search did not come back in time. Ask again in a minute.'); return; }
-      if (!m.items.length) { empty(b, 'Nothing new found today.'); return; }
+      if (!m.items.length) { var last = lastMarket(); if (!last) { empty(b, 'Nothing new found today.'); return; } m = { items: last.items }; b.appendChild(h('p', 'bb-sub', 'Nothing new today. The last finds, from ' + last.d + ':')); }
+      else saveMarket(m.items);
       b.classList.add('bb-newsgrid'); b.style.setProperty('--n', m.items.length);
       m.items.forEach(function (x) { var a = h(x.url ? 'a' : 'div', 'bb-news'); if (x.url) { a.href = x.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; }
         a.appendChild(h('div', 'bb-rt', x.title)); var meta = h('div', 'bb-rm'); if (x.source) meta.appendChild(h('span', 'bb-chip', x.source)); if (x.date) meta.appendChild(h('span', '', x.date)); if (meta.childNodes.length) a.appendChild(meta); b.appendChild(a); });
@@ -398,7 +430,7 @@
   /** which cards have something honest to show */
   function shows(id, d) {
     if (!d.settings.on[id]) return false;
-    if (id === 'market') return !!d.market; if (id === 'footer') return !!(d.nok && d.nok.onThisDay); if (id === 'start') return !!(d.offers && d.offers.length); return true;
+    if (id === 'market') return !!d.market && !!(d.market.error || (d.market.items && d.market.items.length) || lastMarket()); if (id === 'footer') return !!(d.nok && d.nok.onThisDay); if (id === 'start') return !!(d.offers && d.offers.length); return true;
   }
 
   /* ------------------------------------------------------------ the board */
@@ -431,7 +463,7 @@
     var paired = ids.filter(function (id) { return id !== 'market'; });
     var spans = ids.map(function (id) { if (id === 'market') return 'span6'; var k = paired.indexOf(id); return k === paired.length - 1 && paired.length % 2 === 1 ? 'span6' : 'span3'; });
     /* jobs: a Start pill, a running chip with Stop, and the result. The page decides how a job runs (opts.onStart). */
-    var ctx = { paintJob: function (o, li, act) {
+    var ctx = { refresh: typeof opts.onRefresh === 'function' ? opts.onRefresh : null, paintJob: function (o, li, act) {
       act.textContent = '';
       if (o.state === 'running') { var ch = h('span', 'bb-chip bb-run', 'Running'); ch.insertBefore(h('i', 'bb-spin'), ch.firstChild); act.appendChild(ch);
         var st = h('button', 'bb-pill bb-stop', 'Stop'); st.type = 'button'; st.addEventListener('click', function () { if (o.ctl) try { o.ctl.abort(); } catch (e) {} o.state = 'stopped'; ctx.paintJob(o, li, act); }); act.appendChild(st); return; }
