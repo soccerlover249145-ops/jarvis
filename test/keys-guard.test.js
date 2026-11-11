@@ -60,7 +60,7 @@ test('typing cards, ID numbers, secrets, passwords and shell commands asks first
   assert.match(typingConcern('sk-ant-api03-abcdefghijklmnop'), /secret/);
   assert.match(typingConcern('Tr0ub4dor&3'), /password/);
   assert.equal(typingConcern('best e-moto battery 2026'), '');
-  assert.equal(typingConcern('finley@example.com'), '');
+  assert.equal(typingConcern('someone@example.com'), '');
   assert.equal(typingConcern('https://Example.com/A1?b=2'), '');
   assert.equal(judge('type', { text: '4111111111111111' }, safari, {}).verdict, 'confirm');
 });
