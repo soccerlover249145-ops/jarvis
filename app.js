@@ -211,7 +211,7 @@
     if (!silent) say(voice.CLIPS.standby, true);
     caption(S.talk === 'asleep' ? sayPhrase() : 'Standing by, sir.', S.talk === 'asleep' ? sleepHint() : 'Tap here to wake Kin'); paint();
   }
-  function stopAll() { voice.stop(); S.queued = ''; if (S.busy && S.ctl) S.ctl.abort(); if (Kin.bridge) Kin.bridge.stopAll(); caption(null); }
+  function stopAll() { voice.stop(); S.queued = ''; if (S.busy && S.ctl) S.ctl.abort(); if (Kin.bridge) Kin.bridge.stopAll(); if (Kin.gauntlet) Kin.gauntlet.stop(); caption(null); }
   /** typed or spoken words that are orders to Kin itself, not questions */
   function command(text) {
     if (ears.wakeIn(text, S.wake, true)) { if (S.talk !== 'awake') cue(); else { flare(); voice.chime('wake'); touch(); } greetNow(''); return true; }
@@ -1037,6 +1037,7 @@
   $('packDrop').addEventListener('click', function () { clearTalk(); Kin.pack.remove().then(refreshSettings, refreshSettings).then(packCard); });
   $('erase').addEventListener('click', function () {
     var b = $('erase'); if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Tap again to erase the keys, tokens, the pack and the conversation'; setTimeout(function () { b.dataset.sure = ''; b.textContent = 'Erase everything on this device'; }, 5000); return; }
+    if (Kin.gauntlet) Kin.gauntlet.stop();
     ears.stop(); voice.stop(); voice.tts.dropKey(); brain.wipe(); Kin.mind.wipe(); if (Kin.hf) { Kin.hf.disconnect(); Kin.hf.wipe(); } if (Kin.bridge) Kin.bridge.wipe(); try { Object.keys(sessionStorage).forEach(function (k) { if (/^kin\./.test(k)) sessionStorage.removeItem(k); }); } catch (e) {} try { Object.keys(localStorage).forEach(function (k) { if (/^kin\./.test(k)) localStorage.removeItem(k); }); } catch (e) {}
     Kin.pack.kv.wipe().then(function () { location.reload(); });
   });

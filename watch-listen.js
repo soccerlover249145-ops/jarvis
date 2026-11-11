@@ -158,7 +158,7 @@
     '- Say what you could not tell: motion between frames, tone of voice, music, anything off screen. If the transcript looks garbled in a stretch, say so instead of guessing.',
     '- Speech recognition can mishear names and numbers. Flag any that matter and look unsure.',
     '- Lead with the answer. Then at most six short bullets with times. No em dashes. Plain words.',
-    '- If it is the founder\'s own footage (a taste night, a pitch, a build), finish with the one thing you would change or do next.',
+    '- If it is the founder\'s own footage (a demo, a pitch, a build), finish with the one thing you would change or do next.',
     '- Do not describe people by appearance beyond what the question needs. Never guess who a stranger is.'
   ].join('\n');
   /** the content of the first message: frames with times, then the transcript, then the question */

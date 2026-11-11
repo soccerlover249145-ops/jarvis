@@ -435,6 +435,8 @@
         /* worst case for this step: every input character as a token (conservatively a third of a token each, uncached),
            the web searches it may make, and as much output as it is allowed; the output allowance shrinks to fit the budget */
         var inTok = Math.ceil((JSON.stringify(system()).length + JSON.stringify(messages).length + JSON.stringify(toolList()).length) / 3);
+        /* a self-test with the web: the search results come back as input (about 20,000 tokens set aside) and the input is read a second time */
+        if (job.test && web) inTok = inTok * 2 + 20000;
         var inUsd = Kin.mind.costOf(model, { input_tokens: inTok, output_tokens: 0 }) + (web ? (bare ? 1 : Math.min(5, Kin.mind.webLeft())) * 0.01 : 0);
         var perOut = Kin.mind.costOf(model, { input_tokens: 0, output_tokens: 1000000 }) / 1000000;
         stepRoom = Math.min(room, Math.floor((job.budget - spentSoFar() - inUsd) / perOut));
@@ -442,6 +444,8 @@
       }
       var params = { model: model, max_tokens: stepRoom, betas: [FALLBACK_BETA], fallbacks: 'default', thinking: { type: 'adaptive', display: 'summarized' },
         output_config: { effort: effort }, system: system(), messages: cached(messages), tools: toolList() };
+      /* a self-test runs on Opus 5.5 only: no fallback model, so the price set aside is the price paid */
+      if (job && job.test) { delete params.betas; delete params.fallbacks; }
       var s = c.beta.messages.stream(params, reqOpts), pm = partialMeter(s, model);
       s.on('text', function (delta) { live += delta; show(); });
       s.on('streamEvent', function (ev) {
@@ -590,6 +594,15 @@
     limits: usage,
     setLimits: function (o) { o = o || {}; if (o.perHour >= 1 && o.perHour <= 500) ls.set(LIMH, String(Math.round(o.perHour))); if (o.perDay >= 1 && o.perDay <= 5000) ls.set(LIMD, String(Math.round(o.perDay))); return usage(); },
     smallTalk: smallTalk, route: route, keywordRoute: keywordRoute, local: localAnswer,
+    /** the least a self-test job (Kin.brain.job with test) needs set aside to be sent at all: its worst-case input
+        (the standing text, the task, a third of a token per character, uncached; with the web, read twice plus about
+        20,000 tokens of results and one search) and 1,500 tokens of answer, on Opus 5.5 */
+    jobFloor: function (text, opts) {
+      opts = opts || {};
+      var inTok = Math.ceil((JSON.stringify(system()).length + String(text || '').length + 1200) / 3), web = !!opts.web && !noWeb && Kin.mind.webLeft() > 0;
+      if (web) inTok = inTok * 2 + 20000;
+      return Kin.mind.costOf(MAIN, { input_tokens: inTok, output_tokens: 1500 }) + (web ? 0.01 : 0);
+    },
     /** for a panel that asks Claude itself (watch and listen): the client, and the fallback beta */
     client: function () { return getClient(); }, FALLBACK_BETA: FALLBACK_BETA,
     /** before such a panel sends a request: '' and the request is counted, or the reason it may not be sent */

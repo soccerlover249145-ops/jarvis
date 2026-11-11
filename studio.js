@@ -98,7 +98,7 @@
   /* ---------------------------------------------------------------- the concepts request */
   var CONCEPTS_TOOL = { name: 'submit_concepts', description: 'Hand over the creative brief and exactly three design concepts. Call it once, with everything.', eager_input_streaming: true,
     input_schema: { type: 'object', additionalProperties: false, required: ['title', 'brief', 'concepts'], properties: {
-      title: { type: 'string', description: 'A short title for the piece, e.g. "Dec 3 tasting night invite".' },
+      title: { type: 'string', description: 'A short title for the piece, e.g. "Spring open house invite".' },
       brief: { type: 'object', additionalProperties: false, required: ['audience', 'message', 'idea', 'references', 'constraints', 'format', 'minimal'], properties: {
         audience: { type: 'string' }, message: { type: 'string', description: 'The one thing a viewer must take away.' },
         idea: { type: 'string', description: 'The territory the three concepts explore.' },

@@ -61,3 +61,8 @@
   .gx-more { padding: 0 14px 16px; }
   .gx-btns .wl-pill { width: 100%; }
 }
+
+/* questions left this hour, shown before Run */
+.gx-lim { margin: 14px 4px 0; font: 400 14px/1.45 var(--md-display); color: var(--md-ink2); }
+.gx-lim:empty { display: none; }
+.gx-lim.gx-warn { color: var(--md-warn); }
