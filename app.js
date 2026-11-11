@@ -47,7 +47,7 @@
   function addMsg(who, text) {
     var t = $('thread'), e = t.querySelector('.empty'); if (e) e.remove();
     var d = document.createElement('div'); d.className = 'msg ' + who;
-    var s = document.createElement('small'); s.textContent = who === 'you' ? 'You' : 'Kin'; var p = document.createElement('p'); p.textContent = text;
+    var s = document.createElement('small'); s.textContent = who === 'you' ? 'You' : 'Jarvis'; var p = document.createElement('p'); p.textContent = text;
     d.appendChild(s); d.appendChild(p); t.appendChild(d); t.scrollTop = t.scrollHeight; return p;
   }
   /** a finished answer: rendered Markdown, then where it came from, what it cost, what was made, and two thumbs */
@@ -469,7 +469,7 @@
     }
     try {
       var aopts = { aloud: aloud, signal: S.ctl.signal,
-        onText: function (t) { got = true; lastSign = Date.now(); p.textContent = t; var m = /^(.{30,190}?[.!?])(\s|$)/.exec(spoken(t)); if (m && !S.talking) caption(m[1], 'Kin');
+        onText: function (t) { got = true; lastSign = Date.now(); p.textContent = t; var m = /^(.{30,190}?[.!?])(\s|$)/.exec(spoken(t)); if (m && !S.talking) caption(m[1], 'Jarvis');
           /* with a voice key, the first whole sentence is spoken while the rest is still arriving */
           /* only a spoken conversation is spoken while it streams: a typed answer is checked first, then its opening is read out */
           if (aloud && speakIt && !hushed() && voice.live()) { var c = head(plain(t)); if (!sess && /[.!?]["')\]]?\s/.test(c)) { clearTimeout(momT); sess = voice.begin(); } if (sess) { S.said = ears.norm(c); sess.feed(c); } } },

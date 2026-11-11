@@ -47,7 +47,7 @@
 
   /* ------------------------------------------------------------ settings */
   var CARDS = [
-    { id: 'weather', name: 'Weather' }, { id: 'nok', name: 'Your company' }, { id: 'start', name: 'Kin can start' }, { id: 'today', name: 'Coming up' },
+    { id: 'weather', name: 'Weather' }, { id: 'nok', name: 'Your company' }, { id: 'start', name: 'Jarvis can start' }, { id: 'today', name: 'Coming up' },
     { id: 'priorities', name: 'Top priorities' }, { id: 'market', name: 'Market watch' }, { id: 'footer', name: 'On this day' }
   ];
   var DEF = { order: ['weather', 'nok', 'start', 'today', 'priorities', 'market', 'footer'], on: { weather: true, nok: true, start: true, today: true, priorities: true, market: true, footer: false }, units: 'F', owner: '', autoSmall: true, autoCap: 0.25, autoDay: 1 };
@@ -167,7 +167,7 @@
       var auto = !!(set.autoSmall && job.local && !outward && est <= cap);
       out.push({ id: 'job-' + n.id + '-' + job.kind, taskId: n.id, kind: job.kind, task: title, due: n.d || null,
         label: labelTxt, say: phrase, est: est, auto: auto,
-        why: auto ? 'Small and local (written here, nothing sent), so it can start on its own.' : !job.local && !outward ? (job.kind === 'research' ? 'Uses the web, so it waits for your tap.' : 'Uses pictures and credits, so it waits for your tap.') : outward ? 'This task acts outside the page, so Kin only prepares for it and waits for you.' : est > cap ? 'Bigger than your auto-start limit, so it waits for your tap.' : 'Waits for your tap.',
+        why: auto ? 'Small and local (written here, nothing sent), so it can start on its own.' : !job.local && !outward ? (job.kind === 'research' ? 'Uses the web, so it waits for your tap.' : 'Uses pictures and credits, so it waits for your tap.') : outward ? 'This task acts outside the page, so Jarvis only prepares for it and waits for you.' : est > cap ? 'Bigger than your auto-start limit, so it waits for your tap.' : 'Waits for your tap.',
         prompt: (job.kind === 'draft' ? 'Draft the writing for' : job.kind === 'research' ? 'Research' : job.kind === 'plan' ? 'Make a plan for' : 'Design concepts for') + ' this task from the pack and put the result on the Made shelf. Do not send, post, buy, book or contact anyone. Task: ' + title + (n.d ? ' (due ' + n.d + ')' : '') + '.' });
     }
     var ran = started.all();
@@ -381,7 +381,7 @@
         a.appendChild(h('div', 'bb-rt', x.title)); var meta = h('div', 'bb-rm'); if (x.source) meta.appendChild(h('span', 'bb-chip', x.source)); if (x.date) meta.appendChild(h('span', '', x.date)); if (meta.childNodes.length) a.appendChild(meta); b.appendChild(a); });
     },
     start: function (c, d, ctx) {
-      head(c, 'Kin can start', d.settings.autoSmall ? 'Small local drafts and plans start on their own; the rest wait for your tap' : 'Tap Start and Kin gets going'); var b = h('div', 'bb-body'); c.appendChild(b);
+      head(c, 'Jarvis can start', d.settings.autoSmall ? 'Small local drafts and plans start on their own; the rest wait for your tap' : 'Tap Start and Jarvis gets going'); var b = h('div', 'bb-body'); c.appendChild(b);
       var ul = h('ul', 'bb-list');
       d.offers.forEach(function (o) { var li = h('li', 'bb-job'); li.dataset.job = o.id;
         var r = h('div', 'bb-job-t'); r.appendChild(h('div', 'bb-rt', o.label)); var m = h('div', 'bb-rm');
@@ -391,7 +391,7 @@
         r.appendChild(m); li.appendChild(r); var act = h('div', 'bb-job-a'); li.appendChild(act); ul.appendChild(li);
         ctx.paintJob(o, li, act); });
       b.appendChild(ul);
-      b.appendChild(h('p', 'bb-local', 'Kin never sends, posts, buys, books or calls on its own. Results land on the Made shelf.'));
+      b.appendChild(h('p', 'bb-local', 'Jarvis never sends, posts, buys, books or calls on its own. Results land on the Made shelf.'));
     },
     footer: function (c, d) { var x = d.nok.onThisDay; c.appendChild(h('div', 'bb-h', 'On this day')); c.appendChild(h('div', 'bb-ft', x.t + ' (' + x.d.slice(0, 4) + ')')); }
   };

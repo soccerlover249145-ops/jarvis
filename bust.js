@@ -27,7 +27,7 @@
   }
 
   /* ---------------------------------------------------------------- the figure (three.js), as before the redesign */
-  var T = null, S = { ok: false, mood: 'off', energy: 0.05, energyGoal: 0.05, sleepK: 1, sleepGoal: 1, scan: 0, wakeT: null, beatT: null, beatK: 1, time: 0, last: 0, raf: 0 };
+  var T = null, S = { ok: false, mood: 'off', energy: 0.05, energyGoal: 0.05, sleepK: 0.45, sleepGoal: 0.45, scan: 0, wakeT: null, beatT: null, beatK: 1, time: 0, last: 0, raf: 0 };
   var renderer, scene, camera, mat, w = 0, h = 0, dpr = 1, loading = false;
   var VS = [
     'attribute vec3 aNormal; attribute float aRnd; attribute float aSize; attribute float aAlpha;',
@@ -151,7 +151,7 @@
     ready: true,
     setMood: function (m) {
       if (app) app.dataset.orb = m || 'off';
-      S.mood = m; S.energyGoal = { off: 0.04, asleep: 0.02, idle: 0.12, listening: 0.6, thinking: 0.4, speaking: 1 }[m] || 0.12; S.sleepGoal = m === 'asleep' || m === 'off' ? 1 : 0;
+      S.mood = m; S.energyGoal = { off: 0.04, asleep: 0.02, idle: 0.12, listening: 0.6, thinking: 0.4, speaking: 1 }[m] || 0.12; S.sleepGoal = m === 'asleep' || m === 'off' ? 0.45 : 0; /* dimmer when asleep, but always clearly there */
     },
     wake: function () {
       S.wakeT = S.time;

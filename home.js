@@ -220,7 +220,7 @@
     var lad = h('div', 'qladder'); lad.setAttribute('aria-hidden', 'true');
     [d.away.on, d.away.on, d.away.on, d.away.on && d.away.call].forEach(function (on) { lad.appendChild(h('span', on ? 'on' : '')); });
     c.appendChild(lad);
-    c.appendChild(h('div', 'qlabel', d.away.call ? 'Calls you only for big things' : 'Never calls you until you allow it'));
+    c.appendChild(h('div', 'qlabel qnote', d.away.call ? 'Calls you only for big things' : 'Never calls you until you allow it'));
     var r = h('div', 'qrow'); r.appendChild(btn(d.away.on ? 'See the summary' : 'Open away mode', 'sm ghost', function () { go(d.away.on ? 'awaysummary' : 'away'); })); c.appendChild(r);
     return c;
   }

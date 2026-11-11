@@ -11,12 +11,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Kin">
+<meta name="apple-mobile-web-app-title" content="Jarvis">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="preload" href="fonts/geist.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="fonts/iserif.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/jost.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="brief-board.css">
 <link rel="stylesheet" href="media-devices.css">
@@ -24,7 +23,7 @@
 <link rel="stylesheet" href="gauntlet.css">
 <link rel="stylesheet" href="sync.css">
 <link rel="stylesheet" href="qc.css">
-<title>Kin</title>
+<title>Jarvis</title>
 </head>
 <body>
 <div class="app" id="app" data-state="off">
@@ -43,7 +42,7 @@
   <main class="wrap">
     <section class="board" id="board" aria-label="Home">
       <div class="loadcard" id="loadCard" hidden>
-        <p><b>Load your data</b> so Kin knows your company.</p>
+        <p><b>Load your data</b> so Jarvis knows your company.</p>
         <ol><li>In the Atlas: Kin&rsquo;s settings &gt; Your data &gt; Export everything.</li><li>Here: tap Load my data and pick that file.</li></ol>
         <label class="loadbtn filebtn">Load my data<input type="file" id="packFile2" accept="application/json,.json"></label>
         <p class="note" id="loadNote"></p>
@@ -139,7 +138,7 @@
       <p class="note">A self-test of 15 tasks: math, teaching, writing, and asks Kin should stop at or turn down. It runs only when you tap Run, uses your Claude key, counts toward the limits above, and stops before the budget cap you set (a full run is about $1). Nothing is sent, posted, bought, booked or called. Or say &ldquo;test yourself, Jarvis&rdquo;. Results stay on this device.</p>
       <div class="row"><span></span><div class="btns"><button type="button" class="lnk" id="gauntletOpen">Open the Gauntlet</button></div></div>
 
-      <h3>What Kin remembers</h3>
+      <h3>What Jarvis remembers</h3>
       <p class="note">Kept in this browser on this device only. Kin adds to it when you say &ldquo;remember that&nbsp;&hellip;&rdquo;, when you correct an answer, and when you tap Good or Not right under one. It never keeps keys, passwords, your age or school, or family money.</p>
       <div id="memList"></div>
       <div class="row"><span></span><div class="btns"><button type="button" class="lnk dim" id="memAll">Forget all</button></div></div>
