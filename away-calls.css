@@ -159,7 +159,9 @@
 
 /* ---- inside Jarvis: the Away and Calls panel (.wl.acx) shares the glass shell of media-devices.css ---- */
 .acx .ac .ac-practice { margin: -4px 0 14px; padding: 10px 14px; border-radius: 18px; font: 500 13px/1.4 var(--ac-display); color: #CFE9FF; background: rgba(87, 230, 255, .08); box-shadow: 0 0 0 1px rgba(87, 230, 255, .28) inset; }
-.acx .ac-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 6px 22px; }
+.acx .ac-tabs { display: flex; flex-wrap: nowrap; gap: 8px; margin: 0 6px 22px; overflow-x: auto; scrollbar-width: none; }
+.acx .ac-tabs::-webkit-scrollbar { display: none; }
+.acx .ac .ac-tab { flex: none; white-space: nowrap; }
 .acx .ac .ac-tab { height: 40px; padding: 0 18px; border-radius: 999px; font: 500 12px/1 var(--ac-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ac-fg2); background: rgba(255, 255, 255, .06); box-shadow: 0 0 0 1px rgba(255, 255, 255, .12) inset; transition: background .18s var(--ac-ease), color .18s; }
 .acx .ac .ac-tab[aria-selected="true"] { color: var(--ac-ink); background: var(--ac-amber); box-shadow: none; }
 .acx .ac .ac-body { display: grid; gap: 18px; }

@@ -332,6 +332,8 @@
   function ask(text) {
     text = String(text || '').trim(); if (!text) return;
     if (pendingConfirm && pendingConfirm.answer(text)) { inp.value = ''; lastLen = 0; return; }
+    /* "Turn on away mode, sir?" answered with a plain yes, within two minutes */
+    if (awayYes && Date.now() < awayYes) { var yes = /^(?:yes|yeah|yep|yes please|please do|do it|go ahead|turn it on|sure)(?:,? sir)?[.!]*$/i.test(text.trim()); awayYes = 0; if (yes) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); awayAsk({ k: 'on' }); return; } }
     if (command(text)) { inp.value = ''; lastLen = 0; return; }
     /* "ask Grok Bot ...": handled on this device and by the founder's relay only; never sent to Claude */
     var gi = Kin.bridge && Kin.bridge.intent(text);
@@ -471,10 +473,19 @@
     });
   }
   function devices() { Kin.devices.open({ onSay: panelSay }); }
+  var awayYes = 0;
   function awayAsk(it) {
     if (Kin.shared) { addMsg('kin', Kin.SHARED_TEXT); panelSay(Kin.SHARED_TEXT); return; }
     var line = Kin.awayPanel.handle(it, { onSay: panelSay });
-    if (line) { addMsg('kin', line); panelSay(line); }
+    if (!line) return;
+    var m = addMsg('kin', line); panelSay(line);
+    if (it.k === 'ask-on' && m && m.parentNode) {
+      /* away mode only comes on from a tap here or a spoken yes; nothing changes until then */
+      awayYes = Date.now() + 120000;
+      var b = el('button', 'pill sm go awayon'); b.type = 'button'; b.appendChild(el('span', 'pl', 'Turn on away mode'));
+      b.addEventListener('click', function (e) { if (!e.isTrusted) return; gesture(); b.disabled = true; awayYes = 0; awayAsk({ k: 'on' }); });
+      m.parentNode.appendChild(b); showThread();
+    }
   }
 
   /* ------------------------------------------------------------ the morning brief board */

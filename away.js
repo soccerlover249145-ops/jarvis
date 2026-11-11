@@ -68,7 +68,8 @@
       if (!s || typeof s !== 'object') return base;
       base.settings = sanitize(Object.assign(clone(DEFAULTS), s.settings || {}));
       ['log', 'cards', 'calls', 'pushes'].forEach(function (k) { if (Array.isArray(s[k])) base[k] = s[k]; });
-      if (s.spend && typeof s.spend === 'object') base.spend = s.spend;
+      /* only today's spend is kept, and only a real, non-negative number: tampered storage cannot lift the cap */
+      if (s.spend && typeof s.spend === 'object') { var tk = dayKey(now()), v = s.spend[tk]; if (typeof v === 'number' && isFinite(v) && v >= 0) base.spend[tk] = v; }
       return base;
     }
     function save() {
@@ -101,7 +102,8 @@
     }
     function match(list, who) {
       who = norm(who); if (!who) return null;
-      for (var i = 0; i < list.length; i++) { var x = norm(list[i]); if (x && (who === x || who.indexOf(x) >= 0)) return list[i]; }
+      /* a whole name or whole words only: "al" does not match "Sally", and "a" does not match every title */
+      for (var i = 0; i < list.length; i++) { var x = norm(list[i]); if (x && (who === x || new RegExp('(^|[^a-z0-9])' + x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^a-z0-9])').test(who))) return list[i]; }
       return null;
     }
     function onNever(who) { return !!match(st.settings.never, who); }
@@ -117,6 +119,8 @@
       return true;
     }
     function refund(cost, kept) { var k = dayKey(now()); st.spend[k] = Math.max(0, (st.spend[k] || 0) - Math.max(0, cost - (kept || 0))); }
+    /* after a run: what it really spent replaces what was set aside, overspend included */
+    function settle(cost, spent) { var k = dayKey(now()); spent = Math.max(0, Number(spent) || 0); st.spend[k] = Math.max(0, (st.spend[k] || 0) - cost + spent); }
 
     // ---- events: how loudly to tell the owner ----
     function score(ev) {
@@ -192,7 +196,7 @@
       card.status = 'running'; if (st.cards.indexOf(card) < 0) st.cards.push(card); save();
       return Promise.resolve().then(function () { return run ? run() : null; }).then(function (r) {
         card.status = 'done'; card.note = r && r.note ? String(r.note).slice(0, 300) : 'Done.';
-        if (r && typeof r.spent === 'number') refund(card.cost, r.spent);
+        if (r && typeof r.spent === 'number' && isFinite(r.spent)) settle(card.cost, r.spent);
         delete runners[card.id]; save(); return card;
       }, function (e) { card.status = 'failed'; card.note = 'It did not work: ' + String(e && e.message || e).slice(0, 200); refund(card.cost, 0); delete runners[card.id]; save(); return card; });
     }
@@ -203,8 +207,10 @@
       if (card.status !== 'pending') return Promise.reject(new Error('This card is ' + card.status));
       if (how !== 'tap' && how !== 'voice-confirmed') return Promise.reject(new Error('An OK has to come from you'));
       if (card.to && CONTACT.indexOf(card.kind) >= 0 && onNever(card.to)) { card.status = 'blocked'; card.note = card.to + ' is on your never-contact list.'; save(); return Promise.resolve(card); }
+      /* the job behind this card was lost when the page reloaded: never run it blind */
+      if (!runners[card.id]) { card.status = 'expired'; card.note = 'This was set up before the page reloaded, so nothing was done. Ask me again.'; save(); return Promise.resolve(card); }
       card.approvedBy = how; card.approvedAt = now().toISOString();
-      return execute(card, runners[card.id] || null);
+      return execute(card, runners[card.id]);
     }
     function decline(id) { var c = find(id); if (c && c.status === 'pending') { c.status = 'declined'; c.note = 'Stopped. Nothing was done.'; delete runners[id]; save(); } return c; }
     function find(id) { for (var i = 0; i < st.cards.length; i++) if (st.cards[i].id === id) return st.cards[i]; return null; }
@@ -218,7 +224,7 @@
         handled: cards.filter(function (c) { return c.status === 'done'; }),
         drafted: cards.filter(function (c) { return c.status === 'drafted'; }),
         waiting: st.cards.filter(function (c) { return c.status === 'pending'; }),
-        blocked: cards.filter(function (c) { return c.status === 'blocked' || c.status === 'held' || c.status === 'failed'; }),
+        blocked: cards.filter(function (c) { return c.status === 'blocked' || c.status === 'held' || c.status === 'failed' || c.status === 'expired'; }),
         held: ev.filter(function (e) { return e.rung === 1; }),
         pushed: ev.filter(function (e) { return e.rung === 2; }),
         called: ev.filter(function (e) { return e.rung === 3; }),
@@ -261,7 +267,7 @@
 
   /* ---------------- views (browser only) ---------------- */
   function h(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
-  function pill(label, note, cls, onClick) { var b = h('button', 'pill ' + cls); b.type = 'button'; b.appendChild(h('span', 'pl', label)); if (note) b.appendChild(h('span', 'pn', note)); b.addEventListener('click', onClick); return b; }
+  function pill(label, note, cls, onClick) { var b = h('button', 'pill ' + cls); b.type = 'button'; b.appendChild(h('span', 'pl', label)); if (note) b.appendChild(h('span', 'pn', note)); /* only a real tap or click counts: a script calling .click() does nothing */ b.addEventListener('click', function (e) { if (!e || e.isTrusted !== true) return; onClick(e); }); return b; }
   var KIND_TEXT = { send: 'Send', post: 'Post', buy: 'Buy', book: 'Book', call: 'Call', pay: 'Pay', delete: 'Delete', read: 'Read', draft: 'Draft', unknown: 'Action' };
 
   // The OK card for one action. Approve and Stop are pills; the price sits big, like the existing Jarvis cards.
@@ -320,7 +326,7 @@
     var cm = h('div', 'ac-tile ac-wide'); var cmr = h('div', 'ac-row ac-between');
     var cmt = h('div'); cmt.appendChild(h('p', 'ac-lab', 'Jarvis may call me')); cmt.appendChild(h('p', 'ac-sub', 'For rung 3 only. Turning this on is your standing OK for these calls to you, and no one else.'));
     var cms = h('button', 'ac-switch sm' + (s.allowCallMe ? ' on' : '')); cms.type = 'button'; cms.setAttribute('role', 'switch'); cms.setAttribute('aria-checked', String(s.allowCallMe)); cms.setAttribute('aria-label', 'Jarvis may call me'); cms.appendChild(h('i'));
-    cms.addEventListener('click', function () { away.setSettings({ allowCallMe: !away.settings.allowCallMe }); renderSettings(el, away); });
+    cms.addEventListener('click', function (e) { if (!e || e.isTrusted !== true) return; away.setSettings({ allowCallMe: !away.settings.allowCallMe }); renderSettings(el, away); });
     cmr.appendChild(cmt); cmr.appendChild(cms); cm.appendChild(cmr); wrap.appendChild(cm);
 
     // lists

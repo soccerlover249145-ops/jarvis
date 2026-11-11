@@ -4,7 +4,8 @@
      that refuses to dial; it waits on a phone number and the ElevenLabs agent.
    - Nothing sends, posts, buys, books, calls or deletes without a tap on its own card.
    - "Jarvis may call me" is off by default, and both contact lists start empty.
-   - On a shared address the panel does not open and nothing is stored. */
+   - On a shared address the panel does not open and nothing is stored (the engines would only keep things in memory).
+   - The engines stay private to this file: no other code can approve a card or change the line. */
 (function () {
   'use strict';
   var Kin = window.Kin = window.Kin || {};
@@ -15,12 +16,14 @@
   var PRACTICE_NUMBER = '+15555550123';
   function setup() {
     if (away) return;
-    calls = Kin.Calls.create({
+    /* on a shared address nothing is written to this browser's storage */
+    var mem = !!Kin.shared;
+    calls = Kin.Calls.create({ store: mem ? Kin.Calls.memStore() : undefined,
       line: Kin.Calls.FakeLine('accept', { tickMs: 650 }),
       lookup: function () { return PRACTICE_NUMBER; },
-      isNever: function (x) { var n = away ? away.settings.never : []; x = String(x || '').toLowerCase(); return !!x && n.some(function (y) { return y && x.indexOf(String(y).toLowerCase()) >= 0; }); }
+      isNever: function (x) { var n = away ? away.settings.never : []; x = String(x || '').toLowerCase().trim(); return !!x && n.some(function (y) { y = String(y || '').toLowerCase().trim(); return y && (x === y || new RegExp('(^|[^a-z0-9])' + y.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^a-z0-9])').test(x)); }); }
     });
-    away = Kin.Away.create({
+    away = Kin.Away.create({ store: mem ? Kin.Away.memStore() : undefined,
       notify: function (n) { try { if (Kin.desk && Kin.desk.notify) Kin.desk.notify.done(n.title, n.body); } catch (e) {} return Promise.resolve(true); },
       callOwner: function (ev) { return calls.callOwner(ev, { standingOk: away.settings.allowCallMe === true }); }
     });
@@ -30,23 +33,28 @@
   var LEAD = /^(?:(?:hey|ok|okay)\s+)?(?:jarvis|kin)[,!.]?\s+/;
   function clean(t) { return String(t || '').trim().toLowerCase().replace(/[’']/g, "'").replace(LEAD, '').replace(/^(?:please|sir)[, ]+/, '').replace(/[,]?\s*(?:please|sir)[.!?]*$/, '').replace(/\s+/g, ' '); }
   var RE = {
-    on: /^(?:i'?m|i am) (?:heading|going|stepping) out(?: (?:now|for (?:the|a) (?:day|night|evening|afternoon|bit|while|weekend)))?[.!]*$|^(?:turn|switch|put) (?:on )?away mode(?: on)?[.!]*$|^(?:turn|switch) on away mode[.!]*$|^(?:start|enable) away mode[.!]*$|^away mode on[.!]*$/,
+    /* "I'm heading out" is a hint, not a command: Jarvis asks first */
+    hint: /^(?:i'?m|i am) (?:heading|going|stepping) out(?: (?:now|for (?:the|a) (?:day|night|evening|afternoon|bit|while|weekend)))?[.!]*$/,
+    on: /^(?:turn|switch|put) (?:on )?away mode(?: on)?[.!]*$|^(?:turn|switch) on away mode[.!]*$|^(?:start|enable) away mode[.!]*$|^away mode on[.!]*$/,
     off: /^(?:turn|switch) (?:off )?away mode off[.!]*$|^(?:turn|switch) off away mode[.!]*$|^(?:stop|end|disable) away mode[.!]*$|^away mode off[.!]*$/,
     back: /^i'?m (?:back|home)(?: now)?[.!]*$/,
     summary: /^what (?:happened|did i miss|did you (?:do|handle)) while i was (?:away|out|gone)[?.!]*$|^(?:show |give me )?(?:my |the )?away (?:mode )?summary[?.!]*$/,
     settings: /^(?:open |show )?(?:my |the )?away mode(?: settings)?[?.!]*$|^(?:open |show )?(?:my |the )?away settings[?.!]*$/,
-    book: /^(?:can you |could you )?(?:book|reserve|get) (?:me |us )?(?:a )?table (?:for\b|at\b)|^(?:can you |could you )?(?:make|get) (?:me |us )?a (?:dinner |lunch |restaurant )?reservation (?:for\b|at\b)/
+    /* a table needs a party size right after "for", or a place after "at"; a reservation needs a meal or "restaurant", or a party, a place and a clock time */
+    book: /^(?:can you |could you )?(?:book|reserve) (?:me |us )?(?:a )?table (?:for (?:\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|a couple)\b|at [a-z])|^(?:can you |could you )?(?:make|book|get) (?:me |us )?a (?:dinner|lunch|brunch|breakfast|restaurant) reservation\b|^(?:can you |could you )?(?:make|book|get) (?:me |us )?a reservation for (?:\d{1,2}|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve) (?:people )?at [a-z][a-z0-9' &-]*? (?:at|around) \d/,
+    notbook: /\b(?:hotel|motel|flight|airbnb|rental car|car rental|appointment|booth|conference|trade show|spreadsheet|schema|database|meeting)\b|\b(?:a|hotel|guest|meeting|conference) room\b/
   };
-  function isOn() { if (away) return away.settings.on; try { var v = JSON.parse(localStorage.getItem('kin.away') || 'null'); return !!(v && v.settings && v.settings.on); } catch (e) { return false; } }
+  function isOn() { if (away) return away.settings.on; if (Kin.shared) return false; try { var v = JSON.parse(localStorage.getItem('kin.away') || 'null'); return !!(v && v.settings && v.settings.on); } catch (e) { return false; } }
   function intent(text) {
     var t = clean(text); if (!t || t.length > 160) return null;
     if (RE.off.test(t)) return { k: 'off' };
     /* "I'm back" only means something while away mode is on; otherwise it is ordinary chat */
     if (RE.back.test(t)) return isOn() ? { k: 'off' } : null;
     if (RE.on.test(t)) return { k: 'on' };
+    if (RE.hint.test(t)) return isOn() ? null : { k: 'ask-on' };
     if (RE.summary.test(t)) return { k: 'summary' };
     if (RE.settings.test(t)) return { k: 'settings' };
-    if (RE.book.test(t)) return { k: 'book', text: t };
+    if (RE.book.test(t) && !RE.notbook.test(t)) return { k: 'book', text: t };
     return null;
   }
 
@@ -55,6 +63,8 @@
   var cur = null;
   function close() {
     if (!cur) return; var c = cur; cur = null;
+    /* closing the panel ends any call that is still going */
+    if (calls && calls.live()) calls.hangupAll();
     document.removeEventListener('keydown', c.key);
     c.el.classList.add('wl-hide'); setTimeout(function () { c.el.remove(); }, 320);
   }
@@ -76,10 +86,10 @@
     var inner = h('div', 'ac'); panel.appendChild(inner);
     var tabs = h('div', 'ac-tabs'); tabs.setAttribute('role', 'tablist'); inner.appendChild(tabs);
     var body = h('div', 'ac-body'); inner.appendChild(body);
-    var c = cur = { el: el, tab: tab || 'settings', plan: opts.plan || null };
+    var c = cur = { el: el, tab: tab || 'settings', plan: opts.plan || null, holder: null };
     c.key = function (e) { if (e.key === 'Escape') close(); }; document.addEventListener('keydown', c.key);
 
-    var TABS = [['settings', 'Away mode'], ['summary', 'While you were away'], ['calls', 'Calls']];
+    var TABS = [['settings', 'Away mode'], ['summary', 'Summary'], ['calls', 'Calls']];
     function show(k) {
       c.tab = k; tabs.textContent = '';
       TABS.forEach(function (t) { var b = h('button', 'ac-tab', t[1]); b.type = 'button'; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(t[0] === k)); b.addEventListener('click', function () { show(t[0]); }); tabs.appendChild(b); });
@@ -99,12 +109,13 @@
     }
     function calltab() {
       body.textContent = '';
-      var holder = h('div'); body.appendChild(holder);
-      if (c.plan) drawPlan(holder);
+      var holder = c.holder = h('div'); body.appendChild(holder);
+      if (c.plan) drawPlan();
       body.appendChild(nameTile());
     }
-    function drawPlan(holder) {
-      var p = calls.plan(c.plan); if (!p) return;
+    /* always draws into the Calls tab that is on screen now, or nowhere */
+    function drawPlan() {
+      var p = calls.plan(c.plan), holder = c.holder; if (!p || !holder || cur !== c || c.tab !== 'calls') return;
       if (p.status === 'calling') { Kin.Calls.renderLive(holder, calls, p.id); return; }
       if (p.status === 'done') {
         Kin.Calls.renderTranscript(holder, calls, p.id, {
@@ -115,12 +126,12 @@
       }
       Kin.Calls.renderPlan(holder, calls, p.id, { onApprove: function () {
         /* the tap on Call now is the OK for this one call only */
-        calls.approve(p.id, 'tap', function () { if (cur === c && c.tab === 'calls') Kin.Calls.renderLive(holder, calls, p.id); }).then(function (done) {
+        calls.approve(p.id, 'tap', function () { drawPlan(); }).then(function (done) {
           if (cur !== c) return;
-          drawPlan(holder);
+          drawPlan();
           if (done && done.result && opts.onSay) opts.onSay(done.result.outcome === 'booked' ? 'Practice call done, sir. On a real line that would be booked. No real call was made.' : 'Practice call done, sir. It needs you. No real call was made.');
         });
-        Kin.Calls.renderLive(holder, calls, p.id);
+        drawPlan();
       } });
     }
     show(c.tab);
@@ -133,6 +144,7 @@
   function handle(it, opts) {
     opts = opts || {}; setup();
     var say = opts.onSay || function () {};
+    if (it.k === 'ask-on') return 'Turn on away mode, sir?';
     if (it.k === 'on') {
       away.setSettings({ on: true });
       open('settings', opts);
@@ -155,6 +167,11 @@
     say(''); return '';
   }
 
+  if (typeof window.addEventListener === 'function') window.addEventListener('pagehide', function () { if (calls && calls.live()) calls.hangupAll(); });
+  /* read-only views for the rest of the page: nothing here can approve a card, dial, or change the line */
   Kin.awayPanel = { intent: intent, handle: handle, open: function (tab, opts) { return open(tab, opts); }, close: close,
-    get away() { setup(); return away; }, get calls() { setup(); return calls; } };
+    view: function () { setup(); return {
+      away: { get settings() { return away.settings; }, summary: function (x) { return away.summary(x); }, get log() { return away.log; }, get cards() { return away.cards; }, ingest: function (ev) { return away.ingest(ev); }, propose: function (a) { return away.propose(a); } },
+      calls: { get settings() { return calls.settings; }, plan: function (id) { var p = calls.plan(id); return p ? JSON.parse(JSON.stringify(p)) : null; }, callsToday: function () { return calls.callsToday(); }, spentToday: function () { return calls.spentToday(); }, live: function () { return calls.live(); } }
+    }; } };
 })();

@@ -30,7 +30,7 @@
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   function money(n) { return '$' + (Math.round(n * 100) / 100).toFixed(2); }
   function dayKey(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
-  function clock(mins) { var h = Math.floor(mins / 60) % 24, m = mins % 60, ap = h >= 12 ? 'PM' : 'AM', hh = h % 12 || 12; return hh + ':' + String(m).padStart(2, '0') + ' ' + ap; }
+  function clock(mins) { mins = ((Math.round(mins) % 1440) + 1440) % 1440; var h = Math.floor(mins / 60) % 24, m = mins % 60, ap = h >= 12 ? 'PM' : 'AM', hh = h % 12 || 12; return hh + ':' + String(m).padStart(2, '0') + ' ' + ap; }
   function memStore() { var m = {}; return { get: function (k) { return m[k] == null ? null : m[k]; }, set: function (k, v) { m[k] = v; return true; } }; }
   function browserStore() { return { get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: function (k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } } }; }
   function title(s) { return s.replace(/\b([a-z])/g, function (m) { return m.toUpperCase(); }); }
@@ -43,7 +43,7 @@
     if (pm) { var w = pm[1].replace('a couple', 'couple'); out.party = /^\d+$/.test(w) ? +w : NUMS[w] || null; }
     if (/\btomorrow\b/.test(t)) out.day = 'tomorrow';
     var tm = /\b(?:at|for|around|by) (\d{1,2})(?::(\d{2}))? ?(am|pm|o'?clock)?\b/g, m, best = null;
-    while ((m = tm.exec(t))) { if (m[3] || m[2] || +m[1] >= 5) { if (!m[3] && !m[2] && pm && m.index === pm.index) continue; best = m; } }
+    while ((m = tm.exec(t))) { if (m[3] || m[2] || (+m[1] >= 1 && +m[1] <= 12)) { if (!m[3] && !m[2] && pm && m.index === pm.index) continue; best = m; } }
     if (best) { var hh = +best[1], mm = best[2] ? +best[2] : 0, ap = best[3]; if (ap === 'am') hh = hh % 12; else if (ap === 'pm' || hh < 12 && hh >= 1 && hh <= 11) hh = hh % 12 + 12; if (hh < 24 && mm < 60) out.minutes = hh * 60 + mm; }
     else if (/\btonight\b/.test(t)) out.minutes = null;
     var pl = /\b(?:at|in) ((?:the )?[a-z0-9'&][a-z0-9'& -]*?)(?= (?:at|for|around|by|on|tonight|tomorrow|today|this|next)\b| $)/g, p;
@@ -152,6 +152,29 @@
     };
   }
 
+  /* one set of limits for saved settings and for changes: tampered storage cannot lift a cap */
+  var RATE = DEFAULTS.ratePerMin; // fixed: the price is never read from storage
+  function clampSettings(s) {
+    s = Object.assign(clone(DEFAULTS), s || {}); delete s.record;
+    s.maxCallSec = Math.max(30, Math.min(600, Number(s.maxCallSec) || DEFAULTS.maxCallSec));
+    s.maxCallsPerDay = Math.max(0, Math.min(10, Math.floor(Number(s.maxCallsPerDay)) || 0));
+    s.maxDollarsPerDay = Math.max(0, Math.min(20, Number(s.maxDollarsPerDay) || 0));
+    s.windowMin = Math.max(0, Math.min(60, Number(s.windowMin) || 0));
+    s.ratePerMin = RATE;
+    s.reservationName = String(s.reservationName || '').slice(0, 60);
+    s.ownerNumber = String(s.ownerNumber || '').replace(/[^\d+]/g, '').slice(0, 16);
+    var out = {}; Object.keys(DEFAULTS).forEach(function (k) { out[k] = s[k]; }); return out;
+  }
+  /* a saved plan is only kept if it looks like one this module made; a call that was in progress at reload is over */
+  function cleanPlan(p) {
+    if (!p || typeof p !== 'object' || typeof p.id !== 'string' || (p.kind !== 'booking' && p.kind !== 'owner')) return null;
+    var ok = ['card', 'needs-info', 'blocked', 'calling', 'done', 'stopped'];
+    if (ok.indexOf(p.status) < 0) return null;
+    if (p.status === 'card' || p.status === 'calling') { p.status = 'stopped'; p.note = 'The page reloaded, so no call was made.'; }
+    p.estimate = Math.max(0, Number(p.estimate) || 0); p.cost = Math.max(0, Number(p.cost) || 0);
+    return p;
+  }
+
   function create(opt) {
     opt = opt || {};
     var now = opt.now || function () { return new Date(); };
@@ -160,10 +183,12 @@
     var lookup = opt.lookup || function () { return null; };       // place -> phone number, from search or contacts
     var isNever = opt.isNever || function () { return false; };     // hooked to Away's never-contact list
     var listeners = [], seq = 0, live = {};
-    var st = (function () { var s = null; try { s = JSON.parse(store.get(STORE_KEY) || 'null'); } catch (e) {} s = s && typeof s === 'object' ? s : {}; return { settings: Object.assign(clone(DEFAULTS), s.settings || {}), plans: Array.isArray(s.plans) ? s.plans : [], log: Array.isArray(s.log) ? s.log : [] }; })();
+    var st = (function () { var s = null; try { s = JSON.parse(store.get(STORE_KEY) || 'null'); } catch (e) {} s = s && typeof s === 'object' ? s : {}; return { settings: clampSettings(s.settings), plans: (Array.isArray(s.plans) ? s.plans : []).map(cleanPlan).filter(Boolean), log: (Array.isArray(s.log) ? s.log : []).filter(function (c) { return c && typeof c === 'object' && typeof c.day === 'string'; }).map(function (c) { c.cost = Math.max(0, Number(c.cost) || 0); return c; }) }; })();
     function save() { st.log = st.log.slice(-200); st.plans = st.plans.slice(-50); store.set(STORE_KEY, JSON.stringify(st)); listeners.forEach(function (f) { try { f(); } catch (e) {} }); }
-    function today() { var k = dayKey(now()); return st.log.filter(function (c) { return c.day === k && c.kind !== 'owner'; }); }
-    function spentToday() { var k = dayKey(now()); return st.log.filter(function (c) { return c.day === k; }).reduce(function (a, c) { return a + (c.cost || 0); }, 0); }
+    /* calls in progress count against the caps too, at their full estimate */
+    function inFlight(kind) { return st.plans.filter(function (p) { return p.status === 'calling' && (kind == null || (kind === 'owner') === (p.kind === 'owner')); }); }
+    function today() { var k = dayKey(now()); return st.log.filter(function (c) { return c.day === k && c.kind !== 'owner'; }).concat(inFlight('other')); }
+    function spentToday() { var k = dayKey(now()); return st.log.filter(function (c) { return c.day === k; }).reduce(function (a, c) { return a + (c.cost || 0); }, 0) + inFlight().reduce(function (a, p) { return a + (p.estimate || 0); }, 0); }
     function find(id) { for (var i = 0; i < st.plans.length; i++) if (st.plans[i].id === id) return st.plans[i]; return null; }
     function estimate(sec) { return Math.round(sec / 60 * st.settings.ratePerMin * 100) / 100; }
 
@@ -172,6 +197,7 @@
       if (!plan.number) p.push('I could not find a phone number for ' + (plan.place || 'them') + '.');
       if (isNever(plan.place) || isNever(plan.number)) p.push((plan.place || plan.number) + ' is on your never-contact list.');
       if (plan.kind === 'booking' && !plan.forName) p.push('Set the name to book under in Calls settings.');
+      if (inFlight().length) p.push('Another call is still going. One call at a time.');
       if (today().length >= st.settings.maxCallsPerDay) p.push('That would be more than ' + st.settings.maxCallsPerDay + ' calls today.');
       if (spentToday() + plan.estimate > st.settings.maxDollarsPerDay + 1e-9) p.push('That could pass today\'s ' + money(st.settings.maxDollarsPerDay) + ' calling limit.');
       return p;
@@ -225,17 +251,22 @@
     /* Away mode calls the owner. Away's "Jarvis may call me" switch is the standing OK, passed in as standingOk. */
     function callOwner(ev, standing) {
       if (!standing || standing.standingOk !== true) return Promise.reject(new Error('Calls to you need "Jarvis may call me" turned on'));
+      if (line.fake) return Promise.reject(new Error('Calls to you need the real line. This is the practice line.'));
       if (!st.settings.ownerNumber) return Promise.reject(new Error('Your number is not set'));
+      if (inFlight().length) return Promise.reject(new Error('Another call is still going'));
       var d = now(), plan = { id: 'o' + d.getTime().toString(36) + (seq++), kind: 'owner', at: d.toISOString(), place: 'You', number: st.settings.ownerNumber, reason: String(ev && ev.title || 'Something needs you.').slice(0, 200), maxSec: Math.min(120, st.settings.maxCallSec), status: 'calling' };
       plan.estimate = estimate(plan.maxSec);
+      if (spentToday() + plan.estimate > st.settings.maxDollarsPerDay + 1e-9) return Promise.reject(new Error('That could pass today\'s calling limit'));
       st.plans.push(plan);
-      return dial(plan, 'standing', null).then(function (p) { return { answered: p.result && p.result.outcome !== 'no-answer' && p.result.outcome !== 'failed', plan: p }; });
+      /* only a line that says the owner answered counts as answered */
+      return dial(plan, 'standing', null).then(function (p) { return { answered: !!(p.result && p.result.answered === true), plan: p }; });
     }
 
     return {
       get settings() { return clone(st.settings); },
-      setSettings: function (patch) { patch = Object.assign({}, patch || {}); delete patch.record; var s = Object.assign(st.settings, patch); s.maxCallSec = Math.max(30, Math.min(600, Number(s.maxCallSec) || DEFAULTS.maxCallSec)); s.maxCallsPerDay = Math.max(0, Math.min(10, Math.floor(Number(s.maxCallsPerDay)) || 0)); s.maxDollarsPerDay = Math.max(0, Math.min(20, Number(s.maxDollarsPerDay) || 0)); s.windowMin = Math.max(0, Math.min(90, Number(s.windowMin) || 0)); s.reservationName = String(s.reservationName || '').slice(0, 60); s.ownerNumber = String(s.ownerNumber || '').replace(/[^\d+]/g, '').slice(0, 16); save(); return clone(s); },
-      planBooking: planBooking, approve: approve, decline: decline, hangup: hangup, callOwner: callOwner, plan: find,
+      setSettings: function (patch) { st.settings = clampSettings(Object.assign({}, st.settings, patch || {})); save(); return clone(st.settings); },
+      planBooking: planBooking, approve: approve, decline: decline, hangup: hangup, hangupAll: function () { Object.keys(live).forEach(hangup); }, callOwner: callOwner, plan: find,
+      live: function () { return Object.keys(live).length; },
       setLine: function (l) { line = l; }, get line() { return line; },
       callsToday: function () { return today().length; }, spentToday: spentToday,
       onChange: function (f) { listeners.push(f); }
@@ -244,7 +275,7 @@
 
   /* ---------------- views (browser only) ---------------- */
   function h(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
-  function pill(label, note, cls, onClick) { var b = h('button', 'pill ' + cls); b.type = 'button'; b.appendChild(h('span', 'pl', label)); if (note) b.appendChild(h('span', 'pn', note)); b.addEventListener('click', onClick); return b; }
+  function pill(label, note, cls, onClick) { var b = h('button', 'pill ' + cls); b.type = 'button'; b.appendChild(h('span', 'pl', label)); if (note) b.appendChild(h('span', 'pn', note)); /* only a real tap or click counts: a script calling .click() does nothing */ b.addEventListener('click', function (e) { if (!e || e.isTrusted !== true) return; onClick(e); }); return b; }
   function fmtNum(n) { var m = /^\+?1?(\d{3})(\d{3})(\d{4})$/.exec(n || ''); return m ? '(' + m[1] + ') ' + m[2] + '-' + m[3] : n; }
   function mmss(s) { return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0'); }
 
