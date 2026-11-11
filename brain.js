@@ -581,6 +581,8 @@
     setKey: function (k) { k = String(k || '').trim(); if (Kin.shared) return { ok: false, why: 'shared' }; if (!/^sk-ant-[A-Za-z0-9_\-]{20,}$/.test(k)) return { ok: false, why: 'shape' }; client = null; return ls.set(KEY, k) ? { ok: true } : { ok: false, why: 'storage' }; },
     dropKey: function () { ls.del(KEY); client = null; },
     turns: function () { return turns.slice(); },
+    /** an answer cut short (the founder talked over it): keep the question and what was given, so a follow-up has its context */
+    keepTurn: function (q, a) { q = String(q || '').trim(); a = String(a || '').trim(); if (q && a) keep(q, a.slice(0, 4000)); },
     forget: function () { turns = []; ls.del(TURNS); },
     wipe: function () { [KEY, TURNS, ASKED, LIMH, LIMD].forEach(ls.del); client = null; turns = []; asked = []; },
     /** { hour, day, perHour, perDay }: questions sent to Claude lately, and the limits */

@@ -11,7 +11,7 @@
 
   var S = Kin.state = { talk: 'off', busy: false, talking: false, hearing: false, micState: 'off', micWhy: '', wake: ls.get('kin.wake', WAKE_DEF), greeted: false,
     deafUntil: 0, said: '', saidAt: 0, unlocked: false, ctl: null, queued: '', wakes: 0, asks: 0, perm: 'unknown', lastEx: 0, snooze: 0, kbMic: false,
-    line: '', prevLine: '', spokeAt: 0, bargeAt: 0, barges: 0, askN: 0, hushed: -1 };
+    line: '', lines: [], spokeAt: 0, bargeAt: 0, voiceBargeAt: 0, barges: 0, askN: 0, hushed: -1 };
   var buf = '', tail = '', hearT = 0, greetT = 0, idleT = 0, typeT = 0, capT = 0, flareT = 0, beatI = 0, pendWake = false, lastLen = 0, multi = 0, single = 0;
   voice.set({ mode: ls.get('kin.vmode', 'jarvis'), who: ls.get('kin.voice', 'arthur') });
 
@@ -86,17 +86,19 @@
   function say(text, raw) { var t = raw ? String(text) : spoken(text); if (!S.unlocked) return Promise.resolve(); S.said = ears.norm(t); return voice.say(t); }
   voice.on(function (e) {
     if (e.type === 'ttsfail') { S.ttsWhy = e.reason; S.ttsShown = false; refreshSettings(); return; }
-    if (e.type === 'line') { S.prevLine = S.line; S.line = ears.norm(e.text); if (S.talk !== 'off' || S.speakTyped || S.testing) { var why = S.ttsWhy && !S.ttsShown ? S.ttsWhy + ' Using the backup voice' : ''; caption(e.text, why || (S.talk === 'awake' ? awakeHint() : '')); } return; }
+    if (e.type === 'line') { if (!S.line && S.talking) S.spokeAt = Date.now(); S.line = ears.norm(e.text); S.lines = S.lines.concat(S.line).slice(-4); if (S.talk !== 'off' || S.speakTyped || S.testing) { var why = S.ttsWhy && !S.ttsShown ? S.ttsWhy + ' Using the backup voice' : ''; caption(e.text, why || (S.talk === 'awake' ? awakeHint() : '')); } return; }
     var was = S.talking; S.talking = e.state === 'speaking';
     clearInterval(beatI);
     if (S.talking) {
       beatI = setInterval(function () { if (Math.random() < 0.8) bust.beat(0.55 + Math.random() * 0.45); duckCheck(); }, 170); if (ears.isSafari) ears.hold(true);
-      if (!was) { S.spokeAt = Date.now(); S.line = S.prevLine = ''; }
+      /* the clock for "Kin has been speaking a moment" starts with the first words actually heard (the first line), not before them */
+      if (!was) { S.spokeAt = Date.now() + 60000; S.line = ''; S.lines = []; }
       /* anything half-heard as Kin starts to speak is its own voice or is now out of date: let it go */
       tail = ''; clearTimeout(hearT); if (buf) hearT = setTimeout(commit, 800);
     }
-    if (was && !S.talking) { var cut = Date.now() - S.bargeAt < 1500; voice.duck(false);
-      /* talked over: the owner is speaking now, so nothing they say is ignored */
+    if (was && !S.talking) { var cut = Date.now() - S.voiceBargeAt < 1500; voice.duck(false);
+      /* talked over by voice, where a meter showed someone actually speaking: what they go on to say is not cut off.
+         A tap, a spoken "stop" or "wait" keeps the usual short deaf moment. The echo check stays on either way. */
       S.deafUntil = cut ? 0 : Date.now() + Kin.T.hard; S.softUntil = cut ? 0 : Date.now() + Kin.T.deaf; S.saidAt = Date.now(); if (S.ttsWhy) S.ttsShown = true; if (ears.isSafari) ears.hold(false); touch(); captionFade(3200); }
     paint();
   });
@@ -109,24 +111,49 @@
     return { short: 'The microphone is blocked for this site.', small: 'Allow it, then reload. Details in settings', full: 'The microphone is blocked for this site. In Safari: Settings > Websites > Microphone > Allow (in Chrome: the icon left of the address), then reload.' };
   }
   function deaf() { return S.talking || Date.now() < S.deafUntil; }
+  /** a tap on the pill or a spoken "stop" while Kin speaks: quiet now, and an answer still arriving is stopped too, so nothing more is spent on it */
+  function hushNow() { S.bargeAt = Date.now(); S.hushed = S.askN; voice.stop(); if (S.busy && S.ctl) { try { S.ctl.abort(); } catch (e) {} } paint(); }
 
   /* ------------------------------------------------------------ talking over Kin */
-  /** Talking while Kin speaks stops it, and what was said is heard as the next thing. An open mic also hears
-      Kin through the speakers, so a phrase only counts when (1) it is not mostly the sentence Kin is saying
-      now or just said, (2) it has two words or starts with a word people interrupt with, (3) Kin has been
-      speaking long enough for its first words to have been heard back, and (4) where there is a level meter
-      (a computer, with the browser's echo cancelling on), the room is actually loud. Asleep, only "stop" works. */
-  var BARGE = /^(wait|stop|hold|hang|no|nope|actually|sorry|hey|jarvis|kin|excuse|pause|enough|quiet|listen|but|cancel)$/;
-  function bargeIn(text) {
+  /** Talking while Kin speaks stops it. An open mic also hears Kin through the speakers (and a phone has no
+      meter to tell a voice in the room from Kin's own), so the rules are strict:
+      - The words must not be mostly what Kin has been saying: its last four spoken lines are checked, because
+        recognizers deliver words late.
+      - With no meter (phones, Safari, shared addresses): only a phrase that leads with an interrupting word
+        ("stop", "wait", "hold on", "no Jarvis") counts, only once the recognizer has settled on it, and it only
+        stops Kin. Anything said after it must pass the usual checks before it is sent.
+      - With a meter (a computer, the browser's echo cancelling on): two or more words while the room is
+        actually loud also count, and what is said goes on as the next question.
+      - Not in the first moment of a reply, and only while awake. Asleep, only "stop" works. */
+  var LEAD2 = /^(hold on|hang on|no jarvis|no kin|hey jarvis|excuse me|jarvis stop|jarvis wait|one second|one sec)\b/;
+  var LEAD1 = /^(stop|wait|pause|enough|quiet|cancel)\b/;
+  function loud() { var lv = ears.level(); return lv != null && lv >= Kin.T.bargeLevel; }
+  function kinRef() { return ' ' + S.lines.join(' ') + ' ' + S.line + ' '; }
+  function mostlyKin(words, ref) { if (!words.length) return false; var hit = 0; words.forEach(function (w) { if (ref.indexOf(' ' + w + ' ') >= 0) hit++; }); return hit / words.length >= 0.5; }
+  function bargeIn(text, fin) {
     if (!S.talking || !Kin.T.barge || S.talk !== 'awake' || Date.now() - S.spokeAt < Kin.T.bargeGrace) return false;
-    var a = ears.norm(text).split(' ').filter(Boolean); if (!a.length) return false;
-    var ref = ' ' + S.line + ' ' + S.prevLine + ' ', lead = BARGE.test(a[0]) && ref.indexOf(' ' + a[0] + ' ') < 0;
-    if (a.length < 2 && !lead) return false;
-    var rest = lead ? a.slice(1) : a, hit = 0; rest.forEach(function (w) { if (ref.indexOf(' ' + w + ' ') >= 0) hit++; });
-    if (rest.length && hit / rest.length >= (lead ? 0.8 : 0.5)) return false;
-    var lv = ears.level(); if (lv != null && lv < Kin.T.bargeLevel) return false;
-    S.bargeAt = Date.now(); S.barges++; S.hushed = S.askN; S.said = '';
-    voice.stop(); bust.beat(1); touch(); paint(); return true;
+    var n = ears.norm(text), a = n.split(' ').filter(Boolean); if (!a.length) return false;
+    var ref = kinRef(), lead = (LEAD2.exec(n) || LEAD1.exec(n) || [''])[0];
+    if (lead && ref.indexOf(' ' + lead + ' ') >= 0) lead = '';
+    var rest = lead ? a.slice(lead.split(' ').length) : a;
+    if (rest.length && mostlyKin(rest, ref)) return false;
+    var lv = ears.level(), metered = lv != null;
+    if (metered && lv < Kin.T.bargeLevel) return false;
+    if (lead ? !fin : (!metered || a.length < 2)) return false;
+    S.bargeAt = Date.now(); if (metered && !lead) S.voiceBargeAt = S.bargeAt; S.barges++; S.hushed = S.askN;
+    voice.stop(); bust.beat(1); touch(); paint();
+    if (metered && !lead) return text;
+    /* after "wait" or "hold on", only the words that follow go on, and only through the usual echo checks */
+    var words = String(text).trim().split(/\s+/), after = words.slice(lead.split(' ').length).join(' ');
+    return after.split(/\s+/).filter(Boolean).length >= 2 ? after : '';
+  }
+  /** the words Kin was saying that ran into the start of what the founder said over it */
+  function stripKin(q) {
+    if (Date.now() - S.bargeAt > 8000) return q;
+    /* only a run of two or more words that Kin said in that order, at the very start (all of it, if all of it was Kin) */
+    var w = q.split(/\s+/), ref = kinRef(), k = 0;
+    for (var j = 2; j <= w.length; j++) { var run = ears.norm(w.slice(0, j).join(' ')); if (run && ref.indexOf(' ' + run + ' ') >= 0) k = j; else break; }
+    return k ? w.slice(k).join(' ') : q;
   }
   /** Where there is a meter, someone loud while Kin speaks turns Kin's voice down at once, before the words
       are even recognised; it comes back up if nothing is said within a moment. */
@@ -143,8 +170,7 @@
   var OPENER = /^(yes|yeah|yep|yup|no|nope|nah|please|sure|ok|okay|do|go|dont|actually|and|but|then)$/;
   function echo(text) {
     if (!S.said) return false; var now = Date.now(), age = now - S.saidAt; if (!S.talking && age > Kin.T.echo) return false;
-    if (now - S.bargeAt < 8000) return false;
-    var a = ears.norm(text).split(' ').filter(Boolean), said = ' ' + S.said + ' ', hit = 0, soft = now < (S.softUntil || 0);
+    var a = ears.norm(text).split(' ').filter(Boolean), said = ' ' + S.said + ' ' + S.lines.join(' ') + ' ', hit = 0, soft = now < (S.softUntil || 0);
     if (a.length < (soft ? 1 : 2)) return false;
     if (OPENER.test(a[0]) && said.indexOf(' ' + a[0] + ' ') < 0) return false;
     a.forEach(function (w) { if (said.indexOf(' ' + w + ' ') >= 0) hit++; });
@@ -156,7 +182,7 @@
 
   /* ------------------------------------------------------------ waking and sleeping */
   /** must run inside a tap or key press at least once: lets the page play sound and speak */
-  function gesture() { var was = S.unlocked; voice.unlock(); S.unlocked = true; if (!was && S.talk === 'awake' && cap.classList.contains('on') && !cap.classList.contains('you')) $('capS').textContent = awakeHint(); }
+  function gesture() { var was = S.unlocked; voice.unlock(); ears.wakeMeter(); S.unlocked = true; if (!was && S.talk === 'awake' && cap.classList.contains('on') && !cap.classList.contains('you')) $('capS').textContent = awakeHint(); }
   /** An exchange just happened (a wake, a question sent, Kin finished speaking, a tap). Kin stays awake for a
       short while after one and then goes back to sleep. Speech that was merely overheard does not count, so a
       television or a meeting in the room cannot keep it awake and sending. */
@@ -198,7 +224,7 @@
   /** some phones repeat the whole phrase so far in each "final": keep the longer one instead of joining them */
   function join(a, b) { var na = ears.norm(a), nb = ears.norm(b); if (!na) return b; if (nb.indexOf(na) === 0) return b; if (na.length >= nb.length && na.slice(-nb.length) === nb) return a; return (a + ' ' + b).trim(); }
   function commit() {
-    clearTimeout(hearT); var q = (buf + ' ' + tail).trim(), n = ears.norm(q); buf = tail = ''; if (!q || S.talk !== 'awake') return;
+    clearTimeout(hearT); var q = stripKin((buf + ' ' + tail).trim()), n = ears.norm(q); buf = tail = ''; if (!q || S.talk !== 'awake') return;
     /* a yes or no to a question Kin asked before spending: short words like "yeah" count here */
     if (pendingConfirm && !echo(q) && pendingConfirm.answer(q)) { showHeard(''); return; }
     if (n.length < 2 || /^(um+|uh+|hm+|mm+|ah+|oh|er+|okay|ok|yeah|yep|right|so|well|and|the|a|i)$/.test(n)) { showHeard(''); caption(null); return; }
@@ -212,15 +238,16 @@
   function heard(text, fin) {
     text = String(text || '').trim(); if (!text || S.talk === 'off') return;
     /* while Kin speaks, and for a moment after, nothing is taken in except "stop" */
-    if (S.talking && ears.stopIn(text) && (' ' + S.line + ' ' + S.prevLine + ' ').indexOf(' ' + ears.norm(text).split(' ').pop() + ' ') < 0) { S.bargeAt = Date.now(); S.hushed = S.askN; voice.stop(); if (fin) { tail = buf = ''; clearTimeout(hearT); showHeard(''); caption(null); } return; }
-    if (deaf() && !bargeIn(text)) return;
+    if (S.talking && ears.stopIn(text) && (fin || loud()) && kinRef().indexOf(' ' + ears.norm(text).split(' ').pop() + ' ') < 0) { hushNow(); if (fin) { tail = buf = ''; clearTimeout(hearT); showHeard(''); caption(null); } return; }
+    if (deaf()) { var b = bargeIn(text, fin); if (!b) return; text = b; }
     /* Kin's own words, half-heard or whole: drop them, and drop the half-heard copy that was waiting */
     if (echo(text)) { tail = ''; clearTimeout(hearT); if (buf) hearT = setTimeout(commit, 800); return; }
     bust.beat(1);
     if (S.talk === 'asleep' || pendWake) {
       var m = ears.wakeIn(text, S.wake); if (!m && !pendWake) return;
       if (!pendWake) { pendWake = true; cue(); } clearTimeout(greetT);
-      if (fin) { pendWake = false; greetNow(m ? m.rest : text.split(/\s+/).length > 6 ? text : ''); }
+      /* only words after a clearly heard wake phrase are sent on; anything else just wakes Kin */
+      if (fin) { pendWake = false; greetNow(m ? m.rest : ''); }
       else greetT = setTimeout(function () { pendWake = false; greetNow(''); }, 1600);
       return;
     }
@@ -416,7 +443,8 @@
       if ((r.stalled || /^(busy|api|network|timeout)$/.test(r.code || '')) && !job) { var rb = el('button', 'pill alt retry'); rb.type = 'button'; rb.appendChild(el('span', 'pl', 'Retry')); rb.addEventListener('click', function () { gesture(); rb.disabled = true; if (!S.busy) ask(text); }); if (box) box.appendChild(rb); }
       if (r.code === 'limit') { S.queued = ''; if (S.talk === 'awake') sleep(true); caption(out, 'Change the limit in settings'); if (speakIt) say(out, true); else captionFade(9000); refreshSettings(); return; }
       /* talked over: the rest of this answer stays on screen and is not read out; a new question goes next */
-      if (r.code === 'stopped' && got && !stalled) { if (sess && !hushed()) voice.stop(); if (!hushed()) caption(null); if (S.queued && S.talk === 'awake') { var q0 = S.queued; S.queued = ''; setTimeout(function () { ask(q0); }, 120); } return; }
+      if (r.code === 'stopped' && !stalled && hushed()) brain.keepTurn(text, got ? plain(p.textContent) + ' [interrupted by the founder]' : '[interrupted by the founder before the answer]');
+      if (r.code === 'stopped' && got && !stalled) { if (sess && !hushed()) voice.stop(); if (!hushed()) caption(null); if (hushed() && S.queued && S.talk === 'awake') { var q0 = S.queued; S.queued = ''; setTimeout(function () { ask(q0); }, 120); } return; }
       if (sess && !hushed()) { var fin = spoken(out); S.said = ears.norm(fin); sess.finish(fin); }
       else if (speakIt && !hushed() && voice.canSpeak()) { var one = r.studio || job ? (/^.*?[.!?](\s|$)/.exec(plain(out)) || [plain(out)])[0].trim() : out; caption(spoken(one).slice(0, 190), r.detail || job ? 'The details are on screen' : ''); say(one, !!(r.studio || job)); }
       else { caption(spoken(out).slice(0, 260), r.source === 'local' ? 'From this device only' : !S.unlocked && aloud ? 'Tap once so I can speak' : ''); captionFade(9000); touch(); }
@@ -686,7 +714,7 @@
   /* the state pill: tap it to start listening, to interrupt, or to wake Kin */
   $('vpill').addEventListener('click', function () {
     gesture();
-    if (S.talking) { S.bargeAt = Date.now(); S.hushed = S.askN; voice.stop(); return; }
+    if (S.talking) { hushNow(); return; }
     if (ears.supported && (!ears.wanted() || ears.paused())) { ears.start(); if (S.talk !== 'awake') wakeNow(); paint(); return; }
     if (S.talk !== 'awake') wakeNow(); else touch();
   });
