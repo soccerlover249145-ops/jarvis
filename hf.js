@@ -13,7 +13,10 @@
   var AS = 'https://clerk.higgsfield.ai', MCP_URL = 'https://mcp.higgsfield.ai/mcp';
   var EP = { authorize: AS + '/oauth/authorize', token: AS + '/oauth/token', register: AS + '/oauth/register', revoke: AS + '/oauth/token/revoke' };
   var SCOPE = 'openid email offline_access';
-  var K = { client: 'kin.hf.client', tok: 'kin.hf.tok', cap: 'kin.hf.cap', used: 'kin.hf.used', state: 'kin.hf.state' };
+  var K = { client: 'kin.hf.client', tok: 'kin.hf.tok', cap: 'kin.hf.cap', used: 'kin.hf.used', state: 'kin.hf.state', err: 'kin.hf.err', cimd: 'kin.hf.cimd' };
+  /* Higgsfield's sign-in can also accept a client named by a public document (a client ID metadata document) instead of a
+     registered one. This page publishes one; it is used only when the founder picks "Try the other sign-in". */
+  var CIMD_URL = location.origin + '/oauth-client.json';
   /* the image hosts Higgsfield returns finished pictures from; the page fetches them (they allow it) and
      keeps each picture inside the design as data, so nothing is fetched again when it is drawn */
   var IMG_HOSTS = ['d8j0ntlcm91z4.cloudfront.net', 'cdn.higgsfield.ai'];
@@ -39,6 +42,7 @@
 
   /** Register this page as a public client once (no secret: a browser cannot keep one). */
   function client() {
+    if (ls.get(K.cimd) === '1') return Promise.resolve({ client_id: CIMD_URL, redirect_uri: redirectUri(), cimd: true });
     var c = json(K.client);
     if (c && c.client_id && c.redirect_uri === redirectUri()) return Promise.resolve(c);
     return fetch(EP.register, { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -93,9 +97,13 @@
   function token() {
     var t = json(K.tok), c = json(K.client); if (!t || !t.access) return Promise.resolve(null);
     if (Date.now() < t.exp) return Promise.resolve(t.access);
-    if (!t.refresh || !c) return Promise.resolve(null);
+    if (!t.refresh || !c) { note('', 'The Higgsfield sign-in ran out and cannot be refreshed. Connect again.'); return Promise.resolve(null); }
     if (!refreshing) refreshing = tokenCall({ grant_type: 'refresh_token', refresh_token: t.refresh, client_id: c.client_id, resource: MCP_URL })
-      .then(function (j) { return saveTok(j).access; }, function (e) { if (e && /invalid_grant|invalid_client/.test(e.oauth || e.message)) { ls.del(K.tok); note('', 'The Higgsfield sign-in expired. Connect again in settings.'); } return null; })
+      .then(function (j) { return saveTok(j).access; }, function (e) {
+        noteErr('refreshing the sign-in: ' + ((e && e.message) || e));
+        if (e && /invalid_grant|invalid_client/.test(e.oauth || e.message)) { ls.del(K.tok); note('', 'The Higgsfield sign-in expired. Connect again in settings.'); }
+        else note('', 'The Higgsfield sign-in could not be refreshed (' + ((e && e.message) || 'network') + '). Try again, or Reconnect.');
+        return null; })
       .then(function (v) { refreshing = null; return v; });
     return refreshing;
   }
@@ -108,10 +116,21 @@
   /** the server has turned the token down: forget it so the founder is asked to connect again */
   function rejected(why) { ls.del(K.tok); note('', 'Higgsfield did not accept the sign-in from this page' + (why ? ' (' + why + ')' : '') + '. Connect again; if it keeps failing, Higgsfield may only accept sign-ins from Claude\'s own apps.'); }
 
+  /* the last thing Higgsfield said when something failed, without the token, for the card and the Last error line */
+  function noteErr(msg) {
+    var m = String(msg || '').replace(/eyJ[A-Za-z0-9_.-]{10,}/g, '[token]').replace(/Bearer\s+\S+/gi, 'Bearer [token]').slice(0, 300);
+    ls.set(K.err, JSON.stringify({ at: Date.now(), message: m }));
+    try { if (Kin.brain && Kin.brain.noteError) Kin.brain.noteError({ type: 'higgsfield', message: m }); } catch (e) {}
+  }
+  function lastErr() { return json(K.err); }
+  /** Is the sign-in usable: a token that has not run out, or one that can be refreshed */
+  function live() { var t = json(K.tok); return !!(t && t.access && (Date.now() < t.exp || t.refresh)); }
+
   /* ---- credits: a cap per day, counted on this device from the price checks of jobs the founder approved ---- */
   function today() { var d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
   function used() { var u = json(K.used); return u && u.day === today() ? u.credits : 0; }
   function addUsed(n) { var c = used() + (+n || 0); ls.set(K.used, JSON.stringify({ day: today(), credits: Math.round(c * 1000) / 1000 })); return c; }
+  function refund(n) { var c = Math.max(0, used() - (+n || 0)); ls.set(K.used, JSON.stringify({ day: today(), credits: Math.round(c * 1000) / 1000 })); return c; }
   function cap() { var v = parseFloat(ls.get(K.cap)); return v > 0 && v <= 10000 ? v : 20; }
   function setCap(v) { v = parseFloat(v); if (v > 0 && v <= 10000) ls.set(K.cap, String(Math.round(v * 100) / 100)); }
 
@@ -139,11 +158,35 @@
 
   Kin.hf = {
     MCP_URL: MCP_URL, IMG_HOSTS: IMG_HOSTS,
-    connected: function () { var t = json(K.tok); return !!(t && t.access); },
+    connected: live,
+    noteErr: noteErr, lastErr: lastErr, refund: refund,
+    usingCimd: function () { return ls.get(K.cimd) === '1'; },
+    /** switch the sign-in to the published client document (or back), then sign in again */
+    useCimd: function (on) { if (on) ls.set(K.cimd, '1'); else ls.del(K.cimd); ls.del(K.tok); },
+    /** One check that makes nothing: Claude asks Higgsfield for the price of one picture (get_cost). Shows Higgsfield's exact reply. */
+    test: function () {
+      if (Kin.shared) return Promise.resolve({ ok: false, text: Kin.SHARED_TEXT });
+      var c = Kin.brain && Kin.brain.client && Kin.brain.client();
+      if (!c) return Promise.resolve({ ok: false, text: 'Add your Claude key first: the test runs through Claude.' });
+      return token().then(function (tok) {
+        if (!tok) return { ok: false, text: 'Not connected, or the sign-in could not be refreshed. Tap Connect Higgsfield.' };
+        return c.beta.messages.create({ model: Kin.brain.QUICK || Kin.brain.MAIN, max_tokens: 600, betas: ['mcp-client-2026-09-15'],
+          mcp_servers: [{ type: 'url', url: MCP_URL, name: 'higgsfield', authorization_token: tok }],
+          tools: [{ type: 'mcp_toolset', mcp_server_name: 'higgsfield', default_config: { enabled: false }, configs: { generate_image: { enabled: true } } }],
+          messages: [{ role: 'user', content: 'PRICE CHECK ONLY. Call generate_image once with params { model: "gpt_image_2_6", prompt: "a plain grey square", aspect_ratio: "1:1", get_cost: true, use_unlim: false }. Do not call anything else. Reply with the result exactly.' }] })
+          .then(function (m) {
+            var res = (m.content || []).filter(function (b) { return b.type === 'mcp_tool_result'; })[0];
+            var txt = res ? (Array.isArray(res.content) ? res.content.map(function (x) { return x.text || ''; }).join(' ') : String(res.content || '')) : (m.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join(' ');
+            var cost = 0; try { cost = Kin.mind.costOf(m.model, m.usage); Kin.mind.addSpend(cost); } catch (e) {}
+            if (!res || res.is_error) { noteErr(txt || 'no reply from Higgsfield'); return { ok: false, text: 'Higgsfield said: ' + (txt || 'nothing (the tool was not reached)').slice(0, 400), cost: cost }; }
+            return { ok: true, text: 'Higgsfield answered and nothing was made: ' + txt.slice(0, 300), cost: cost };
+          }, function (e) { var msg = String((e && e.message) || e); noteErr(msg); return { ok: false, text: 'The test failed: ' + msg.slice(0, 400) }; });
+      });
+    },
     connect: connect, finish: finish, token: token, disconnect: disconnect, rejected: rejected,
     status: function () { return status; },
     cap: cap, setCap: setCap, used: used, addUsed: addUsed,
     okHost: okHost, toData: toData,
-    wipe: function () { [K.client, K.tok, K.cap, K.used].forEach(ls.del); ss.del(K.state); }
+    wipe: function () { [K.client, K.tok, K.cap, K.used, K.err, K.cimd].forEach(ls.del); ss.del(K.state); }
   };
 })();

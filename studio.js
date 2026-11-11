@@ -300,11 +300,14 @@
         return step();
       }).then(function (r) {
         var authFail = r.results.filter(function (b) { return b.is_error && /401|403|unauthori[sz]ed|invalid[_ ]token|forbidden/i.test(resultText(b)); })[0];
-        if (authFail) { Kin.hf.rejected(resultText(authFail).slice(0, 80)); throw Object.assign(new Error('Higgsfield turned the sign-in down.'), { hf: 'auth' }); }
+        if (authFail) { Kin.hf.noteErr(resultText(authFail)); Kin.hf.rejected(resultText(authFail).slice(0, 120)); throw Object.assign(new Error('Higgsfield turned the sign-in down.'), { hf: 'auth' }); }
         return r;
       }, function (e) {
         if (isAbort(e) || (e && e.code === 'timeout')) throw e;
-        if (e && !e.hf && /mcp|authori[sz]|401|403|token/i.test(String(e.message || ''))) { Kin.hf.rejected(String(e.message || '').slice(0, 80)); throw Object.assign(new Error('Higgsfield turned the sign-in down.'), { hf: 'auth' }); }
+        var em = String((e && e.message) || '');
+        /* only an error that names the MCP server AND says the sign-in was refused counts; max_tokens, prompt-length and validation errors are shown as they are */
+        if (e && !e.hf && /mcp|higgsfield/i.test(em) && /\b401\b|\b403\b|unauthori[sz]ed|forbidden|invalid[_ ]token|invalid_grant/i.test(em) && !/max_tokens|too long|prompt is|validation/i.test(em)) { Kin.hf.rejected(em.slice(0, 120)); throw Object.assign(new Error('Higgsfield turned the sign-in down.'), { hf: 'auth', raw: em }); }
+        Kin.hf.noteErr(em || String(e));
         throw e;
       });
     }
@@ -316,7 +319,10 @@
       return mcpAsk({ generate_image: { enabled: true } },
         'PRICE CHECK ONLY. For each picture below call generate_image exactly once with params { model: "' + IMAGE_MODEL + '", prompt: the prompt exactly as written, aspect_ratio: the aspect given' + extra + ', get_cost: true, use_unlim: false }, so nothing is generated. Do not call anything else. Then reply with one line per picture: the id and its credit cost.\n' + list, 6000)
         .then(function (q) {
-          var bad = q.uses.filter(function (u) { return u.name !== 'generate_image' || !deepSearch(u.input, 'get_cost', true); });
+          var bad = q.uses.filter(function (u) {
+            var inp = u.input; if (inp && typeof inp.params === 'string') { try { inp = Object.assign({}, inp, { params: JSON.parse(inp.params) }); } catch (e) {} }
+            return u.name !== 'generate_image' || !(deepSearch(inp, 'get_cost', true) || deepSearch(inp, 'get_cost', 'true'));
+          });
           if (bad.length) { notes.push('A price check asked Higgsfield to make a picture instead of pricing it, so I stopped there. Check your Higgsfield account for a charge.'); throw Object.assign(new Error('price check breach'), { hf: 'breach', credits: bad.length }); }
           var credits = 0, priced = 0;
           q.results.forEach(function (b) { var n = creditsIn(resultText(b)); if (!b.is_error && n >= 0) { credits += n; priced++; } });
@@ -341,6 +347,9 @@
           /* counted against today's limit now, before the batch goes out: a stop, a time-out or an error after this point
              can still leave pictures being made (and charged) on Higgsfield, and the next card must not offer those credits again */
           Kin.hf.addUsed(credits); hfCredits = Math.round((hfCredits + credits) * 100) / 100; budget = Math.max(0, Math.round((budget - credits) * 100) / 100); if (opts.onSent) opts.onSent();
+          /* set aside now; given back for every picture that never got a job on Higgsfield (nothing was charged for those) */
+          var each = credits / plan.length, refunded = false;
+          function giveBack(n) { if (refunded || !(n > 0)) return; refunded = true; var back = Math.round(each * n * 100) / 100; Kin.hf.refund(back); hfCredits = Math.max(0, Math.round((hfCredits - back) * 100) / 100); budget = Math.round((budget + back) * 100) / 100; }
           var reqs = plan.map(function (p, i) { return '- index ' + i + ' (' + p.id + '): aspect ' + p.aspect + '; prompt: ' + p.prompt; }).join('\n');
           return mcpAsk({ generate_image_batch: { enabled: true }, jobs_wait: { enabled: true } },
             'Make these pictures on Higgsfield now. Call generate_image_batch ONCE with one request per picture: { index: the index given, params: { model: "' + IMAGE_MODEL + '", prompt: the prompt exactly as written, aspect_ratio: the aspect given' + extra + ', use_unlim: false } }. Then call jobs_wait with every returned { index, job_id } until all are finished (call it again while any is still running). Never submit a picture twice. Then reply with one line per picture: the id (img…), a space, and its result URL.\n' + reqs, 12000)
@@ -353,7 +362,10 @@
               g.results.forEach(function (b) {
                 var j = null; try { j = JSON.parse(resultText(b)); } catch (e) {}
                 walk(j, function (o) { if (o.job_id && typeof o.index === 'number' && plan[o.index]) jobOf[String(o.job_id).toLowerCase()] = plan[o.index].id; });
+                if (b.is_error) Kin.hf.noteErr(resultText(b));
               });
+              var gotJobs = Object.keys(jobOf).length;
+              giveBack(Math.max(0, plan.length - gotJobs));
               g.results.forEach(function (b) {
                 var j = null; try { j = JSON.parse(resultText(b)); } catch (e) {}
                 walk(j, function (o) {
@@ -362,6 +374,19 @@
                 });
               });
               String(g.text || '').split('\n').forEach(function (l) { var m = /^\s*[-*]?\s*(img\d+)\b\D*?(https:\/\/\S+)/i.exec(l); if (m && !urlOf[m[1]]) urlOf[m[1]] = m[2].replace(/[).,]+$/, ''); });
+              /* slow renders: keep asking Higgsfield from here (jobs_wait only, nothing new is made) until every job is back or the time runs out */
+              var tries = 0;
+              function more() {
+                var waiting = Object.keys(jobOf).filter(function (jid) { return !urlOf[jobOf[jid]]; });
+                if (!waiting.length || ++tries > 6) return Promise.resolve();
+                beat('Waiting for Higgsfield to finish the pictures');
+                return mcpAsk({ jobs_wait: { enabled: true } }, 'Call jobs_wait once with jobs: ' + JSON.stringify(waiting.map(function (jid, i) { return { index: i, job_id: jid }; })) + '. Do not call anything else. Reply only with each job_id and its result_url.', 2000)
+                  .then(function (w) {
+                    w.results.forEach(function (b) { var j = null; try { j = JSON.parse(resultText(b)); } catch (e) {} walk(j, function (o) { var id = o.job_id ? jobOf[String(o.job_id).toLowerCase()] : null; var u = id ? urlIn(o) : ''; if (id && u && !urlOf[id]) urlOf[id] = u; }); });
+                    return more();
+                  }, function () { return null; });
+              }
+              return more().then(function () {
               beat('Placing the pictures');
               var pics = {};
               return Promise.all(plan.map(function (p) {
@@ -369,10 +394,11 @@
                 if (!Kin.hf.okHost(u)) { notes.push('Picture ' + p.id + ' came from a host this page does not load (' + u.slice(0, 60) + ').'); return null; }
                 return Kin.hf.toData(u, po.max || 1600).then(function (d) { pics[p.id] = { data: d.data, url: u, prompt: p.prompt }; }, function () { notes.push('Picture ' + p.id + ' could not be fetched into the design; its link: ' + u); });
               })).then(function () { return pics; });
-            });
+              });
+            }, function (e) { if (!isAbort(e) && !(e && e.code === 'timeout')) giveBack(plan.length); throw e; });
         })
         .catch(function (e) {
-          if (e && e.hf === 'auth') { notes.push('Higgsfield did not accept the sign-in, so the concepts are drawn instead. Connect it again in settings.'); return {}; }
+          if (e && e.hf === 'auth') { notes.push('Higgsfield did not accept the sign-in' + (e.raw ? ' (' + String(e.raw).slice(0, 160) + ')' : '') + ', so the concepts are drawn instead. Use Test Higgsfield in settings to see exactly why.'); return {}; }
           if (e && e.hf === 'breach') return {};
           if (isAbort(e)) throw e;
           if (e && e.code === 'timeout') { notes.push(e.message + ' The concepts are drawn instead; Higgsfield may still finish the pictures and count the credits.'); return {}; }
@@ -399,6 +425,8 @@
     var withPics = hfOn && hfLeft > 0, usdDraw = estimate(kit, false), usdPics = estimate(kit, true);
     var posterCredits = POSTER_CREDITS * (POSTER_VARIANTS + 1), usdPoster = posterEstimate(kit);
     var poster = withPics && MARKETING.test(text) && !TOO_FACTUAL.test(text) && hfLeft >= POSTER_CREDITS * POSTER_VARIANTS;
+    /* a poster was asked for but cannot be offered: say why on the card instead of quietly making a design job */
+    var noPoster = MARKETING.test(text) && !TOO_FACTUAL.test(text) && !poster ? (!hfOn ? 'No full poster: Higgsfield is not connected on this device (Settings, Pictures).' : 'No full poster: it needs about ' + (POSTER_CREDITS * POSTER_VARIANTS) + ' credits and ' + hfLeft + ' are left of today\'s ' + Kin.hf.cap() + ' (' + Kin.hf.used() + ' used). Raise the daily limit in Settings, Pictures.') : '';
     var card = poster ? { kind: 'job', label: 'Needs your OK', kindName: 'Poster job', title: jname || 'Poster job', price: '$' + usdPoster.toFixed(2), priceNote: 'estimated Claude usage · Opus 5.5', pics: true, route: 'poster',
       lines: ['One idea with the exact copy, rendered whole by Higgsfield\'s image model in ' + POSTER_VARIANTS + ' variants; the art director reads every word in each, picks one, and asks for one refinement render if it falls short.',
         'Credits: about ' + posterCredits + ' (' + POSTER_VARIANTS + ' posters and 1 refinement, about ' + POSTER_CREDITS + ' each), priced before anything is made; at most ' + hfLeft + ' (what is left of today\'s ' + Kin.hf.cap() + ').',
@@ -410,7 +438,7 @@
         { k: 'stop', label: 'Stop', kind: 'stop', note: 'Nothing is sent and nothing is spent.' }] } : { kind: 'job', label: 'Needs your OK', kindName: 'Design job', title: jname || 'Design job', price: '$' + (withPics ? usdPics : usdDraw).toFixed(2), priceNote: 'estimated Claude usage · Opus 5.5',
       pics: withPics, route: 'compose',
       lines: [withPics ? 'A brief, three concepts, real pictures where they help, a strict art director, and up to three rounds of refinement.' : 'A brief, three drawn concepts, a strict art director, and up to three rounds of refinement.',
-        withPics ? 'Pictures: up to 4 on Higgsfield, priced first, at most ' + hfLeft + ' credits (what is left of today\'s ' + Kin.hf.cap() + ').' : hfOn ? 'Pictures: today\'s Higgsfield limit is used up, so the concepts are drawn.' : 'Higgsfield is not connected, so the concepts are drawn.'],
+        withPics ? 'Pictures: up to 4 on Higgsfield, priced first, at most ' + hfLeft + ' credits (what is left of today\'s ' + Kin.hf.cap() + ').' : hfOn ? 'Pictures: today\'s Higgsfield limit is used up, so the concepts are drawn.' : 'Higgsfield is not connected, so the concepts are drawn.'].concat(noPoster ? [noPoster] : []),
       say: 'A design job costs about ' + (withPics ? usdPics : usdDraw).toFixed(2) + ' dollars, sir. Go, or stop?',
       choices: [{ k: 'go', label: 'Go', kind: 'go', note: withPics ? 'Starts now, with pictures.' : 'Starts now.' }]
         .concat(withPics ? [{ k: 'draw', label: 'Go without pictures', kind: 'alt', note: 'About $' + usdDraw.toFixed(2) + ', no Higgsfield credits.' }] : [])
@@ -580,7 +608,8 @@
       return posterRoute().then(function (r) {
         if (r) return r; alive();
         var left = Math.max(0, Math.round(Math.min(hfLeft - hfCredits, Kin.hf.cap() - Kin.hf.used()) * 100) / 100), canPics = left > 0 && hfCredits === 0;
-        var why = notes.length ? notes[notes.length - 1] : 'No poster came back from Higgsfield.';
+        var why = notes.length ? notes.slice(-4).join(' ') : 'No poster came back from Higgsfield.';
+        var raw = Kin.hf.lastErr && Kin.hf.lastErr(); if (raw && Date.now() - raw.at < 30 * 60000) why += ' Higgsfield said: ' + raw.message;
         var rc = { kind: 'reroute', label: 'Kin stopped to ask', title: 'The poster could not be made', price: '$' + (canPics ? usdPics : usdDraw).toFixed(2), priceNote: 'more Claude usage to compose it instead · Opus 5.5',
           lines: [why, 'Spent so far: about $' + spent.toFixed(2) + (hfCredits ? ' and ' + hfCredits + ' Higgsfield credits' : '') + '. Nothing more is spent unless you choose to compose it.'],
           say: 'The poster could not be made, sir. Compose it instead for about ' + (canPics ? usdPics : usdDraw).toFixed(2) + ' dollars more, or stop?',

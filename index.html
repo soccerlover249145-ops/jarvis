@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex,nofollow,noarchive">
 <meta name="referrer" content="no-referrer">
 <!-- Only this site, the Anthropic API, (for the optional voice key) the ElevenLabs API, (for the optional Higgsfield sign-in) Higgsfield's sign-in service and picture hosts, and (for the optional Grok Bot bridge, off by default) the founder's relay may be reached. No third-party scripts, fonts or trackers. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://d8j0ntlcm91z4.cloudfront.net https://cdn.higgsfield.ai; media-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.anthropic.com https://api.elevenlabs.io https://clerk.higgsfield.ai https://d8j0ntlcm91z4.cloudfront.net https://cdn.higgsfield.ai https://jarvis-relay-next-of-kin.vercel.app https://api.open-meteo.com https://geocoding-api.open-meteo.com; worker-src 'none'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' https://accounts.google.com/gsi/style; img-src 'self' data: blob: https://d8j0ntlcm91z4.cloudfront.net https://cdn.higgsfield.ai; media-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://gmail.googleapis.com https://accounts.google.com/gsi/ https://api.anthropic.com https://api.elevenlabs.io https://clerk.higgsfield.ai https://d8j0ntlcm91z4.cloudfront.net https://cdn.higgsfield.ai https://jarvis-relay-next-of-kin.vercel.app https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://accounts.google.com/gsi/; worker-src 'none'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -71,7 +71,7 @@
   <section class="sheet" id="sheet" hidden aria-label="Settings">
     <div class="sheethead"><h2>Settings</h2><button type="button" class="icon" id="sheetx" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <div class="sheetbody">
-      <nav class="snav" id="snav" aria-label="Settings sections"><button type="button" data-sg="start">Start</button><button type="button" data-sg="voice">Voice</button><button type="button" data-sg="brain">Brain</button><button type="button" data-sg="pictures">Pictures</button><button type="button" data-sg="brief">Brief</button><button type="button" data-sg="away">Away</button><button type="button" data-sg="grok">Grok Bot</button><button type="button" data-sg="privacy">Privacy</button></nav>
+      <nav class="snav" id="snav" aria-label="Settings sections"><button type="button" data-sg="start">Start</button><button type="button" data-sg="voice">Voice</button><button type="button" data-sg="brain">Brain</button><button type="button" data-sg="pictures">Pictures</button><button type="button" data-sg="email">Email</button><button type="button" data-sg="brief">Brief</button><button type="button" data-sg="away">Away</button><button type="button" data-sg="grok">Grok Bot</button><button type="button" data-sg="privacy">Privacy</button></nav>
 
       <div class="sgroup" id="sg-start" aria-label="Start">
       <p class="note warn" id="sharedNote" hidden></p>
@@ -133,8 +133,25 @@
       <p class="hfstate" id="hfState" role="status"><span class="hfdot" aria-hidden="true"></span><span id="hfStateText">Not connected</span></p>
       <div class="hfact"><button type="button" class="bigpill" id="hfConnect">Connect Higgsfield</button><button type="button" class="lnk dim" id="hfDrop" hidden>Disconnect</button></div>
       <p class="note" id="hfNote"></p>
+      <div class="hfact"><button type="button" class="pill alt" id="hfTest"><span class="pl">Test Higgsfield</span></button><button type="button" class="lnk dim" id="hfCimd">Try the other sign-in</button></div>
+      <p class="note" id="hfTestNote" role="status" hidden></p>
       <label class="row"><span>Credits a day</span><input type="text" inputmode="decimal" id="hfCap" maxlength="6" autocomplete="off" aria-label="Higgsfield credits per day"></label>
       <p class="note" id="hfCapNote"></p>
+      </div>
+      <div class="sgroup" id="sg-email" aria-label="Email">
+      <h2 class="sgtitle">Email</h2>
+      <p class="note">Ask Kin to email someone and it writes the email as a card you can edit. <b>Open in Gmail</b> works with no setup: Gmail opens with it filled in and you press Send there. To send straight from here instead, add your own Google Client ID below; Kin then sends only when you tap Send now twice (once to read it back, once to send).</p>
+      <label class="row"><span>Google Client ID</span><input type="text" id="mailCid" placeholder="…apps.googleusercontent.com" autocomplete="off" spellcheck="false" autocapitalize="off" aria-label="Google OAuth Client ID"></label>
+      <div class="hfact"><button type="button" class="pill alt" id="mailSave"><span class="pl">Save</span></button><button type="button" class="lnk dim" id="mailDrop">Remove</button></div>
+      <p class="note" id="mailNote" role="status"></p>
+      <label class="row"><span>Emails a day</span><input type="text" inputmode="numeric" id="mailCap" maxlength="3" autocomplete="off" aria-label="Emails sent from here per day"></label>
+      <details class="guide"><summary>How to get a Google Client ID (about 5 minutes)</summary><ol>
+        <li>Open console.cloud.google.com and create a project (any name).</li>
+        <li>APIs &amp; Services, Library: turn on the <b>Gmail API</b>.</li>
+        <li>OAuth consent screen: External, keep it in <b>Testing</b>, add your own Gmail address as a test user. Add the scope gmail.send.</li>
+        <li>Credentials, Create credentials, OAuth client ID, <b>Web application</b>. Authorised JavaScript origin: <code>https://jarvis.unwebbed.app</code>. No redirect URI is needed.</li>
+        <li>Copy the Client ID (it ends in .apps.googleusercontent.com) and paste it above. It is not a secret, but it only works from this site.</li>
+      </ol><p class="note">Kin can only send (not read) your mail with this, only when you tap, at most the daily number above. The Google permission is kept in memory and forgotten when you close the tab.</p></details>
       </div>
       <div class="sgroup" id="sg-brief" aria-label="Morning brief">
       <h2 class="sgtitle">Morning brief</h2>
@@ -220,6 +237,7 @@
 <script src="away-panel.js"></script>
 <script src="gauntlet.js"></script>
 <script src="move.js"></script>
+<script src="email.js"></script>
 <script src="whatsnew.js"></script>
 <script src="desk.js"></script>
 <script src="bust.js"></script>

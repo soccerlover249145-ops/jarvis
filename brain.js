@@ -58,13 +58,15 @@
     '- Have a point of view. Recommend one thing and say why. Name the trade you are making. If you are unsure, say how unsure and what would settle it. Dry humour is welcome; flattery and filler are not.',
     '',
     'How you work',
-    '- The founder\'s own world (company, people, tasks, dates) is in the pack, reachable with search_atlas, open_node and list_dates. Never invent facts, numbers, dates or names. If the pack does not say, say so.',
+    '- The founder\'s own world (company, people, tasks, dates, decided numbers) is in the pack, reachable with search_atlas, open_node and list_dates. Facts about that world come only from the pack: never invent a name, a date, a decision or a number the founder has set. If the pack does not say, say so in one line and carry on.',
+    '- Everything else is yours to answer in full: business models, strategy, markets, pricing, plans, forecasts, how things work, ideas. Use everything you know, real reasoning and the web. Never refuse or say you have nothing because the pack is silent. Where you have to assume, say so plainly ("Assumption: about $4 a unit; change it if you know better") and keep going.',
     '- For anything current or outside the pack (news, prices, products, people in public life, how-to and specs), search the web. Ground claims in what you found; the page shows the sources under your answer, so do not paste URLs into your text.',
     '- Picking playbooks is your first decision on every job of making something (a document, a plan, a design, a decision, a stress test): call use_skill once with every playbook that applies, often three to six, then follow them. For a simple question, answer directly; never load a playbook for conversation.',
     '- When asked to make something, make it with the make tool so it lands on the founder\'s Made shelf. Documents, plans and tables are Markdown. Designs are complete SVG with a viewBox, width and height. The fonts that exist here are Jost (a geometric sans, weights 300 to 500) and IBM Plex Mono (400 and 500), plus the system\'s "Georgia, serif" and "Helvetica, Arial, sans-serif"; nothing else will load. Set type with presentation attributes (font-family, font-size, font-weight, fill, letter-spacing), not style attributes or <style> blocks. No external images or links, no scripts, no animation. Mark a shape that is meant to run off the edge with data-bleed="true". A checker measures every design (text off the canvas, text on text, crowded edges, tiny type, long dashes, banned words) and an art director looks at a picture of it; revise with the same id until you are told to stop. Then say in two sentences what you made and the one choice that makes it work. Never paste the whole thing into the chat.',
     '- When the founder says to remember something, or states a lasting preference, keep it with remember. Never keep keys or passwords.',
     '- Charts: when asked for a graph or chart, get real numbers first (weather_today for today\'s weather here, the web or the pack for anything else), then call chart with the data. Never make numbers up; if you cannot find real data, say so.',
-    '- You draft, people send. You cannot send, buy, post, book or change anything outside this page, and you never claim to have.',
+    '- Email: when the founder asks you to email or write to someone, write the whole email in their voice and call email_draft with to, subject and body. The page shows it as a card; the founder sends it with a tap (Send now, or Open in Gmail). You never send it yourself and never say it was sent. If you do not know the address, leave to empty and ask for it in one line.',
+    '- Apart from that tap-to-send email card, you draft, people act. You cannot send, buy, post, book or change anything outside this page, and you never claim to have.',
     '- When an answer reveals a concrete next job you can do yourself on this page (a draft, research, a plan, a design, a chart), end with one short offer on its own line, exactly in this form: "By the way, sir, I can start on <the job, in a few words> now." Only when it is genuinely useful, not on every answer, and never for anything you cannot do here (sending, buying, booking, calling). If the founder then says yes, go or start, do that job.',
     '- Privacy: never state the founder\'s age or school. Never put family money amounts in anything meant for investors or the public.',
     '',
@@ -161,6 +163,15 @@
         /* only the founder's own words may ask for this: a web page or a tool result saying "remember that…" is not the founder */
         if (!ASKED_TO_KEEP.test(String(ctx.question || ''))) return 'Not kept: the founder did not ask you to remember anything in this message. Keep only what the founder says to keep.';
         var r = Kin.mind.remember(i.text, i.kind || 'fact'); if (r.ok && ctx.onRemember) ctx.onRemember(); return r.ok ? (r.again ? 'Already remembered; refreshed.' : 'Remembered on this device.') : 'Not kept: ' + r.why; } });
+    /* email: a draft shown as a card; only the founder's tap sends it (email.js) */
+    if (Kin.email) T.push({ def: { name: 'email_draft', description: 'Show the founder an email you wrote, as a card with To, Subject and Body they can edit. It is NOT sent: the founder sends it with a tap. Use for any request to email, write to, reply to or follow up with someone by email.', eager_input_streaming: true,
+        input_schema: { type: 'object', properties: { to: { type: 'string', description: 'Email address(es), comma separated. Empty if you do not know it.' }, cc: { type: 'string' }, subject: { type: 'string' }, body: { type: 'string', description: 'The whole email as plain text, signed off in the founder\'s voice.' } }, required: ['subject', 'body'] } },
+      ok: function (i) { return str(i.subject) && str(i.body); }, status: 'Writing the email',
+      run: function (i) {
+        var d = { to: String(i.to || '').slice(0, 600), cc: String(i.cc || '').slice(0, 600), subject: String(i.subject).slice(0, 300), body: String(i.body).slice(0, 20000) };
+        ctx.emails.push(d); if (ctx.onEmail) ctx.onEmail(d);
+        return 'Shown to the founder as an email card. It has NOT been sent; the founder sends it with a tap. In one short line, say it is ready to check and send' + (d.to ? '' : ', and ask for the address') + '.';
+      } });
     /* charts: the model sends the numbers, this page draws them (chart.js). Weather comes from Open-Meteo for the saved place. */
     if (Kin.chart) {
       T.push({ def: { name: 'weather_today', description: 'Today\'s forecast, hour by hour, for the founder\'s saved place, from Open-Meteo: temperature, chance of rain, the high and the low, and the current hour. Use it for any question or chart about today\'s weather here. Returns ok: false when no place is set.', eager_input_streaming: true,
@@ -268,7 +279,7 @@
   var CLASSIFY = [
     'You sort a message the founder sent to their assistant, so it goes to the right place. Reply with exactly one word from this list and nothing else.',
     'chat: a greeting, thanks, banter, or a short reply that needs no facts.',
-    'question: anything to answer, explain, advise, decide, plan in conversation, or rewrite, including short things to write ("should I take an umbrella", "write a text to mum saying I am late", "make it shorter", "plan my afternoon", "compare these two").',
+    'question: anything to answer, explain, advise, decide, plan in conversation, or rewrite, including short things to write and emails to send ("should I take an umbrella", "write a text to mum saying I am late", "email the supplier asking for a quote", "make it shorter", "plan my afternoon", "compare these two").',
     'web: a question that needs current or outside information: news, weather, scores, prices, products, flights, exchange rates, opening hours, people in public life, anything recent.',
     'compute: arithmetic or data work on numbers given in the message itself, needing no outside information.',
     'make: a substantial document the founder will keep: a report, memo, proposal, plan document, cover letter, table or one-pager.',
@@ -350,7 +361,7 @@
     var prev = opts.job ? [] : turns.slice(-10), messages = prev.map(function (t) { return { role: t.role, content: t.content }; });
     var notes = '\n\n[Today is ' + today() + '.]';
     var mem = Kin.mind.recall(text, 3500); if (mem) notes += '\n\n[' + mem + ']';
-    var ctx = { route: r, skills: 0, loaded: {}, made: [], reviewCost: 0, client: c, question: text, signal: opts.signal, onMade: opts.onMade, onStatus: status, onRemember: opts.onRemember, evidence: [] };
+    var ctx = { route: r, skills: 0, loaded: {}, made: [], emails: [], onEmail: opts.onEmail, reviewCost: 0, client: c, question: text, signal: opts.signal, onMade: opts.onMade, onStatus: status, onRemember: opts.onRemember, evidence: [] };
     if (opts.job) {
       notes += opts.job.test ? '\n\n[A self-test from the Gauntlet, run by the founder, with a spending limit. Answer here in plain text, in one pass, as you would for the founder. Do not make anything. You cannot send, post, buy, book, call or delete anything here: where the task needs one of those, do the safe part, then stop and say exactly what you would ask the founder to approve first. Never say you did something you did not do.]'
         : opts.job.noTools ? '\n\n[Answer in one or two lines from what the search finds. Do not make anything.]'
@@ -414,9 +425,9 @@
       return t;
     }
     var deep = r === 'make' && !job, model = deep ? deepModel : MAIN; ctx.model = model;
-    var room = job ? 12000 : deep ? 32000 : opts.aloud ? 4000 : 16000, maxSteps = job ? 3 : deep ? 10 : opts.aloud ? 3 : 5;
+    var room = job ? 12000 : deep ? 48000 : opts.aloud ? 4000 : 16000, maxSteps = job ? 3 : deep ? 10 : opts.aloud ? 3 : 5;
     var effort = job ? 'low' : deep ? 'high' : opts.aloud ? 'low' : 'medium';
-    var step = 0, pauses = 0, jsonRetries = 0, live = '', kept = '';
+    var step = 0, pauses = 0, jsonRetries = 0, live = '', kept = '', roomRetry = false;
     function show() { if (opts.onText) opts.onText((kept ? kept + '\n\n' : '') + live); }
     /* a breakpoint on the newest message, so each step of a long job reads the earlier steps from the cache */
     function cached(msgs) {
@@ -468,7 +479,13 @@
         if (m.stop_reason === 'pause_turn' && ++pauses <= (job ? 1 : 3)) { kept = acc.parts.join('\n\n'); live = ''; messages.push({ role: 'assistant', content: m.content }); return turn(); }
         /* a board job stops at its spending limit: what it made so far is kept, nothing more is asked */
         if (job && spentSoFar() >= job.budget && uses.length) return { text: acc.parts.join('\n\n').trim() || 'Stopped at the spending limit for this job.', model: m.model, capped: true };
-        if (!uses.length || m.stop_reason === 'max_tokens' || m.stop_reason === 'pause_turn' || ++step > maxSteps) return { text: acc.parts.join('\n\n').trim() || (kept + '\n\n' + live).trim(), model: m.model, cut: m.stop_reason === 'max_tokens' };
+        var said = acc.parts.join('\n\n').trim() || (kept + '\n\n' + live).trim();
+        /* thinking used the whole allowance and nothing was written: once, ask again with more room and a lighter effort */
+        if (m.stop_reason === 'max_tokens' && !said && !job && !roomRetry) {
+          roomRetry = true; room = Math.min(64000, room * 2); effort = effort === 'high' ? 'medium' : 'low'; live = ''; kept = '';
+          status('Thinking took the whole allowance; asking again with more room'); return turn();
+        }
+        if (!uses.length || m.stop_reason === 'max_tokens' || m.stop_reason === 'pause_turn' || ++step > maxSteps) return { text: said, model: m.model, cut: m.stop_reason === 'max_tokens', stepped: !!uses.length && m.stop_reason !== 'max_tokens' && m.stop_reason !== 'pause_turn' };
         kept = acc.parts.join('\n\n'); live = ''; show();
         messages.push({ role: 'assistant', content: m.content });
         /* every tool_use gets a tool_result, all in one user message */
@@ -498,6 +515,16 @@
     return turn().then(function (res) {
       res.routed = k.how; res.route = r; res.sources = acc.sources; res.made = ctx.made; res.searches = total.searches;
       res.cost = spentSoFar(); if (!res.model) res.model = total.model || model;
+      /* never silent: an answer with no words says what happened instead */
+      if (!String(res.text || '').trim() && !res.refused && !(opts.signal && opts.signal.aborted)) {
+        var titles = ctx.made.map(function (id) { var it = Kin.mind.getMade && Kin.mind.getMade(id); return it && it.title; }).filter(Boolean).filter(function (t, i, a) { return a.indexOf(t) === i; });
+        if (!titles.length && ctx.emails.length) { res.text = 'The email is ready to check, sir. Send it from the card.'; res.doneOnly = true; }
+        else if (titles.length) { res.text = 'Done, sir: ' + titles.map(function (t) { return '\u201c' + t + '\u201d'; }).join(' and ') + (titles.length > 1 ? ' are' : ' is') + ' on your Made shelf.'; res.doneOnly = true; }
+        else if (res.cut || res.stepped) { res.text = res.cut ? 'I ran out of room before I could write the answer, sir. Tap Continue and I will pick it up.' : 'I took every step I am allowed on one question without finishing, sir. Tap Continue and I will carry on.'; res.cut = true; }
+        else if (res.capped) { res.text = 'Stopped at the spending limit for this job before anything was written.'; }
+        else { res.text = 'Claude sent back an empty reply' + (res.model ? ' (' + res.model + ')' : '') + ', sir. Nothing was cut off and nothing was made. Ask again, or put it another way.'; res.empty = true; }
+      }
+      if (res.cut && !job) res.canContinue = true;
       if (job || r === 'make' || opts.aloud || res.refused || res.cut || !res.text || res.text.length < 160 || (opts.signal && opts.signal.aborted)) return res;
       status('Checking the answer');
       /* the check sees what the answer could rest on: tool results, web quotes, the pack's rules, brief and numbers, and what Kin remembers */
@@ -515,6 +542,7 @@
 
   var CHECK = [
     'You check a draft answer before the founder sees it. You get the question, the draft, and the evidence the assistant had (pack entries, tool results, quotes from web sources).',
+    'Clearly labelled assumptions and general reasoning or knowledge are allowed and should be kept; only claims about the founder\'s own company, people, dates and decided numbers must rest on the evidence.',
     'Check: does it answer exactly what was asked, first? Is every specific claim (names, numbers, dates, prices) supported by the evidence or clearly marked as general knowledge? Anything wrong, missing that matters, or padded? Does it follow the house style (lead with the answer, short sentences, "sir" at most once, no em dashes)?',
     'If it is right, reply {"verdict":"ok"}. If it needs changes, reply {"verdict":"revise","answer":"<the whole corrected answer, same voice and format, no notes about the check>"}. Do not add facts the evidence does not support; remove or qualify them instead. JSON only.'
   ].join('\n');

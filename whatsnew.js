@@ -11,6 +11,9 @@
   var Kin = window.Kin = window.Kin || {};
 
   var ITEMS = [
+    { key: 'email', title: 'Email', say: 'Email Sam asking for the latest quote', note: 'I write it as a card you can edit. Open in Gmail sends it from Gmail; with your Google Client ID in Settings, Email, Send now sends it from here, only on your tap.' },
+    { key: 'smart', title: 'Answers beyond the pack', say: 'Make me a business model for a coffee cart', note: 'Facts about your own company still come only from the pack. Everything else uses everything I know and the web, with assumptions labelled. I never go silent: if I run out of room you get Continue.' },
+    { key: 'hftest', title: 'Test Higgsfield', say: 'Settings, then Pictures', note: 'One check that makes nothing and shows Higgsfield’s exact reply, so a poster that will not come back says why.' },
     { key: 'watch', title: 'Watch & listen', say: 'Watch this video', note: 'Drop in a video or a recording, or share a tab. I show the cost first, and nothing is sent until you tap Go.' },
     { key: 'devices', title: 'Bluetooth & USB lab', say: 'Connect my heart rate strap', note: 'In Chrome or Edge on a computer. Live readings from straps, scales and boards. Nothing is sent to a device unless you type it.' },
     { key: 'away', title: 'Away mode', say: 'I’m heading out', note: 'I log routine things, keep the rest for a summary, and only notify you about what cannot wait. I ask before turning it on.' },

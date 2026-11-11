@@ -447,6 +447,7 @@
       if (r.detail) p.textContent = out + '\n' + r.detail; else settle(p, out, r, text);
       if (r.todo && !job && box) box.appendChild(el('p', 'note todo', r.todo));
       if ((r.stalled || /^(busy|api|network|timeout)$/.test(r.code || '')) && !job) { var rb = el('button', 'pill alt retry'); rb.type = 'button'; rb.appendChild(el('span', 'pl', 'Retry')); rb.addEventListener('click', function () { gesture(); rb.disabled = true; if (!S.busy) ask(text); }); if (box) box.appendChild(rb); }
+      if (r.canContinue && !job && box) { var cb = el('button', 'pill go cont'); cb.type = 'button'; cb.appendChild(el('span', 'pl', 'Continue')); cb.addEventListener('click', function () { gesture(); cb.disabled = true; ask('Carry on with that from where you stopped, and finish it.'); }); box.appendChild(cb); }
       if (r.code === 'limit') { S.queued = ''; if (S.talk === 'awake') sleep(true); caption(out, 'Change the limit in settings'); if (speakIt) say(out, true); else captionFade(9000); refreshSettings(); return; }
       /* talked over: the rest of this answer stays on screen and is not read out; a new question goes next */
       if (r.code === 'stopped' && !stalled && hushed()) brain.keepTurn(text, got ? plain(p.textContent) + ' [interrupted by the founder]' : '[interrupted by the founder before the answer]');
@@ -474,6 +475,8 @@
         onStatus: function (st) { lastSign = Date.now(); if (job) job.status(st); if (!S.talking && !got) caption(text.length > 150 ? text.slice(0, 147) + '…' : text, st, 'you'); else if (!S.talking) $('capS').textContent = st; },
         onMade: function () { lastSign = Date.now(); refreshMade(); },
         onRemember: function () { refreshSettings(); },
+        /* an email Kin wrote: a card under the answer; only the founder's tap sends it */
+        onEmail: function (d) { lastSign = Date.now(); if (!Kin.email) return; var box = p && p.parentNode; if (box) box.appendChild(Kin.email.card(d, { onSay: function (t) { if (S.unlocked && voice.canSpeak()) say(t, true); } })); showThread(); },
         confirm: confirmCard,
         /* a design job: one card before anything is spent, then the same card shows the job live */
         plan: function (card) { return choiceCard(card).then(function (c) { if (/^(go|draw|poster|compose)$/.test(c.k)) { lastSign = Date.now(); job = jobPanel(c.d, card, c.k, text); } return c.k; }); },
@@ -591,7 +594,9 @@
     if (k === 'gauntlet') { if (Kin.gauntlet) gauntlet(false); return; }
     if (k === 'grok') { settingsAt('grok'); return; }
     if (k === 'move') { settingsAt('privacy'); return; }
-    if (k === 'pictures') { settingsAt('pictures'); return; }
+    if (k === 'pictures' || k === 'hftest') { settingsAt('pictures'); return; }
+    if (k === 'email') { settingsAt('email'); return; }
+    if (k === 'smart') { settingsAt('brain'); return; }
     if (k === 'settings') { settingsAt('start'); return; }
   }
   function whatsNew(said) {
@@ -956,7 +961,7 @@
     $('voiceNote').textContent = voice.live() ? 'Used only if the voice key fails.' + remote : cur.mode === 'device' ? 'Everything is spoken by the browser’s own voice' + (sysName ? ' (' + sysName + ').' : '.') + remote : 'The recorded voice says the fixed lines (welcome, one moment, standing by). Answers use the browser’s own voice' + (sysName ? ' (' + sysName + ')' : '') + '. Tap a name to hear it.' + remote;
     $('keyNote').textContent = Kin.shared ? Kin.SHARED_TEXT : brain.hasKey() ? 'A key is saved on this device: ' + brain.keyHint() + '. Small talk uses ' + brain.QUICK + ', real questions use ' + brain.MAIN + '.' : 'No key on this device. Kin answers from the pack only.';
     $('webCap').value = Kin.mind.webCap();
-    hfSettings(); gbSettings(); wxSettings();
+    hfSettings(); gbSettings(); wxSettings(); mailSettings();
     var sp = Kin.mind.spendToday();
     $('webNote').textContent = 'Web searches today: ' + Kin.mind.webToday() + ' of ' + Kin.mind.webCap() + '. Each search costs about one US cent, on top of the words. Reading a page has no extra charge. At the limit Kin answers without the web and says so.';
     var le = brain.lastError && brain.lastError(), leEl = $('lastErr');
@@ -1024,9 +1029,32 @@
       ? 'Connected on this device. Design jobs can use real pictures: Kin prices them first and asks you before any credits are spent. The sign-in token stays on this device and is handed to Anthropic with each picture job, which then talks to Higgsfield.'
       : 'Not connected. Without it, designs are drawn rather than photographed. Connecting opens Higgsfield\'s sign-in page and brings you back here. It needs a paid Higgsfield plan.');
     $('hfCap').value = Kin.hf.cap();
-    $('hfCapNote').textContent = 'Kin will not approve pictures past this many Higgsfield credits a day. Used today on this device: ' + Kin.hf.used() + ' of ' + Kin.hf.cap() + '.';
+    $('hfCapNote').textContent = 'Kin will not approve pictures past this many Higgsfield credits a day. Used today on this device: ' + Kin.hf.used() + ' of ' + Kin.hf.cap() + '. A full poster needs about 13.5 credits left. Credits are only counted for pictures Higgsfield actually started.';
+    if ($('hfCimd')) { $('hfCimd').textContent = Kin.hf.usingCimd() ? 'Use the usual sign-in' : 'Try the other sign-in'; $('hfCimd').disabled = !!Kin.shared; }
+    if ($('hfTest')) $('hfTest').disabled = !!Kin.shared;
   }
   Kin.onHf = function () { refreshSettings(); };
+  /* Email: the Google Client ID for Send now, and the daily limit */
+  function mailSettings() {
+    if (!Kin.email || !$('mailCid')) return;
+    var id = Kin.email.clientId();
+    $('mailCid').value = id; $('mailCid').disabled = !!Kin.shared; $('mailSave').disabled = !!Kin.shared;
+    $('mailCap').value = Kin.email.cap();
+    $('mailNote').textContent = Kin.shared ? Kin.SHARED_TEXT : id ? 'Send now is on for this device. Sent from here today: ' + Kin.email.sentToday() + ' of ' + Kin.email.cap() + '.' : 'Not set up: emails open in Gmail for you to send.';
+  }
+  if ($('mailSave')) $('mailSave').addEventListener('click', function () { gesture(); var r = Kin.email.setClientId($('mailCid').value); if (!r.ok) { $('mailNote').textContent = r.why; return; } mailSettings(); });
+  if ($('mailDrop')) $('mailDrop').addEventListener('click', function () { Kin.email.setClientId(''); mailSettings(); });
+  if ($('mailCap')) $('mailCap').addEventListener('change', function () { Kin.email.setCap($('mailCap').value); mailSettings(); });
+  /* one check that makes nothing: Higgsfield prices one picture through Claude, and its exact reply is shown */
+  if ($('hfTest')) $('hfTest').addEventListener('click', function () {
+    gesture(); var b = $('hfTest'), n = $('hfTestNote'); b.disabled = true; n.hidden = false; n.textContent = 'Asking Higgsfield for one price (nothing is made)…';
+    Kin.hf.test().then(function (r) { b.disabled = false; n.textContent = (r.ok ? 'Working. ' : 'Not working. ') + r.text + (r.cost ? ' (about $' + r.cost.toFixed(3) + ' of Claude usage)' : ''); refreshSettings(); });
+  });
+  if ($('hfCimd')) $('hfCimd').addEventListener('click', function () {
+    gesture(); var on = !Kin.hf.usingCimd(); Kin.hf.useCimd(on);
+    $('hfTestNote').hidden = false; $('hfTestNote').textContent = on ? 'Switched to the other sign-in (this site\'s published client). Tap Connect Higgsfield to sign in again, then Test.' : 'Back to the usual sign-in. Tap Connect Higgsfield to sign in again.';
+    refreshSettings();
+  });
   $('wxFind').addEventListener('click', wxFind);
   $('wxTown').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); wxFind(); } });
   $('wxDrop').addEventListener('click', function () { Kin.chart.dropPlace(); wxSettings(); });
@@ -1109,7 +1137,7 @@
   $('erase').addEventListener('click', function () {
     var b = $('erase'); if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Tap again to erase the keys, tokens, the pack and the conversation'; setTimeout(function () { b.dataset.sure = ''; b.textContent = 'Erase everything on this device'; }, 5000); return; }
     if (Kin.gauntlet) Kin.gauntlet.stop();
-    ears.stop(); voice.stop(); voice.tts.dropKey(); brain.wipe(); Kin.mind.wipe(); if (Kin.hf) { Kin.hf.disconnect(); Kin.hf.wipe(); } if (Kin.bridge) Kin.bridge.wipe(); try { Object.keys(sessionStorage).forEach(function (k) { if (/^kin\./.test(k)) sessionStorage.removeItem(k); }); } catch (e) {} try { Object.keys(localStorage).forEach(function (k) { if (/^kin\./.test(k)) localStorage.removeItem(k); }); } catch (e) {}
+    ears.stop(); voice.stop(); voice.tts.dropKey(); brain.wipe(); Kin.mind.wipe(); if (Kin.hf) { Kin.hf.disconnect(); Kin.hf.wipe(); } if (Kin.bridge) Kin.bridge.wipe(); if (Kin.email) Kin.email.wipe(); try { Object.keys(sessionStorage).forEach(function (k) { if (/^kin\./.test(k)) sessionStorage.removeItem(k); }); } catch (e) {} try { Object.keys(localStorage).forEach(function (k) { if (/^kin\./.test(k)) localStorage.removeItem(k); }); } catch (e) {}
     Kin.pack.kv.wipe().then(function () { location.reload(); });
   });
 

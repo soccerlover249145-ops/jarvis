@@ -1,0 +1,10 @@
+{
+  "client_id": "https://jarvis.unwebbed.app/oauth-client.json",
+  "client_name": "Jarvis",
+  "client_uri": "https://jarvis.unwebbed.app/",
+  "redirect_uris": ["https://jarvis.unwebbed.app/"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none",
+  "scope": "openid email offline_access"
+}
