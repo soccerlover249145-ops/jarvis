@@ -132,12 +132,20 @@
     var q = function (x) { x = String(x == null ? '' : x); return /[",\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x; };
     return ['time,device,metric,value,unit'].concat(rows.map(function (r) { return [new Date(r.at).toISOString(), r.device, r.metric, r.value, r.unit].map(q).join(','); })).join('\n');
   }
-  /* "write an Arduino sketch" or "what is USB-C" are questions for the conversation; only asks to connect, pair or open come here */
-  var REQ = /\b(device lab|serial (port|console|monitor)|web ?(serial|bluetooth|usb))\b|\b(connect|pair|plug in|hook up|link up|talk to)( up)?( to| with)? (my |the |a |an |this |that )?[a-z0-9 \-]{0,24}?\b(scale|sensor|meter|strap|thermometer|calipers?|gadget|arduino|esp ?32|esp8266|bluetooth|usb|serial|heart ?rate|power meter|cadence)\b|^\s*(open|show|start)( up)? (the |my )?(bluetooth|usb|serial|devices?)( lab| panel)?\s*$|\bread (my |the )?[a-z ]{0,16}?\b(scale|sensor|thermometer|strap|calipers|heart ?rate)( readings?| values?)?\s*[.?!]*$/i;
+  /* only asks to connect, pair, open or read a named device: "write an Arduino sketch to read a sensor",
+     "connect with investors at scale" or "talk to my cofounder about the sensor" go to the conversation */
+  var DEV = '(?:scale|kitchen scale|sensor|thermometer|heart ?rate (?:strap|monitor|sensor)|chest strap|strap|calipers?|arduino|esp ?32|esp8266|pico|power meter|cadence sensor|speed sensor|bluetooth (?:device|gadget|sensor)|usb (?:device|gadget)|serial (?:device|port))';
+  var DLEAD = '^\\s*(?:(?:hey |ok |okay )?(?:jarvis|kin)[,.!]*\\s*)?(?:(?:can|could|would|will) you |please |go |now |let\'s |lets )*';
+  var DEND = '(?=\\s*(?:$|[.,!?;:]|(?:for|and|then|so|now|please|over|via|by)\\b))';
+  var REQ = new RegExp(
+    '\\bdevice lab\\b' +
+    '|' + DLEAD + '(?:connect|pair|plug in|hook up|link)(?: up)?(?: to| with)?\\s+(?:my|the|this|a|an)\\s+(?:[a-z0-9-]+\\s+)?' + DEV + DEND +
+    '|' + DLEAD + '(?:open|show|start)(?: up)? (?:the |my )?(?:bluetooth|usb|serial(?: monitor| console)?|devices?)(?: lab| panel)?\\s*[.!?]*\\s*$' +
+    '|' + DLEAD + 'read (?:my|the|this)\\s+(?:[a-z0-9-]+\\s+)?' + DEV + '(?: readings?| values?)?\\s*[.!?]*\\s*$', 'i');
   function isRequest(t) { return REQ.test(String(t || '')); }
 
   /* ------------------------------------------------------------ live state */
-  var ls = { get: function (k, d) { try { var v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set: function (k, v) { if (Kin.shared) return; try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };  /* a shared address keeps nothing */
+  var ls = { get: function (k, d) { if (Kin.shared) return d; try { var v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set: function (k, v) { if (Kin.shared) return; try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };  /* a shared address keeps nothing */
   var devices = [], log = [], subs = [], nextId = 1;
   function emit() { subs.forEach(function (f) { try { f(); } catch (e) {} }); }
   function record(dev, r) {
@@ -228,6 +236,7 @@
       dev.status = 'Open at ' + dev.baud + ' baud'; dev.lost = false; dev.dirty = true; emit(); remember(dev);
       var split = lineSplitter(function (l) { console_(dev, 'in', l); parseLine(l).forEach(function (r) { record(dev, r); }); emit(); });
       var td = new TextDecoder();
+      var fails = 0;
       (function loop() {
         if (!dev.port.readable || dev.closed) return;
         var reader = dev.reader = dev.port.readable.getReader();
@@ -235,7 +244,13 @@
           reader.read().then(function (r) {
             if (r.done) { reader.releaseLock(); return; }
             split(td.decode(r.value, { stream: true })); pump();
-          }, function (e) { try { reader.releaseLock(); } catch (x) {} if (!dev.closed) { dev.status = 'Read error: ' + (e && e.message || 'unknown') + '. Unplugged?'; dev.lost = true; dev.dirty = true; emit(); } });
+          }, function (e) {
+            try { reader.releaseLock(); } catch (x) {}
+            if (dev.closed) return;
+            /* a framing or parity error leaves the port readable: carry on reading (a few times), else say so */
+            if (dev.port.readable && ++fails <= 5) { console_(dev, 'in', '(read error: ' + (e && e.message || 'unknown') + '; reading on)'); emit(); setTimeout(loop, 200); return; }
+            dev.status = 'Read error: ' + (e && e.message || 'unknown') + '. Unplugged?'; dev.lost = true; dev.dirty = true; emit();
+          });
         })();
       })();
     }, function (e) { dev.status = /already open/i.test(e && e.message) ? 'Another app has this port open. Close the Arduino serial monitor first.' : 'Could not open: ' + (e && e.message || 'unknown'); dev.lost = true; dev.dirty = true; emit(); });
@@ -249,7 +264,7 @@
     var bytes = new TextEncoder().encode(String(text) + '\n');
     if (dev.kind === 'serial') {
       if (!dev.port.writable) return Promise.reject(new Error('The port is not open.'));
-      var w = dev.port.writable.getWriter();
+      var w; try { w = dev.port.writable.getWriter(); } catch (e) { return Promise.reject(new Error('The port is busy sending. Try again in a moment.')); }
       return w.write(bytes).then(function () { w.releaseLock(); console_(dev, 'out', text); emit(); }, function (e) { w.releaseLock(); throw e; });
     }
     if (dev.tx) {
@@ -302,9 +317,17 @@
   function fmtVal(v) { if (!isFinite(v)) return '–'; var a = Math.abs(v); return a >= 1000 ? Math.round(v).toLocaleString('en-US') : a >= 100 ? String(Math.round(v * 10) / 10) : String(Math.round(v * 100) / 100); }
 
   var cur = null;
-  function close() { if (!cur) return; var c = cur; cur = null; subs = subs.filter(function (f) { return f !== c.paint; }); document.removeEventListener('keydown', c.key); clearInterval(c.tick); c.el.classList.add('dl-hide'); setTimeout(function () { c.el.remove(); }, 320); if (c.opts.onClose) c.opts.onClose(); }
+  function live() { return devices.filter(function (d) { return d.kind !== 'usb' && !d.lost; }); }
+  function dropAll() { devices.slice().forEach(drop); }
+  if (root.addEventListener) root.addEventListener('pagehide', dropAll);
+  /** close the lab; with devices still connected, first say so and offer to disconnect them */
+  function close(force) {
+    if (!cur) return;
+    var n = live().length;
+    if (n && force !== true && cur.ask) { cur.ask(n); return; }
+    var c = cur; cur = null; subs = subs.filter(function (f) { return f !== c.paint; }); document.removeEventListener('keydown', c.key); clearInterval(c.tick); c.el.classList.add('dl-hide'); setTimeout(function () { c.el.remove(); }, 320); if (c.opts.onClose) c.opts.onClose(); }
   function open(opts) {
-    close(); opts = opts || {};
+    close(true); opts = opts || {};
     var sup = support(), el = h('div', 'dl'); el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Device lab');
     var panel = h('div', 'dl-panel'); panel.tabIndex = -1; el.appendChild(panel);
     if (opts.test) panel.appendChild(h('span', 'dl-test', 'Test data'));
@@ -359,7 +382,7 @@
       var ch = h('div', 'dl-ch'), nm = h('div', 'dl-name'); var ic = h('span', 'dl-kind'); ic.appendChild(icon(dev.kind === 'bluetooth' ? I.bt : dev.kind === 'serial' ? I.serial : I.usb)); nm.appendChild(ic);
       var nt = h('div'); var title = h('b', null, dev.name); var st = h('span', 'dl-status'); nt.appendChild(title); nt.appendChild(st); nm.appendChild(nt); ch.appendChild(nm);
       var btns = h('div', 'dl-btns');
-      var re = h('button', 'dl-pill dl-small', 'Reconnect'); re.type = 'button'; re.hidden = true; re.addEventListener('click', function () { if (dev.kind === 'bluetooth') connectGatt(dev); else startSerial(dev); });
+      var re = h('button', 'dl-pill dl-small', 'Reconnect'); re.type = 'button'; re.hidden = true; re.addEventListener('click', function () { if (dev.kind === 'bluetooth') connectGatt(dev); else closeSerial(dev).then(function () { dev.closed = false; return startSerial(dev); }); });
       var rm = h('button', 'dl-pill dl-small dl-ghost', dev.kind === 'usb' ? 'Clear' : 'Disconnect'); rm.type = 'button'; rm.addEventListener('click', function () { drop(dev); });
       btns.appendChild(re); btns.appendChild(rm); ch.appendChild(btns); c.appendChild(ch);
       var info = h('div', 'dl-info'); c.appendChild(info);
@@ -429,6 +452,15 @@
     var pending = false; var paint = function () { if (pending) return; pending = true; requestAnimationFrame(function () { pending = false; if (cur) paintAll(); }); };
     subs.push(paint);
     var c = cur = { el: el, opts: opts, paint: paint };
+    /* closing with devices still connected: say so, and let the founder disconnect them or leave them reading */
+    c.ask = function (n) {
+      if (c.asking) { c.asking.querySelector('button').focus(); return; }
+      var bar = c.asking = h('div', 'dl-leave'); bar.setAttribute('role', 'alertdialog'); bar.setAttribute('aria-label', 'Devices still connected');
+      bar.appendChild(h('span', 'dl-leavet', n + (n === 1 ? ' device is' : ' devices are') + ' still connected.'));
+      var all = h('button', 'dl-pill dl-primary', 'Disconnect all'); all.type = 'button'; all.addEventListener('click', function () { dropAll(); close(true); });
+      var keep = h('button', 'dl-pill dl-ghost', 'Keep them connected'); keep.type = 'button'; keep.addEventListener('click', function () { close(true); });
+      bar.appendChild(all); bar.appendChild(keep); panel.insertBefore(bar, panel.children[1] || null); all.focus();
+    };
     c.tick = setInterval(paint, 1000);
     c.key = function (e) { if (e.key === 'Escape') close(); }; document.addEventListener('keydown', c.key);
     paintAll();

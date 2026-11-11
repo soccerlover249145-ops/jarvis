@@ -460,7 +460,8 @@
   function watch(text) {
     if (!brain.hasKey() || Kin.shared) { var m = Kin.shared ? Kin.SHARED_TEXT : 'Add your Claude key in Settings first, sir. Then I can watch it.'; addMsg('kin', m); panelSay(m); return; }
     Kin.watch.open({
-      question: text, client: brain.client(), sttKey: voice.tts.key(), betas: [brain.FALLBACK_BETA], gate: brain.gate, limit: 0.5,
+      /* no fallback model here: the price shown ("at most") is for Opus 5.5 and holds */
+      question: text, client: brain.client(), sttKey: voice.tts.canTranscribe(), sttPost: voice.tts.transcribe, betas: [], gate: brain.gate, limit: 0.5,
       onSpend: function (usd) { if (usd > 0) Kin.mind.addSpend(usd); },
       onSay: panelSay,
       onSave: function (item) { Kin.mind.addMade(item); refreshMade(); }

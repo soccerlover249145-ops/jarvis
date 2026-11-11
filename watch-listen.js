@@ -1,8 +1,8 @@
 /* watch-listen.js: Jarvis watches videos and listens to audio.
 
    Say "watch this video", "listen to this" or "what happens in this clip" and a glass panel opens with
-   three ways in: pick a file (video or audio, or drop it on the panel), share a tab or window (a YouTube
-   video playing in another tab works, with "Share tab audio" on), or paste a link to a media file.
+   two ways in: pick a file (video or audio, or drop it on the panel), or share a tab or window (a YouTube
+   video playing in another tab works, with "Share tab audio" on).
 
    How it sees and hears. Claude reads pictures and text, not video or sound, so:
      - Pictures: the page samples frames from the video in the browser. It looks at twice as many moments
@@ -20,7 +20,7 @@
    Public surface (window.Kin.watch):
      isRequest(text)            -> true for "watch this", "listen to this", "transcribe this", ...
      support()                  -> { file, screen, record, why }
-     open(opts)                 -> shows the panel. opts: { client, sttKey, question, betas, onSpend,
+     open(opts)                 -> shows the panel. opts: { client, sttKey (or true with sttPost(form, signal)), question, betas, gate, onSpend,
                                    onSave(item), onSay(line), onClose, limit, fetch }
      close()
      analyze(source, opts)      -> Promise<result>, no panel (for a brain tool). source: File|Blob|{ url }
@@ -99,7 +99,7 @@
     var stt = o.hasAudio && !o.transcriptKnown ? mins / 60 * STT_PER_HOUR : 0;
     /* worst: every input token at full price (a cache write costs a quarter more) and the whole output allowance */
     var worst = (inTok * PRICE.in * 1.25 + MAX_OUT * PRICE.out) / 1e6 + stt;
-    return { tokensIn: inTok, imageTokens: imgs, claude: claude, stt: stt, total: claude + stt, worst: worst };
+    return { tokensIn: inTok, imageTokens: imgs, claude: claude, stt: stt, total: claude + stt, worst: worst, unknown: !!o.unknown };
   }
   /** ElevenLabs words -> lines a person can read: break at a sentence end, a pause, a new speaker, or 22 words */
   function segments(stt) {
@@ -132,15 +132,23 @@
     return rest.length >= 8 ? rest.charAt(0).toUpperCase() + rest.slice(1) : '';
   }
   function transcriptText(segs) { return segs.map(function (s) { return '[' + fmtTime(s.start) + '] ' + (s.who ? s.who + ': ' : '') + s.text; }).join('\n'); }
-  /* only clear asks about a video or a recording: "summarize this document" or "watch out for that" go to the conversation */
-  var MEDIA = '(video|clip|film|footage|recording|audio|podcast|voice ?(memo|note)|episode|interview|track|song|screencast|vlog)';
-  var LEAD = /^\s*(?:(?:hey |ok |okay )?(?:jarvis|kin)[,.!]*\s*)?(?:(?:can|could|would|will) you |please |go |now )*/i.source;
-  var REQ_START = new RegExp(LEAD + '(watch|listen to|transcribe)\\s+(this|that|it|the|my|a|an)\\b(?!\\s+(space|one|out|guy|person|spending|budget|market|stock|price|number))', 'i');
-  var REQ_MEDIA = new RegExp('\\b(watch|look at|listen to|transcribe|summari[sz]e|recap|break down|what happens in|what (is|was) said in|what do(es)? (he|she|they) say in)\\b[^.?!]{0,60}\\b' + MEDIA + 's?\\b', 'i');
+  /* only clear asks about a video or a recording; "listen to my idea", "watch the competitors" or
+     "summarize our audio strategy" go to the conversation */
+  var MEDIA = '(?:video|clip|film|footage|recording|audio|podcast|voice (?:memo|note)|episode|screencast|vlog|tab)';
+  var MEDIA_DEICTIC = '(?:track|song|interview)';      /* only as "this track", "that interview", "the attached song" */
+  var LEAD = '^\\s*(?:(?:hey |ok |okay )?(?:jarvis|kin)[,.!]*\\s*)?(?:(?:can|could|would|will) you |please |go |now )*';
+  var END = '(?=\\s*(?:$|[.,!?;:]|(?:for|and|then|about|from|please|to|so|now|i|we|you|in|on|at)\\b))';
+  /* "watch this", "listen to that recording", alone */
+  var BARE = new RegExp(LEAD + '(?:watch|listen to|transcribe)\\s+(?:this|that)(?:\\s+' + MEDIA + ')?\\s*[.!?]*\\s*$', 'i');
+  /* a verb, then (this|that|the|my|a) and at most one word, then a media word that ends the phrase */
+  var NEAR = new RegExp('\\b(?:watch|look at|listen to|transcribe|summari[sz]e|recap|break down|what happens in|what (?:is|was) said in|what do(?:es)? (?:he|she|they) say in)\\s+' +
+    '(?:(?:this|that|the|my|a|an)\\s+)?(?:[a-z0-9\'-]+\\s+)?' + MEDIA + 's?' + END, 'i');
+  var NEAR_D = new RegExp('\\b(?:watch|listen to|transcribe|summari[sz]e|recap|break down|what happens in)\\s+(?:this|that|the attached)\\s+' + MEDIA_DEICTIC + END, 'i');
+  var YT_URL = /https?:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\//i;
   function isRequest(text) {
-    var t = String(text || '');
-    if (/^\s*(?:(?:hey |ok )?(?:jarvis|kin)[,.!]*\s*)?watch out\b/i.test(t)) return false;
-    return REQ_START.test(t) || REQ_MEDIA.test(t) || /\b(youtube|youtu\.be)\b/i.test(t) && /\b(watch|summari[sz]e|what|explain)\b/i.test(t);
+    var t = String(text || '').trim();
+    if (!t) return false;
+    return BARE.test(t) || NEAR.test(t) || NEAR_D.test(t) || YT_URL.test(t) && /\b(watch|summari[sz]e|what|explain|transcribe|recap)\b/i.test(t);
   }
   var SYSTEM = [
     'You are Kin, the founder\'s assistant, with the manner of a calm, precise British butler. Address the founder as "sir", at most once.',
@@ -204,13 +212,14 @@
     var v = document.createElement('video'); v.muted = true; v.playsInline = true; v.preload = 'auto'; v.crossOrigin = 'anonymous';
     var isBlob = typeof Blob !== 'undefined' && src instanceof Blob, url = isBlob ? URL.createObjectURL(src) : String(src.url || src);
     v.src = url;
+    function drop(e) { if (isBlob) URL.revokeObjectURL(url); v.removeAttribute('src'); throw e; }
     return wait(v, 'loadedmetadata', 20000).then(function () {
       if (isFinite(v.duration) && v.duration > 0) return;
       v.currentTime = 1e7; return wait(v, 'seeked', 8000).catch(function () {}).then(function () { v.currentTime = 0; });
     }).then(function () {
       var mime = isBlob ? String(src.type || '') : '', audioOnly = /^audio\//.test(mime) || !(v.videoWidth > 0);
-      return { el: v, url: url, revoke: isBlob ? function () { URL.revokeObjectURL(url); } : function () {}, duration: isFinite(v.duration) ? v.duration : 0, w: v.videoWidth, h: v.videoHeight, kind: audioOnly ? 'audio' : 'video', name: isBlob ? (src.name || 'recording') : url.split(/[?#]/)[0].split('/').pop() || 'link' };
-    });
+      return { el: v, url: url, revoke: isBlob ? function () { URL.revokeObjectURL(url); } : function () {}, duration: isFinite(v.duration) && v.duration > 0 ? v.duration : 0, w: v.videoWidth, h: v.videoHeight, kind: audioOnly ? 'audio' : 'video', name: isBlob ? (src.name || 'recording') : url.split(/[?#]/)[0].split('/').pop() || 'link' };
+    }).catch(drop);
   }
   function signature(src, tiny) {
     var x = tiny.getContext('2d', { willReadFrequently: true }); x.drawImage(src, 0, 0, tiny.width, tiny.height);
@@ -231,6 +240,8 @@
   /** sample a video: look at 2n moments, keep n (one per stretch, where the picture changed most) */
   function sampleFrames(m, detail, onFrame, signal) {
     var plan = framePlan(m.duration, detail), size = fitSize(m.w, m.h, plan.edge), times = candidateTimes(m.duration, plan.n);
+    /* length unknown: the moments would all be 0:00, so take one picture, not the same one many times */
+    if (!(m.duration > 0)) { plan = { n: 1, edge: plan.edge }; times = [0]; }
     var canvas = document.createElement('canvas'), tiny = document.createElement('canvas'); tiny.width = 16; tiny.height = 9;
     var cands = [], i = 0;
     function next() {
@@ -247,7 +258,8 @@
     var f = opt.fetch || root.fetch.bind(root), fd = new FormData();
     fd.append('model_id', STT_MODEL); fd.append('diarize', 'true'); fd.append('tag_audio_events', 'true'); fd.append('timestamps_granularity', 'word');
     fd.append('file', blob, name || 'audio.webm');
-    return f(STT_HOST + '/v1/speech-to-text', { method: 'POST', headers: { 'xi-api-key': key }, body: fd, signal: opt.signal }).then(function (r) {
+    var sent = opt.post ? opt.post(fd, opt.signal) : f(STT_HOST + '/v1/speech-to-text', { method: 'POST', headers: { 'xi-api-key': key }, body: fd, signal: opt.signal });
+    return Promise.resolve(sent).then(function (r) {
       if (!r.ok) return r.json().catch(function () { return null; }).then(function (b) { throw new Error(sttError(r.status, b)); });
       return r.json();
     }, function (e) { if (e && e.name === 'AbortError') throw e; throw new Error(sttError(0)); });
@@ -298,15 +310,27 @@
     var s;
     if (opt.betas && opt.betas.length && client.beta) { params.betas = opt.betas; params.fallbacks = 'default'; s = client.beta.messages.stream(params, { signal: opt.signal }); }
     else s = client.messages.stream(params, { signal: opt.signal });
+    /* what a stopped or failed request already cost: the input counted at its start, and the output that arrived */
+    var pm = { start: null, model: MODEL, chars: 0 };
+    if (s.on) s.on('streamEvent', function (ev) {
+      if (ev.type === 'message_start' && ev.message) { pm.start = ev.message.usage; pm.model = ev.message.model || MODEL; }
+      else if (ev.type === 'content_block_delta' && ev.delta) pm.chars += String(ev.delta.text || ev.delta.thinking || '').length;
+    });
     if (opt.onThinking && s.on) s.on('thinking', function (d, snap) { var t = String(snap || '').trim().split(/\n+/).pop(); if (t) opt.onThinking(t.slice(0, 160)); });
     if (opt.onText && s.on) s.on('text', function (d, snap) { opt.onText(snap); });
     return s.finalMessage().then(function (m) {
-      var cost = costOf(m.usage);
+      var cost = costFor(m.model, m.usage);
       if (m.stop_reason === 'refusal') return { text: 'I would rather not go into that one, sir.', cost: cost, model: m.model, refused: true };
       var text = (m.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('').trim();
       return { text: text || 'I could not make anything of it, sir.', cost: cost, model: m.model, cut: m.stop_reason === 'max_tokens', content: m.content };
+    }, function (e) {
+      var spent = !pm.start ? 0 : Kin.mind && Kin.mind.partialCost ? Kin.mind.partialCost(pm.model, pm.start, pm.chars) : costOf(Object.assign({}, pm.start, { output_tokens: Math.ceil(pm.chars / 3.5) }));
+      if (spent && opt.onPartial) opt.onPartial(spent);
+      throw e;
     });
   }
+  /** the page's own price table when it is there (each attempt at its own model's price), else this file's */
+  function costFor(model, usage) { return Kin.mind && Kin.mind.costOf ? Kin.mind.costOf(model, usage) : costOf(usage); }
 
   /* ------------------------------------------------------------ the look itself (no panel) */
   /** prepare: open the media, sample frames. Returns a look you can price, then run. */
@@ -319,27 +343,39 @@
       return frames.then(function (fr) { m.revoke(); return { meta: meta, frames: fr, audio: typeof Blob !== 'undefined' && source instanceof Blob ? source : null, audioName: meta.name }; }, function (e) { m.revoke(); throw e; });
     });
   }
+  /** the length from the file size, when the browser cannot tell: 64 kbit/s for sound, 1 Mbit/s for video (generous, so the guess runs long) */
+  function guessLength(look) { var size = look.audio && look.audio.size || 0; return size ? size / (look.meta.kind === 'audio' ? 8000 : 125000) : 0; }
   function price(look, question, sttKey, low) {
-    var f = look.frames[0] || {};
-    return estimate({ low: !!low, frames: look.frames.length, w: f.w, h: f.h, duration: look.meta.duration, hasAudio: !!(look.audio && sttKey), questionChars: String(question || '').length });
+    var f = look.frames[0] || {}, unknown = !(look.meta.duration > 0), dur = unknown ? guessLength(look) : look.meta.duration;
+    return estimate({ low: !!low, frames: look.frames.length, w: f.w, h: f.h, duration: dur, hasAudio: !!(look.audio && sttKey), questionChars: String(question || '').length, unknown: unknown });
   }
+  /** nothing to send: no pictures, and no sound that can be heard */
+  function empty(look, sttKey) { return !look.frames.length && !(look.audio && sttKey); }
+  var NOTHING = 'There is nothing I can send from that: it is sound only, and with no voice key saved I cannot listen. Add your ElevenLabs key in Settings.';
   /** transcribe (when there is sound and a key) and ask. Resolves the full result. */
   function run(look, question, opt) {
     opt = opt || {};
+    if (empty(look, opt.sttKey)) return Promise.reject(new Error(NOTHING));
     /* the limits are checked (and the question counted) before anything is sent, sound included */
     var no = opt.gate ? opt.gate() : ''; if (no) return Promise.reject(new Error(no));
     opt = Object.assign({}, opt, { gate: null });
     var heard = !!(look.audio && opt.sttKey);
     if (opt.onStep) opt.onStep(heard ? 'hear' : 'think');
     if (heard && look.audio.size > 1e9) { heard = false; look.meta.heardError = 'The sound was not sent: the file is over 1 GB.'; }
-    var stt = heard ? transcribe(look.audio, look.audioName, opt.sttKey, { fetch: opt.fetch, signal: opt.signal }).catch(function (e) {
+    var stt = heard ? transcribe(look.audio, look.audioName, opt.sttKey, { fetch: opt.fetch, post: opt.sttPost, signal: opt.signal }).catch(function (e) {
       /* a failed transcript should not waste the frames: carry on with pictures only, and say why */
       if (e && e.name === 'AbortError') throw e; if (!look.frames.length) throw e;
       heard = false; look.meta.heardError = e && e.message || 'The sound could not be transcribed.'; return null;
     }) : Promise.resolve(null);
     return stt.then(function (j) {
-      var segs = j ? segments(j) : [], sttCost = heard ? (look.meta.duration || 0) / 3600 * STT_PER_HOUR : 0;
+      var segs = j ? segments(j) : [], heardSec = heard ? Math.max(look.meta.duration || 0, +(j && j.audio_duration_secs) || 0, lastEnd(j)) : 0, sttCost = heardSec / 3600 * STT_PER_HOUR;
       if (sttCost && opt.onSttCost) opt.onSttCost(sttCost);
+      if (!(look.meta.duration > 0) && heardSec) look.meta.duration = heardSec;
+      /* now the length and the transcript are known: price it again before Claude is asked */
+      var again = opt.recheck ? opt.recheck(estimate({ frames: look.frames.length, w: (look.frames[0] || {}).w, h: (look.frames[0] || {}).h, duration: look.meta.duration, transcriptChars: transcriptText(segs).length, transcriptKnown: true, questionChars: String(question || '').length })) : true;
+      return Promise.resolve(again).then(function () { return [j, segs, sttCost]; });
+    }).then(function (x) {
+      var j = x[0], segs = x[1], sttCost = x[2];
       look.meta.heard = heard; look.segments = segs; look.language = j && j.language_code || '';
       if (opt.onStep) opt.onStep('think', { segments: segs });
       look.messages = [{ role: 'user', content: buildContent(look.meta, look.frames, segs, question) }];
@@ -349,6 +385,8 @@
       });
     });
   }
+  /** the end of the last word heard, in seconds */
+  function lastEnd(j) { var w = j && Array.isArray(j.words) ? j.words : [], e = 0; w.forEach(function (x) { if (+x.end > e) e = +x.end; }); return e; }
   /** a follow-up question about the same look: same frames and transcript, read from the cache */
   function followUp(look, question, opt) {
     look.messages.push({ role: 'user', content: [{ type: 'text', text: String(question) }] });
@@ -361,7 +399,7 @@
     opt = opt || {};
     return prepare(source, opt).then(function (look) {
       var est = price(look, opt.question, opt.sttKey), limit = opt.limit != null ? opt.limit : 0.5;
-      if (est.total > limit && !opt.approved) { var e = new Error('This look would cost about ' + money(est.total) + ', over the ' + money(limit) + ' limit.'); e.code = 'cost'; e.estimate = est; throw e; }
+      if ((est.worst > limit || est.unknown) && !opt.approved) { var e = new Error('This look would cost about ' + money(est.total) + ', over the ' + money(limit) + ' limit.'); e.code = 'cost'; e.estimate = est; throw e; }
       return run(look, opt.question, opt);
     });
   }
@@ -428,6 +466,9 @@
 
     /* ---- step 1: the question and the source */
     function chooser(msg) {
+      if (c.ac) try { c.ac.abort(); } catch (e) {}
+      if (c.live && c.live.stop) { var lv = c.live; c.live = null; try { lv.stop(); } catch (e) {} }
+      c.choosing = true;
       body.textContent = ''; title.textContent = 'What shall I watch, sir?'; lede.hidden = false;
       var q = h('div', 'wl-ask');
       var qi = h('textarea', 'wl-q'); qi.rows = 2; qi.maxLength = 600; qi.placeholder = 'What do you want to know? Leave it empty for a summary.'; qi.value = cleanQuestion(opts.question);
@@ -451,26 +492,15 @@
       }
       src(I.file, 'Pick a file', 'Video or audio from this device. Or drop it here.', function () { fileIn.click(); });
       src(I.tab, 'Share a tab', 'A YouTube video in another tab works. Turn on "Share tab audio".', function () { startLive(qi.value); }, !sup.screen, sup.why);
-      var linkB = src(I.link, 'Paste a link', 'A link straight to a media file (.mp4, .mp3).', function () { linkRow.hidden = false; li.focus(); });
+      grid.classList.add('wl-two');
       body.appendChild(grid); body.appendChild(fileIn);
-      var linkRow = h('div', 'wl-linkrow'); linkRow.hidden = true;
-      var li = h('input', 'wl-in'); li.type = 'url'; li.placeholder = 'https://…/clip.mp4'; li.setAttribute('aria-label', 'Link to a media file');
-      var go = h('button', 'wl-pill wl-primary', 'Watch'); go.type = 'button';
-      go.addEventListener('click', function () {
-        var u = li.value.trim();
-        if (/youtu\.?be|vimeo\.com|tiktok\.com|instagram\.com/i.test(u)) { note.textContent = 'That is a page, not a file, and those sites do not hand their video to other pages. Play it in a tab and choose Share a tab.'; note.hidden = false; return; }
-        if (!/^https:\/\//i.test(u)) { note.textContent = 'Paste a link that starts with https://.'; note.hidden = false; return; }
-        begin({ url: u }, qi.value);
-      });
-      linkRow.appendChild(li); linkRow.appendChild(go); body.appendChild(linkRow);
       var note = h('div', 'wl-note' + (msg ? ' wl-bad' : ''), msg || ''); note.hidden = !msg; body.appendChild(note);
       fileIn.addEventListener('change', function () { if (fileIn.files[0]) begin(fileIn.files[0], qi.value); });
       el.ondragover = function (e) { e.preventDefault(); el.classList.add('wl-drop'); };
       el.ondragleave = function () { el.classList.remove('wl-drop'); };
-      el.ondrop = function (e) { e.preventDefault(); el.classList.remove('wl-drop'); var f = e.dataTransfer && e.dataTransfer.files[0]; if (f && /^(video|audio)\//.test(f.type)) begin(f, qi.value); };
+      el.ondrop = function (e) { e.preventDefault(); el.classList.remove('wl-drop'); if (!c.choosing) return; var f = e.dataTransfer && e.dataTransfer.files[0]; if (f && /^(video|audio)\//.test(f.type)) begin(f, qi.value); };
       var foot = h('div', 'wl-fine', 'Pictures go to Claude and sound to ElevenLabs, each with your own key. Nothing else leaves this device.' + (opts.sttKey ? '' : ' No voice key is saved, so I can only look, not listen.'));
       body.appendChild(foot);
-      linkB.setAttribute('aria-controls', 'wl-link');
       setTimeout(function () { qi.focus(); }, 60);
     }
 
@@ -498,15 +528,19 @@
     }
 
     function begin(source, question) {
-      c.ac = new AbortController(); var sig = c.ac.signal; spent = 0;
+      if (c.ac) try { c.ac.abort(); } catch (e) {}
+      if (c.live && c.live.stop && !source.live) { var lv = c.live; c.live = null; try { lv.stop(); } catch (e) {} }
+      c.choosing = false; c.ac = new AbortController(); var sig = c.ac.signal; spent = 0;
       working(source.live ? 'Reading what I saw' : 'Watching ' + (source.name || 'the clip')); step('look');
       prepare(source, { detail: detail, signal: sig, onFrame: function (f, i, n) { if (!strip.childNodes.length || i % 2 === 0) { var t = thumb(f); strip.appendChild(t); while (strip.childNodes.length > 14) strip.removeChild(strip.firstChild); } thinkLine.textContent = 'Looking at moment ' + i + ' of ' + n; } })
         .then(function (look) {
           if (sig.aborted) return;
           c.look = look; strip.textContent = ''; look.frames.forEach(function (f) { strip.appendChild(thumb(f)); });
           thinkLine.textContent = look.frames.length ? 'Kept ' + look.frames.length + ' frames' + (look.meta.duration ? ' across ' + fmtTime(look.meta.duration) : '') + '.' : 'Sound only.';
+          if (empty(look, opts.sttKey)) return chooser(NOTHING);
           var est = price(look, question, opts.sttKey);
-          if (est.worst > limit) return confirm(look, question, est);
+          if (est.worst > limit || est.unknown) return confirm(look, question, est);
+          look.okWorst = limit;
           return go(look, question);
         })
         .catch(fail);
@@ -515,7 +549,7 @@
       var card = h('div', 'wl-cost'); card.setAttribute('role', 'alertdialog'); card.setAttribute('aria-label', 'Cost check');
       card.appendChild(h('div', 'wl-eyebrow', 'Before I send it'));
       card.appendChild(h('div', 'wl-costbig', 'About ' + money(est.total)));
-      card.appendChild(h('div', 'wl-costsub', look.frames.length + ' frames and ' + (look.audio && opts.sttKey ? fmtTime(look.meta.duration) + ' of sound' : 'no sound') + '. Claude ' + money(est.claude) + (est.stt ? ', ElevenLabs ' + money(est.stt) : '') + '. At most ' + money(est.worst) + '; your limit is ' + money(limit) + '.'));
+      card.appendChild(h('div', 'wl-costsub', (est.unknown ? 'This file does not say how long it is, so the price is a guess from its size and I will check it again once I have heard it. ' : '') + look.frames.length + (look.frames.length === 1 ? ' frame' : ' frames') + ' and ' + (look.audio && opts.sttKey ? (est.unknown ? 'sound of unknown length' : fmtTime(look.meta.duration) + ' of sound') : 'no sound') + '. Claude ' + money(est.claude) + (est.stt ? ', ElevenLabs ' + money(est.stt) : '') + '. At most ' + money(est.worst) + '; your limit is ' + money(limit) + '.'));
       /* quicker: at most 6 frames and a lighter think; offered only when it saves a real share */
       var quick = look.frames.length > 6 ? look.frames.filter(function (f, i) { return i % Math.ceil(look.frames.length / 6) === 0; }) : look.frames;
       var qe = price({ frames: quick, meta: look.meta, audio: look.audio }, question, opts.sttKey, true);
@@ -523,21 +557,39 @@
       var qlabel = quick ? 'Go quicker · ' + money(qe.total) : '';
       [].forEach.call(steps.children, function (li) { if (li.dataset.step === 'look') li.className = 'wl-step wl-done'; });
       var row = h('div', 'wl-bar');
-      var g = h('button', 'wl-pill wl-primary', 'Go'); g.type = 'button'; g.addEventListener('click', function () { card.remove(); go(look, question); }); row.appendChild(g);
-      if (quick) { var gq = h('button', 'wl-pill', qlabel); gq.type = 'button'; gq.addEventListener('click', function () { card.remove(); look.frames = quick; strip.textContent = ''; quick.forEach(function (f) { strip.appendChild(thumb(f)); }); go(look, question, true); }); row.appendChild(gq); }
+      var g = h('button', 'wl-pill wl-primary', 'Go'); g.type = 'button'; g.addEventListener('click', function () { card.remove(); look.okWorst = Math.max(limit, est.worst); go(look, question); }); row.appendChild(g);
+      if (quick) { var gq = h('button', 'wl-pill', qlabel); gq.type = 'button'; gq.addEventListener('click', function () { card.remove(); look.okWorst = Math.max(limit, qe.worst); look.frames = quick; strip.textContent = ''; quick.forEach(function (f) { strip.appendChild(thumb(f)); }); go(look, question, true); }); row.appendChild(gq); }
       var s = h('button', 'wl-pill wl-ghost', 'Stop'); s.type = 'button'; s.addEventListener('click', function () { chooser('Stopped before anything was sent.'); }); row.appendChild(s);
       card.appendChild(row); body.insertBefore(card, stopB.parentNode); stopB.parentNode.hidden = true; g.focus();
     }
     function go(look, question, low) {
       if (stopB) stopB.parentNode.hidden = false;
       var sig = c.ac.signal, skip = { hear: !(look.audio && opts.sttKey) };
-      var sttTold = 0;
-      return run(look, question, { effort: low ? 'low' : 'medium', client: opts.client, sttKey: opts.sttKey, fetch: opts.fetch, betas: opts.betas, signal: sig, gate: opts.gate,
-        onSttCost: function (v) { sttTold = v; spent += v; if (opts.onSpend) opts.onSpend(v); },
-        onStep: function (s, info) { step(s, skip); if (s === 'hear') thinkLine.textContent = 'Listening to ' + (look.meta.duration ? fmtTime(look.meta.duration) + ' of sound' : 'the sound'); if (s === 'think') thinkLine.textContent = info && info.segments ? (info.segments.length ? 'Heard ' + info.segments.length + ' lines. Thinking.' : 'No speech heard. Thinking.') : 'Thinking.'; },
+      var sttTold = 0, hearing = false, est0 = price(look, question, opts.sttKey, low);
+      function charge(v) { if (!(v > 0)) return; spent += v; if (opts.onSpend) opts.onSpend(v); }
+      /* stopped while the sound was with ElevenLabs: it may have been billed, so count it */
+      sig.addEventListener('abort', function () { if (hearing && !sttTold) { sttTold = est0.stt; charge(est0.stt); } });
+      return run(look, question, { effort: low ? 'low' : 'medium', client: opts.client, sttKey: opts.sttKey, sttPost: opts.sttPost, fetch: opts.fetch, betas: opts.betas, signal: sig, gate: opts.gate,
+        onSttCost: function (v) { hearing = false; sttTold = v; charge(v); },
+        onPartial: charge,
+        recheck: function (e2) { return e2.worst + sttTold <= (look.okWorst || limit) + 0.005 ? true : recheck(look, e2); },
+        onStep: function (s, info) { hearing = s === 'hear'; step(s, skip); if (s === 'hear') thinkLine.textContent = 'Listening to ' + (look.meta.duration ? fmtTime(look.meta.duration) + ' of sound' : 'the sound'); if (s === 'think') thinkLine.textContent = info && info.segments ? (info.segments.length ? 'Heard ' + info.segments.length + ' lines. Thinking.' : 'No speech heard. Thinking.') : 'Thinking.'; },
         onThinking: function (t) { thinkLine.textContent = t; } })
-        .then(function (r) { var rest = r.cost - sttTold; spent += rest; if (opts.onSpend) opts.onSpend(rest); if (sig.aborted) return; result(r, question); })
-        .catch(fail);
+        .then(function (r) { charge(r.cost - sttTold); if (sig.aborted) return; result(r, question); })
+        .catch(function (e) { hearing = false; fail(e); });
+    }
+    /* after hearing it, the real length costs more than was agreed: ask again before Claude is asked */
+    function recheck(look, e2) {
+      return new Promise(function (res, rej) {
+        var card = h('div', 'wl-cost'); card.setAttribute('role', 'alertdialog'); card.setAttribute('aria-label', 'Cost check');
+        card.appendChild(h('div', 'wl-eyebrow', 'Now I have heard it'));
+        card.appendChild(h('div', 'wl-costbig', 'About ' + money(e2.total)));
+        card.appendChild(h('div', 'wl-costsub', 'It runs ' + fmtTime(look.meta.duration) + '. Listening cost ' + money(spent) + '. Answering could cost up to ' + money(e2.worst) + ', more than you agreed to.'));
+        var row = h('div', 'wl-bar');
+        var g = h('button', 'wl-pill wl-primary', 'Answer it'); g.type = 'button'; g.addEventListener('click', function () { card.remove(); stopB.parentNode.hidden = false; look.okWorst = e2.worst; res(true); });
+        var s = h('button', 'wl-pill wl-ghost', 'Stop'); s.type = 'button'; s.addEventListener('click', function () { card.remove(); var e = new Error('Stopped after listening. ' + money(spent) + ' was spent on the sound; nothing went to Claude.'); e.shown = true; rej(e); });
+        row.appendChild(g); row.appendChild(s); card.appendChild(row); body.insertBefore(card, stopB.parentNode); stopB.parentNode.hidden = true; g.focus();
+      });
     }
     function fail(e) {
       if (!cur || cur !== c) return;
@@ -579,7 +631,7 @@
         pass = false;
         mi.value = ''; mb.disabled = true; var qa = h('div', 'wl-qa'); qa.appendChild(h('div', 'wl-qecho', q)); var a = h('div', 'wl-text wl-wait', 'Thinking'); qa.appendChild(a); thread.appendChild(qa);
         c.ac = new AbortController();
-        followUp(r.look, q, { client: opts.client, betas: opts.betas, gate: opts.gate, signal: c.ac.signal, onThinking: function (t) { a.textContent = t; } }).then(function (x) {
+        followUp(r.look, q, { client: opts.client, betas: opts.betas, gate: opts.gate, signal: c.ac.signal, onPartial: function (v) { spent += v; if (opts.onSpend) opts.onSpend(v); }, onThinking: function (t) { a.textContent = t; } }).then(function (x) {
           a.classList.remove('wl-wait'); renderAnswer(a, x.text); spent += x.cost; if (opts.onSpend) opts.onSpend(x.cost); mb.disabled = false; mi.focus();
           lede.textContent = lede.textContent.replace(/[^·]*$/, ' ' + money(spent));
         }, function (err) { a.classList.remove('wl-wait'); a.textContent = err && err.name === 'AbortError' ? 'Stopped.' : (err && err.message || 'That did not work.'); mb.disabled = false; });
@@ -609,19 +661,22 @@
       grid.appendChild(side); body.appendChild(grid);
       var bar = h('div', 'wl-bar wl-end');
       if (opts.onSave) { var sv = h('button', 'wl-pill'); sv.type = 'button'; sv.appendChild(icon(I.save)); sv.appendChild(document.createTextNode('Keep on the Made shelf')); sv.addEventListener('click', function () { opts.onSave({ kind: 'document', title: (r.meta.name || 'Clip') + ': notes', content: '# ' + (r.meta.name || 'Clip') + '\n\n' + r.text + (r.segments.length ? '\n\n## Transcript\n\n' + transcriptText(r.segments) : '') }); sv.disabled = true; sv.lastChild.textContent = 'Kept'; }); bar.appendChild(sv); }
-      var again = h('button', 'wl-pill', 'Watch something else'); again.type = 'button'; again.addEventListener('click', function () { chooser(); }); bar.appendChild(again);
+      var again = h('button', 'wl-pill', 'Watch something else'); again.type = 'button'; again.addEventListener('click', function () { if (c.ac) try { c.ac.abort(); } catch (e) {} chooser(); }); bar.appendChild(again);
       body.appendChild(bar);
       if (opts.onSay) { var first = String(r.text).split(/\n/).filter(function (l) { return l.trim(); })[0] || ''; opts.onSay(first.replace(/^[-*•]\s*/, '').replace(/\*\*/g, '').slice(0, 240)); }
     }
 
     /* ---- live: share a tab */
     function startLive(question) {
-      c.ac = new AbortController();
+      if (c.ac) try { c.ac.abort(); } catch (e) {}
+      c.choosing = false; c.ac = new AbortController();
       var clock = null, max = opts.maxLiveSec || 300;
       capture({ detail: detail, every: detail === 'close' ? 2 : detail === 'quick' ? 10 : 5, maxSec: max,
         onFrame: function (f) { if (strip) { strip.appendChild(thumb(f)); while (strip.childNodes.length > 14) strip.removeChild(strip.firstChild); } },
         onTick: function (s) { if (clock) clock.textContent = fmtTime(s) + ' / ' + fmtTime(max); } })
         .then(function (live) {
+          /* the panel was closed or moved on while the browser asked: stop sharing at once */
+          if (cur !== c || c.choosing) { try { live.stop(); } catch (e) {} live.stream.getTracks().forEach(function (t) { t.stop(); }); return; }
           c.live = live;
           body.textContent = ''; lede.hidden = false; title.textContent = 'Watching your ' + (live.surface === 'browser' ? 'tab' : live.surface);
           lede.textContent = 'Play it now. Tap Done when you have seen enough' + (live.hasAudio ? '.' : '. No sound is coming through: next time turn on "Share tab audio".');
@@ -640,7 +695,7 @@
             if (!got.frames.length && !got.audio) return chooser('Nothing came through from the shared ' + got.surface + '.');
             begin({ live: got }, question);
           });
-        }, function (e) { chooser(e && e.name === 'NotAllowedError' ? 'Sharing was cancelled.' : 'The tab could not be shared: ' + (e && e.message || 'unknown reason') + '.'); });
+        }, function (e) { if (cur !== c) return; chooser(e && e.name === 'NotAllowedError' ? 'Sharing was cancelled.' : 'The tab could not be shared: ' + (e && e.message || 'unknown reason') + '.'); });
     }
 
     chooser();
