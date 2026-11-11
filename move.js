@@ -116,5 +116,5 @@
     return (Kin.mind ? Kin.mind.flush() : Promise.resolve()).then(function () { return { settings: wrote, memory: got.memory, made: got.made, log: got.log, refused: got.refused }; });
   }
 
-  Kin.move = { build: build, exportNow: exportNow, read: read, apply: apply, ALLOW: ALLOW, OPTIONAL: OPTIONAL, MAX_BYTES: MAX_BYTES };
+  Kin.move = { build: build, exportNow: exportNow, read: read, apply: apply, ALLOW: ALLOW, OPTIONAL: OPTIONAL, JSONISH: JSONISH, MAX_BYTES: MAX_BYTES };
 })();

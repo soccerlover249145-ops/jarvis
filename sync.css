@@ -1,0 +1,58 @@
+/* sync.css: the "Sync across computers" card. Uses the Quiet Command tokens (tokens.css), with fallbacks. */
+.sy { background: var(--s1, #0e1015); border: 1px solid var(--line, rgba(255,255,255,.065)); border-radius: var(--r-md, 22px); box-shadow: var(--hi, inset 0 1px 0 rgba(255,255,255,.045)); padding: 20px; color: var(--text, #eef1f6); font: var(--t-body, 400 15px/22px Geist, system-ui, sans-serif); display: grid; gap: 14px; max-width: 640px; }
+.sy-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sy-title { font: var(--t-title, 550 17px/24px Geist, system-ui, sans-serif); margin: 0; }
+.sy-sub { color: var(--text-2, #a4abb9); font: var(--t-small, 400 13px/18px Geist, system-ui, sans-serif); margin: -6px 0 0; }
+.sy-body { display: grid; gap: 10px; }
+.sy-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.sy-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 11px; border-radius: var(--pill, 999px); font: 500 12px/1 var(--f-ui, Geist, system-ui, sans-serif); color: var(--text-2, #a4abb9); background: var(--s2, #14171e); border: 1px solid var(--line, rgba(255,255,255,.065)); white-space: nowrap; }
+.sy-chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.sy-chip.ok { color: var(--ok, #4fdc9c); background: rgba(79,220,156,.08); border-color: rgba(79,220,156,.18); }
+.sy-chip.live { color: var(--accent, #74d4ff); background: rgba(116,212,255,.08); border-color: rgba(116,212,255,.18); }
+.sy-chip.warn { color: var(--warm, #ffb547); background: rgba(255,181,71,.09); border-color: rgba(255,181,71,.22); }
+.sy-pill { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border-radius: var(--pill, 999px); font: 500 15px/1 var(--f-ui, Geist, system-ui, sans-serif); color: var(--text, #eef1f6); background: var(--s3, #1b1f29); border: 1px solid var(--line, rgba(255,255,255,.065)); cursor: pointer; transition: background var(--dur-1, 140ms) var(--ease, ease), transform var(--dur-1, 140ms) var(--ease, ease); }
+.sy-pill:hover { background: var(--s2, #14171e); }
+.sy-pill:active { transform: scale(.98); }
+.sy-pill.primary { background: var(--text, #eef1f6); color: var(--bg, #07080b); border-color: transparent; }
+.sy-pill.primary:hover { background: #fff; }
+.sy-pill.ghost { background: transparent; }
+.sy-pill:disabled { opacity: .5; cursor: default; transform: none; }
+.sy-pill:focus-visible, .sy-input:focus-visible, .sy-link:focus-visible, .sy-disc summary:focus-visible { outline: 2px solid var(--accent, #74d4ff); outline-offset: 2px; }
+.sy-input { height: 48px; padding: 0 18px; border-radius: var(--pill, 999px); background: var(--s2, #14171e); border: 1px solid var(--line-2, rgba(255,255,255,.11)); color: var(--text, #eef1f6); font: var(--t-body, 400 15px/22px Geist, system-ui, sans-serif); width: 100%; }
+.sy-input::placeholder { color: var(--text-3, #6c7484); }
+.sy-note { color: var(--text-2, #a4abb9); font: var(--t-small, 400 13px/18px Geist, system-ui, sans-serif); margin: 0; }
+.sy-msg { margin: 0; min-height: 18px; color: var(--text-2, #a4abb9); font: var(--t-small, 400 13px/18px Geist, system-ui, sans-serif); }
+.sy-msg.bad { color: var(--bad, #ff7272); }
+.sy-label { font: var(--t-label, 500 12px/16px Geist, system-ui, sans-serif); color: var(--text-3, #6c7484); margin-bottom: 6px; }
+.sy-disc { border-top: 1px solid var(--line, rgba(255,255,255,.065)); padding-top: 12px; }
+.sy-disc summary { cursor: pointer; color: var(--text-2, #a4abb9); font: var(--t-strong, 500 15px/22px Geist, system-ui, sans-serif); list-style: none; min-height: 44px; display: flex; align-items: center; }
+.sy-disc summary::-webkit-details-marker { display: none; }
+.sy-disc summary::after { content: "+"; margin-left: auto; color: var(--text-3, #6c7484); }
+.sy-disc[open] summary::after { content: "–"; }
+.sy-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 6px; }
+.sy-col { background: var(--s2, #14171e); border: 1px solid var(--line, rgba(255,255,255,.065)); border-radius: var(--r-sm, 14px); padding: 14px; }
+.sy-col ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font: var(--t-small, 400 13px/18px Geist, system-ui, sans-serif); color: var(--text, #eef1f6); }
+.sy-col li { display: flex; gap: 8px; }
+.sy-col.yes li::before { content: "✓"; color: var(--ok, #4fdc9c); }
+.sy-col.no li::before { content: "×"; color: var(--text-3, #6c7484); }
+.sy-where { color: var(--text-2, #a4abb9); font: var(--t-small, 400 13px/18px Geist, system-ui, sans-serif); margin: 12px 0 0; }
+.sy-conf { display: grid; gap: 8px; border: 1px solid rgba(255,181,71,.22); background: rgba(255,181,71,.05); border-radius: var(--r-sm, 14px); padding: 14px; }
+.sy-crow { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.sy-cname { font: var(--t-strong, 500 15px/22px Geist, system-ui, sans-serif); }
+.sy-cval { color: var(--text-2, #a4abb9); font: var(--t-small, 400 13px/18px Geist, system-ui, sans-serif); }
+.sy-cacts { display: flex; gap: 8px; }
+.sy-link { background: none; border: 0; padding: 0; min-height: 44px; text-align: left; color: var(--text-3, #6c7484); font: var(--t-small, 400 13px/18px Geist, system-ui, sans-serif); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; justify-self: start; }
+@media (max-width: 520px) { .sy { padding: 16px; border-radius: var(--r-sm, 14px); } .sy-cols { grid-template-columns: 1fr; } .sy-row .sy-pill { flex: 1 1 auto; } }
+/* the small sync status in the header: hidden while sync is off */
+.syncchip { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border-radius: var(--pill, 999px); background: var(--s2, #14171e); border: 1px solid var(--line, rgba(255,255,255,.065)); color: var(--text-2, #a4abb9); font: 500 12px/1 var(--f-ui, Geist, system-ui, sans-serif); font-variant-numeric: tabular-nums; cursor: pointer; white-space: nowrap; position: relative; }
+.syncchip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.syncchip::after { content: ""; position: absolute; inset: -6px 0; } /* 44 px tap area */
+.syncchip[data-s="synced"] { color: var(--ok, #4fdc9c); }
+.syncchip[data-s="needs-tap"], .syncchip[data-s="syncing"] { color: var(--accent, #74d4ff); }
+.syncchip[data-s="conflict"], .syncchip[data-s="error"], .syncchip[data-s="locked"] { color: var(--warm, #ffb547); }
+.syncchip[hidden] { display: none; }
+.syncchip:focus-visible { outline: 2px solid var(--accent, #74d4ff); outline-offset: 2px; }
+@media (max-width: 520px) { .syncchip { min-height: 28px; padding: 0 10px; } }
+/* inside the Settings sheet: the section is already a card, so the sync card sits flat in it, and the settings h3 rule does not apply to its title */
+#syncCard.sy { max-width: none; background: none; border: 0; box-shadow: none; padding: 0; }
+.sheet #syncCard .sy-title { margin: 0; padding: 0; border: 0; font: 550 17px/24px var(--f-ui, Geist, system-ui, sans-serif); letter-spacing: 0; color: var(--text, #eef1f6); }

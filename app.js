@@ -478,8 +478,8 @@
         onBeat: function () { lastSign = Date.now(); },
         onRoute: function (route) { making = route === 'make' || route === 'design'; },
         onStatus: function (st) { lastSign = Date.now(); if (job) job.status(st); if (!S.talking && !got) caption(text.length > 150 ? text.slice(0, 147) + '…' : text, st, 'you'); else if (!S.talking) $('capS').textContent = st; },
-        onMade: function () { lastSign = Date.now(); refreshMade(); },
-        onRemember: function () { refreshSettings(); },
+        onMade: function () { lastSign = Date.now(); refreshMade(); syncTouch(); },
+        onRemember: function () { refreshSettings(); syncTouch(); },
         /* an email Kin wrote: a card under the answer; only the founder's tap sends it */
         onEmail: function (d) { lastSign = Date.now(); if (!Kin.email) return; var box = p && p.parentNode; if (box) box.appendChild(Kin.email.card(d, { onSay: function (t) { if (S.unlocked && voice.canSpeak()) say(t, true); } })); showThread(); },
         /* a computer action inside the Mac app: a small card under the answer saying what was asked and what the Mac answered */
@@ -603,6 +603,7 @@
     if (k === 'gauntlet') { if (Kin.gauntlet) gauntlet(false); return; }
     if (k === 'grok') { settingsAt('grok'); return; }
     if (k === 'move') { settingsAt('privacy'); return; }
+    if (k === 'sync') { settingsAt('sync'); return; }
     if (k === 'pictures' || k === 'hftest') { settingsAt('pictures'); return; }
     if (k === 'email') { settingsAt('email'); return; }
     if (k === 'smart') { settingsAt('brain'); return; }
@@ -969,8 +970,26 @@
       r.appendChild(bt); el.appendChild(r);
     });
   }
+  /* ------------------------------------------------------------ sync across computers (Drive, off by default; every Google step needs a tap) */
+  var syncDrawn = false;
+  function syncTouch() { if (Kin.sync) Kin.sync.touch(); }
+  function syncCard() { if (!Kin.sync || syncDrawn || !$('syncCard')) return; syncDrawn = true; Kin.sync.render($('syncCard')); }
+  var SYNC_CHIP = { 'needs-tap': 'Tap to sync', syncing: 'Syncing', synced: 'Synced', conflict: 'Check sync', error: 'Not synced', locked: 'Sync locked' };
+  function syncChip(v) {
+    var b = $('syncChip'); if (!b) return;
+    var t = v && v.enabled && !Kin.shared ? SYNC_CHIP[v.status] : '';
+    if (t === 'Synced' && v.last) { var m = Math.round((Date.now() - new Date(v.last)) / 60000); t = m < 2 ? 'Synced just now' : m < 90 ? 'Synced ' + m + ' min ago' : 'Synced'; }
+    b.hidden = !t; b.textContent = t || ''; b.dataset.s = v ? v.status : 'off';
+  }
+  function syncStart() {
+    if (!Kin.sync || Kin.shared) return;
+    Kin.sync.onChange(syncChip);
+    Kin.sync.boot().then(syncChip, function () {});
+    setInterval(function () { syncChip(Kin.sync.view()); }, 60000);
+  }
   function refreshSettings() {
     if ($('sheet').hidden) return;
+    syncCard();
     steps();
     var en = $('earsNote');
     if (!ears.supported) en.textContent = 'This browser has no built-in speech recognition, so Kin cannot hear a wake phrase here. Use Chrome or Edge on a computer, Chrome on Android, or Safari on an iPhone. You can still talk through the keyboard’s mic.';
@@ -1005,6 +1024,12 @@
     $('about').textContent = 'This page is a shell. It holds no company data and no keys. Your keys, your pack and the last few exchanges are stored only in this browser on this device, and are never uploaded to this website. What leaves the device is listed at the top of these settings.' + (ears.isSafari ? ' Safari forgets a site’s saved data after about a week without a visit, so you may need to paste the keys and import the pack again.' : '');
   }
   $('gear').addEventListener('click', function () { $('sheet').hidden = false; refreshSettings(); });
+  if ($('syncChip')) $('syncChip').addEventListener('click', function (ev) {
+    gesture();
+    var v = Kin.sync && Kin.sync.view();
+    if (v && v.status === 'needs-tap') { Kin.sync.syncNow(ev).then(function () { syncChip(Kin.sync.view()); }, function () { settingsAt('sync'); }); return; }
+    settingsAt('sync');
+  });
   $('sheetx').addEventListener('click', function () { $('sheet').hidden = true; packCard(); });
   /* settings sections: the pills jump to a section, and the pill of the section in view is lit */
   (function () {
@@ -1163,7 +1188,7 @@
   $('erase').addEventListener('click', function () {
     var b = $('erase'); if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Tap again to erase the keys, tokens, the pack and the conversation'; setTimeout(function () { b.dataset.sure = ''; b.textContent = 'Erase everything on this device'; }, 5000); return; }
     if (Kin.gauntlet) Kin.gauntlet.stop();
-    ears.stop(); voice.stop(); voice.tts.dropKey(); brain.wipe(); Kin.mind.wipe(); if (Kin.hf) { Kin.hf.disconnect(); Kin.hf.wipe(); } if (Kin.bridge) Kin.bridge.wipe(); if (Kin.email) Kin.email.wipe(); try { Object.keys(sessionStorage).forEach(function (k) { if (/^kin\./.test(k)) sessionStorage.removeItem(k); }); } catch (e) {} try { Object.keys(localStorage).forEach(function (k) { if (/^kin\./.test(k)) localStorage.removeItem(k); }); } catch (e) {}
+    ears.stop(); voice.stop(); voice.tts.dropKey(); brain.wipe(); Kin.mind.wipe(); if (Kin.hf) { Kin.hf.disconnect(); Kin.hf.wipe(); } if (Kin.bridge) Kin.bridge.wipe(); if (Kin.email) Kin.email.wipe(); if (Kin.sync) Kin.sync.wipe(); try { Object.keys(sessionStorage).forEach(function (k) { if (/^kin\./.test(k)) sessionStorage.removeItem(k); }); } catch (e) {} try { Object.keys(localStorage).forEach(function (k) { if (/^kin\./.test(k)) localStorage.removeItem(k); }); } catch (e) {}
     Kin.pack.kv.wipe().then(function () { location.reload(); });
   });
 
@@ -1181,6 +1206,7 @@
     else if (ears.supported) caption(S.autoListen ? 'Tap anywhere and I’ll listen, sir.' : 'Tap the mic and choose Allow.', S.autoListen ? 'This browser wants one tap first' : 'Then say “hey Jarvis”');
     else caption('This browser cannot listen by itself.', 'Type, or use the keyboard’s mic');
     paint(); Kin.ready = true; packCard(); if (Kin.home) Kin.home.init();
+    syncStart();
     /* a Grok Bot question still waiting from before the page was closed: show it, and keep checking if the token is here */
     if (Kin.bridge) { var gbw = Kin.bridge.restore(); gbw.forEach(gbPaint); if (gbw.length) caption('A Grok Bot question is still waiting, sir.', Kin.bridge.hasToken() && Kin.bridge.enabled() ? 'Checking for the answer' : 'Paste the device token in settings to check'); }
     if (voice.tts.hasKey()) voice.tts.refresh().then(function () { refreshSettings(); });
