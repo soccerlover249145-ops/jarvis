@@ -19,6 +19,7 @@
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="brief-board.css">
 <link rel="stylesheet" href="media-devices.css">
+<link rel="stylesheet" href="away-calls.css">
 <title>Kin</title>
 </head>
 <body>
@@ -133,6 +134,10 @@
       <div id="briefSettings"></div>
       <p class="note">With &ldquo;Start small jobs on my own&rdquo; on, Kin starts at most two small drafts or plans written here from your pack, each under the limit shown, when the brief opens. Research (the web), designs (pictures and credits) and anything that would send, post, buy, book or call always wait for your tap. Market watch uses one short web search at most every three hours, with your Claude key.</p>
 
+      <h3>Away mode and calls</h3>
+      <p class="note">Say &ldquo;I&rsquo;m heading out&rdquo; to turn away mode on, and &ldquo;what happened while I was away&rdquo; for the summary. Say &ldquo;book a table for three at a place at 7&rdquo; for a call card. Calls run on a practice line for now: no real call is made until the phone number and the ElevenLabs agent are set up. Anything that would send, post, buy, book, call or delete waits for your tap. Kept on this device only.</p>
+      <div class="row"><span></span><div class="btns"><button type="button" class="lnk" id="awayOpen">Open away mode</button></div></div>
+
       <h3>At your desk</h3>
       <p class="note" id="deskScreenNote"></p>
       <p class="note">Say or type &ldquo;open example.com&rdquo; and Kin opens it in a new tab. Only https addresses, and only when you ask; Claude cannot open anything.</p>
@@ -173,6 +178,9 @@
 <script src="brief-board.js"></script>
 <script src="watch-listen.js"></script>
 <script src="device-lab.js"></script>
+<script src="away.js"></script>
+<script src="calls.js"></script>
+<script src="away-panel.js"></script>
 <script src="desk.js"></script>
 <script src="bust.js"></script>
 <script src="app.js"></script>

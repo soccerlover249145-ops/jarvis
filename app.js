@@ -344,6 +344,9 @@
     /* a video or a recording, and Bluetooth or USB devices: their own panels; nothing is sent until the founder picks */
     if (Kin.watch && Kin.watch.isRequest(text)) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); watch(text); return; }
     if (Kin.devices && Kin.devices.isRequest(text)) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); devices(); return; }
+    /* away mode and practice calls: handled on this device; nothing goes to Claude, and no real call is made */
+    var ai = Kin.awayPanel && Kin.awayPanel.intent(text);
+    if (ai) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); awayAsk(ai); return; }
     var now = Kin.mind.instant(text);
     if (now) { instantly(text, now); return; }
     var aloud = S.talk === 'awake', p = null, got = false, t0 = Date.now(), momT = 0, watchI = 0, sess = null, lastSign = Date.now(), stalled = false, pr, making = false, job = null;
@@ -468,6 +471,11 @@
     });
   }
   function devices() { Kin.devices.open({ onSay: panelSay }); }
+  function awayAsk(it) {
+    if (Kin.shared) { addMsg('kin', Kin.SHARED_TEXT); panelSay(Kin.SHARED_TEXT); return; }
+    var line = Kin.awayPanel.handle(it, { onSay: panelSay });
+    if (line) { addMsg('kin', line); panelSay(line); }
+  }
 
   /* ------------------------------------------------------------ the morning brief board */
   var MARKET = 'kin.bb.market';
@@ -872,6 +880,7 @@
   $('wxTown').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); wxFind(); } });
   $('wxDrop').addEventListener('click', function () { Kin.chart.dropPlace(); wxSettings(); });
   [].forEach.call($('wxUnits').children, function (b) { b.addEventListener('click', function () { Kin.chart.setUnits(b.dataset.u); wxSettings(); }); });
+  if ($('awayOpen')) $('awayOpen').addEventListener('click', function () { gesture(); if (Kin.shared) { localReply(Kin.SHARED_TEXT); return; } if (Kin.awayPanel) Kin.awayPanel.open('settings', { onSay: panelSay }); });
   $('notifyOn').addEventListener('click', function () { gesture(); if (Kin.desk) Kin.desk.notify.ask().then(function () { deskSettings(); }); });
   $('hfConnect').addEventListener('click', function () { gesture(); Kin.hf.connect().catch(function (e) { $('hfNote').textContent = (e && e.message) || 'Could not start the sign-in.'; }); });
   $('hfDrop').addEventListener('click', function () { Kin.hf.disconnect(); refreshSettings(); });
