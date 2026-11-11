@@ -675,18 +675,18 @@
     /* untrusted words from another bot: text only, never markup, never a link that runs anything */
     el.rp.textContent = term ? j.reply : '';
     [].forEach.call(el.bt.children, function (b) {
-      var a = b.dataset.act, show = a === 'stop' ? j.waiting : a === 'resume' ? !j.waiting && gbResumable(j) : a === 'again' ? (j.st === 'unknown' && /^(unknown|malformed)$/.test(j.local)) || (j.st === 'not_sent' && /^(rate|busy|unreachable)$/.test(j.local) && Date.now() >= (j.retryAt || 0)) : a === 'forget' ? term || j.st === 'not_sent' || j.st === 'unknown' : false;
+      var a = b.dataset.act, show = a === 'stop' ? j.waiting : a === 'resume' ? !j.waiting && gbResumable(j) : a === 'again' ? (j.st === 'unknown' && /^(unknown|malformed)$/.test(j.local)) || (j.st === 'not_sent' && /^(rate|busy|unreachable)$/.test(j.local) && Date.now() >= (j.retryAt || 0)) : a === 'forget' ? !j.waiting && j.st !== 'sending' : false;
       b.hidden = !show;
     });
     /* after a rate or busy wait, offer "Send again" once the wait is over (still only on a tap) */
     if (j.st === 'not_sent' && j.retryAt > Date.now() && !el.wake) el.wake = setTimeout(function () { el.wake = 0; var n = Kin.bridge.job(j.id); if (n && gbEls[j.id]) gbPaint(n); }, Math.min(j.retryAt - Date.now() + 50, 3600000));
   }
-  /** what Kin may say aloud about a reply: a short summary, never the words that would ask Grok Bot again */
+  /** what Kin may say aloud about a reply: a fixed line, never Grok Bot's own words */
   function gbSummary(j) {
     if (j.st === 'needs_owner_approval') return 'Grok Bot needs your OK for that, sir. It will ask you in its own chat.';
     if (j.st === 'error') return 'Grok Bot could not answer, sir. The reason is on screen.';
-    var t = plain(Kin.bridge.unaddress(j.reply || '')), m = /^(.{12,180}?[.!?])(\s|$)/.exec(t), first = m ? m[1] : t.slice(0, 160);
-    return first ? 'Grok Bot says: ' + first : 'Grok Bot answered, sir. It is on screen.';
+    /* Grok Bot's own words are never spoken: they stay on screen as text */
+    return 'Grok Bot answered, sir. It\u2019s on screen.';
   }
   function gbAfterSubmit(r) {
     if (!r || r.ok) return;
@@ -921,7 +921,7 @@
     }, function (e) { $('wxNote').textContent = 'Open-Meteo could not be reached (' + ((e && e.message) || e) + ').'; });
   }
   function gbSettings() {
-    var B = Kin.bridge; $('gbSection').hidden = !B; if ($('sg-grok')) $('sg-grok').hidden = !B; $('leavesGB').hidden = !B; if (!B) return;
+    var B = Kin.bridge; $('gbSection').hidden = !B; if ($('sg-grok')) $('sg-grok').hidden = !B; var gbPill = document.querySelector('#snav [data-sg="grok"]'); if (gbPill) gbPill.hidden = !B; $('leavesGB').hidden = !B; if (!B) return;
     var n = $('gbNote'), on = B.enabled();
     $('gbUrl').value = B.relay(); $('gbKeep').checked = B.kept(); $('gbCtx').checked = B.ctxOn(); $('gbTok').value = '';
     $('gbOn').textContent = on ? 'Turn off' : 'Turn on'; $('gbOn').dataset.sure = '';

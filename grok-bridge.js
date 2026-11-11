@@ -33,7 +33,7 @@
     del: function (k) { try { sessionStorage.removeItem(k); } catch (e) {} }
   };
 
-  var subs = [], timers = {}, live = {};
+  var subs = [], timers = {}, live = {}, cancelled = {};
   function emit(job, extra) { var ev = Object.assign({ type: 'job', job: view(job) }, extra || {}); subs.forEach(function (f) { try { f(ev); } catch (e) {} }); }
   /** what the page may show of a job: never the handle */
   function view(j) { return j && { id: j.id, q: j.q, st: j.st, ds: j.ds, reply: j.reply || '', err: j.err || '', retryAt: j.retryAt || 0, at: j.at, exp: j.exp || '', ctx: j.ctx || 0, waiting: !!timers[j.id], local: j.local || '', here: !!live[j.id], seen: !!j.seen }; }
@@ -73,25 +73,30 @@
   /* ---------------------------------------------------------------- jobs kept on this device */
   function load() { var a; try { a = JSON.parse(ls.get(K.jobs) || '[]'); } catch (e) { a = []; } if (!Array.isArray(a)) a = []; var cut = Date.now() - KEEP_DAYS * 864e5; return a.filter(function (j) { return j && j.id && j.at > cut; }); }
   var jobs = load();
+  jobs.forEach(function (j) { if (j.st === 'sending') { j.st = 'unknown'; j.local = 'unknown'; } });
   function save() { jobs = jobs.slice(-MAX_JOBS); ls.set(K.jobs, JSON.stringify(jobs)); }
   function find(id) { for (var i = 0; i < jobs.length; i++) if (jobs[i].id === id) return jobs[i]; return null; }
-  function pending() { return jobs.filter(function (j) { return !TERMINAL[j.st] && j.h; }); }
+  /** questions still in flight: being sent, or registered and waiting for Grok Bot */
+  function pending() { return jobs.filter(function (j) { return !TERMINAL[j.st] && (j.h || j.st === 'sending'); }); }
 
   /* ---------------------------------------------------------------- the deterministic intent
-     Only a sentence that begins by addressing Grok Bot counts. "I was going to ask Grok Bot" does not.
-     Speech recognisers write the name a few ways, so those are accepted too. */
-  var NAME = 'gr(?:o|ou|a)(?:k|ck|c|q|g)(?:\\s*-?\\s*bot)?';
-  var ASK = new RegExp('^(?:(?:hey|ok|okay|yo)\\s+)?(?:(?:jarvis|kin)[,!.:]?\\s+)?(?:please\\s+|can you\\s+|could you\\s+|go\\s+)?(?:ask|tell|message|text|check with)\\s+(?:my\\s+)?' + NAME + '\\b[\\s,:;.\\-]*(.*)$', 'i');
-  var ADDRESS = new RegExp('^(?:hey\\s+)?' + NAME + '\\s*[,:]\\s*(.+)$', 'i');
+     Only a sentence that begins by asking Grok Bot counts: "ask Grok Bot ...", optionally after "hey Jarvis," or
+     "please", "can you", "could you". "I was going to ask Grok Bot", "tell Grok Bot", "Grok:", "ask Grok's opinion"
+     and other spellings of the name never count. A full stop right after the name ("ask Grok Bot. Never mind")
+     leaves no question, so nothing is sent. */
+  var NAME = 'grok\\s*-?\\s*bot';
+  var ASK = new RegExp('^(?:(?:hey|ok|okay)\\s+)?(?:(?:jarvis|kin)[,!.:]?\\s+)?(?:please\\s+|can you\\s+|could you\\s+|go\\s+)?ask\\s+(?:my\\s+)?' + NAME + '(?=$|[\\s,:;.!?\\-])(.*)$', 'i');
   /** null when the words are not for Grok Bot; otherwise { q } with the question (possibly empty) */
   function intent(text) {
     var t = String(text || '').replace(/\s+/g, ' ').trim(); if (!t) return null;
-    var m = ASK.exec(t) || ADDRESS.exec(t); if (!m) return null;
-    var q = (m[1] || '').trim().replace(/^(?:to|whether|if|about)\s+/i, function (w) { return /^to\s/i.test(w) ? '' : w; }).trim();
+    var m = ASK.exec(t); if (!m) return null;
+    var rest = m[1] || '';
+    if (/^\s*[.!?]/.test(rest)) return { q: '' };
+    var q = rest.replace(/^[\s,:;\-]+/, '').trim().replace(/^(?:to|whether|if|about)\s+/i, function (w) { return /^to\s/i.test(w) ? '' : w; }).trim();
     return { q: q };
   }
   /** words from a reply that must never be spoken back, so an open mic cannot hear Kin ask Grok Bot something */
-  function unaddress(text) { return String(text || '').replace(new RegExp('\\b(?:ask|tell|message|text|check with)\\s+(?:my\\s+)?' + NAME + '\\b', 'gi'), 'Grok Bot').replace(new RegExp('^\\s*' + NAME + '\\s*[,:]', 'i'), ''); }
+  function unaddress(text) { var N = 'gr(?:o|ou|a)(?:k|ck|c|q|g)(?:\\s*-?\\s*bot)?'; return String(text || '').replace(new RegExp('\\b(?:ask|tell|message|text|check with)\\s+(?:my\\s+)?' + N + '\\b', 'gi'), 'Grok Bot').replace(new RegExp('^\\s*' + N + '\\s*[,:]', 'i'), ''); }
 
   /* ---------------------------------------------------------------- talking to the relay */
   function uuid() {
@@ -155,13 +160,17 @@
     var body = { version: 1, request_id: j.id, message: q, context: ctx };
     while (bytes(JSON.stringify(body)) > MAX_BODY && body.context.length) body.context.pop();
     if (bytes(JSON.stringify(body)) > MAX_BODY) { j.st = 'error'; j.local = 'too_big'; j.err = REASON.too_big; save(); emit(j); return Promise.resolve({ ok: false, code: 'too_big', job: view(j) }); }
-    j.ctx = body.context.length; j.ctxv = body.context; save(); live[j.id] = true; emit(j);
+    j.ctx = body.context.length; j.ctxv = body.context; delete cancelled[j.id]; save(); live[j.id] = true; emit(j);
     return post('/v1/requests', body, T('gbSubmit', 20000)).then(function (r) {
+      var wasStopped = !!cancelled[j.id]; delete cancelled[j.id];
       if (!r.net) { j.st = 'unknown'; j.local = r.code === 'no_token' ? 'no_token' : 'unknown'; j.err = REASON[j.local]; save(); emit(j); return { ok: false, code: j.local, job: view(j) }; }
       if (r.status === 202 && r.j && r.j.version === 1 && r.j.request_id === j.id && typeof r.j.handle === 'string' && r.j.handle) {
         j.h = r.j.handle; j.st = r.j.status === 'accepted' ? 'accepted' : 'queued'; j.ds = String(r.j.dispatch_status || ''); j.exp = String(r.j.expires_at || ''); j.local = '';
         j.err = /^(unknown|retryable_failure)$/.test(j.ds) ? 'The relay saved it but could not confirm Grok Bot started (' + j.ds.replace('_', ' ') + '). I will keep checking for an answer; I will not resend it.' : '';
-        delete j.ctxv; save(); emit(j); poll(j.id, r.j.poll_after_ms); return { ok: true, job: view(j) };
+        delete j.ctxv;
+        /* stopped (or the bridge turned off) while it was being sent: keep the receipt, check nothing, resend nothing; Resume picks it up */
+        if (wasStopped || !enabled()) { j.local = 'stopped'; j.err = REASON.stopped; save(); emit(j); return { ok: true, job: view(j) }; }
+        save(); emit(j); poll(j.id, r.j.poll_after_ms); return { ok: true, job: view(j) };
       }
       if (r.status === 202) { j.st = 'unknown'; j.local = 'malformed'; j.err = REASON.malformed + ' ' + REASON.unknown; save(); emit(j); return { ok: false, code: 'malformed', job: view(j) }; }
       var c = httpCode(r); j.st = c === 'conflict' ? 'unknown' : 'not_sent'; j.local = c; j.err = REASON[c] || REASON.bad;
@@ -180,15 +189,17 @@
     function stop(code) { clearTimeout(timers[id]); delete timers[id]; if (code) { j.local = code; j.err = REASON[code] || ''; } save(); emit(j); }
     function tick() {
       if (!find(id) || TERMINAL[j.st]) { stop(); return; }
+      if (!enabled()) { stop('stopped'); return; }
       if (Date.now() - started > T('gbWindow', 600000)) { stop('window'); return; }
       post('/v1/result', { version: 1, handle: j.h }, T('gbPollT', 15000)).then(function (r) {
         if (!timers[id]) return;
+        if (!enabled()) { stop('stopped'); return; }
         if (!r.net) { if (r.code === 'no_token') { stop('no_token'); return; } if (++fails >= 6) { stop('unreachable'); return; } next(Math.min(T('gbMax', 15000), gap = Math.round(gap * 1.5))); return; }
         fails = 0;
         if (r.status === 200) {
           var x = r.j;
-          if (!x || x.version !== 1 || typeof x.status !== 'string') { stop('malformed'); return; }
-          if (x.request_id !== j.id) { stop('mismatch'); return; }
+          if (!x || x.version !== 1 || typeof x.status !== 'string') { j.st = 'error'; stop('malformed'); return; }
+          if (x.request_id !== j.id) { j.st = 'error'; stop('mismatch'); return; }
           if (x.status === 'pending') {
             j.st = 'pending'; j.ds = String(x.dispatch_status || j.ds || ''); if (x.expires_at) j.exp = String(x.expires_at);
             if (/^(unknown|retryable_failure)$/.test(j.ds)) j.err = 'The relay could not confirm Grok Bot started (' + j.ds.replace('_', ' ') + '). I am not resending it; check with Grok Bot in its own chat.'; else j.err = '';
@@ -202,18 +213,18 @@
             if (x.status === 'error' && !j.reply) j.reply = j.err || 'Grok Bot reported an error.';
             j.local = ''; clearTimeout(timers[id]); delete timers[id]; save(); emit(j, { arrived: true }); return;
           }
-          stop('malformed'); return;
+          j.st = 'error'; stop('malformed'); return;
         }
         if (r.status === 429 || (r.status === 503 && !(r.j && /^bridge_(disabled|not_configured)$/.test(r.j.error)))) { next(Math.max(r.retry || 0, Math.min(T('gbMax', 15000), gap = Math.round(gap * 1.5)))); return; }
         if (r.status >= 500) { if (++fails >= 6) { stop('unreachable'); return; } next(Math.min(T('gbMax', 15000), gap = Math.round(gap * 1.5))); return; }
-        var c = httpCode(r); if (c === 'gone') j.st = 'error'; stop(c);
+        var c = httpCode(r); if (c === 'gone' || c === 'forbidden') j.st = 'error'; stop(c);
       });
     }
     j.st = j.st === 'sending' ? 'queued' : j.st; save(); next(gap); emit(j); return true;
   }
   /** stop waiting here; Grok Bot may still answer, and Resume picks it up */
   function stop(id) { var j = find(id); if (!j || !timers[id]) return false; clearTimeout(timers[id]); delete timers[id]; j.local = 'stopped'; j.err = REASON.stopped; save(); emit(j); return true; }
-  function stopAll() { Object.keys(timers).forEach(stop); }
+  function stopAll() { jobs.forEach(function (j) { if (j.st === 'sending') cancelled[j.id] = true; }); Object.keys(timers).forEach(stop); }
   function resume(id) { var j = find(id); if (!j || !j.h || TERMINAL[j.st] || !hasToken() || !enabled()) return false; live[id] = true; j.err = ''; return poll(id, T('gbFirst', 5000) / 10); }
   /** after the page is opened again: carry on waiting for anything still pending, if the token is here */
   function restore() { if (!enabled() || !hasToken()) return pending().map(view); pending().forEach(function (j) { if (!timers[j.id] && j.local !== 'stopped' && j.local !== 'window') poll(j.id, 1000); }); return pending().map(view); }
@@ -225,7 +236,7 @@
     return fetch(relay() + '/v1/health', { method: 'GET', mode: 'cors', credentials: 'omit', cache: 'no-store', redirect: 'error', referrerPolicy: 'no-referrer', signal: ctl.signal })
       .then(function (r) { clearTimeout(tm); return r.json().catch(function () { return null; }).then(function (j) { return { ok: r.ok && !!(j && j.ok === true), status: r.status }; }); }, function () { clearTimeout(tm); return { ok: false, status: 0 }; });
   }
-  function wipe() { Object.keys(timers).forEach(function (id) { clearTimeout(timers[id]); delete timers[id]; }); jobs = []; [K.on, K.url, K.keep, K.tok, K.jobs, K.ctx].forEach(ls.del); ss.del(K.tok); }
+  function wipe() { jobs.forEach(function (j) { cancelled[j.id] = true; }); Object.keys(timers).forEach(function (id) { clearTimeout(timers[id]); delete timers[id]; }); jobs = []; [K.on, K.url, K.keep, K.tok, K.jobs, K.ctx].forEach(ls.del); ss.del(K.tok); }
 
   Kin.bridge = {
     DEFAULT_RELAY: DEFAULT_RELAY, REASON: REASON,
