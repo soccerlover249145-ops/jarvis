@@ -26,6 +26,7 @@ const { makeEars } = require('./ears');
 const { makeHands } = require('./control/hands');
 const { makeSession } = require('./control/session');
 const { makeDesk, makeDeskKeys, senderAllowed, keysSenderAllowed } = require('./desk');
+const { needsNote, applyLogin, NOTE: LOGIN_NOTE } = require('./login');
 
 const ORIGIN = 'app://jarvis';
 const LIVE = 'https://jarvis.unwebbed.app';
@@ -203,7 +204,14 @@ function rebuildTray() {
   ]));
   tray.setToolTip('Jarvis' + (busy ? ' (has control)' : '') + ' · ' + hk);
 }
-function loginItem() { try { app.setLoginItemSettings({ openAtLogin: cfg.get().launchAtLogin, openAsHidden: true }); } catch (e) {} }
+function loginItem() { applyLogin(app, cfg.get()); }
+/* first run: say once that Jarvis now opens at login, and where to change it */
+function loginNote() {
+  if (!needsNote(cfg.get())) return;
+  cfg.set({ seenLoginNote: true });
+  dialog.showMessageBox(mainWin && mainWin.isVisible() ? mainWin : null, { type: 'info', buttons: ['OK', 'Open Settings'], defaultId: 0, message: LOGIN_NOTE.title, detail: LOGIN_NOTE.detail })
+    .then(function (r) { if (r.response === 1) openMacSettings(); }).catch(function () {});
+}
 function registerSummon() {
   const hk = cfg.get().hotkey;
   try { if (!globalShortcut.isRegistered(hk)) globalShortcut.register(hk, function () { toggleCompact(false); }); } catch (e) {}
@@ -461,8 +469,8 @@ app.whenReady().then(async function () {
   registerSummon();
   loginItem();
   if (cfg.get().alwaysListen && fs.existsSync(path.join(BIN, 'JarvisEars'))) ears.start();
-  const hidden = app.getLoginItemSettings().wasOpenedAsHidden;
-  if (!hidden) mainWin.once('ready-to-show', showMain);
+  /* always open as a window (with its Dock icon), including at login; the first run explains the login setting once */
+  mainWin.once('ready-to-show', function () { showMain(); setTimeout(loginNote, 800); });
 });
 
 app.on('second-instance', showMain);

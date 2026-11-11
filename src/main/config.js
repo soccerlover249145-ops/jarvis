@@ -9,7 +9,8 @@ const path = require('path');
 
 const DEFAULTS = {
   hotkey: 'Alt+Space',
-  launchAtLogin: true,
+  launchAtLogin: true,         /* open Jarvis as a window when the owner logs in (on from the first run) */
+  seenLoginNote: false,        /* the one-time "Jarvis will open when you log in" note has been shown */
   alwaysListen: true,          /* listen for the wake phrase whenever the app runs */
   onDeviceOnly: true,          /* refuse speech recognition that would leave the Mac */
   searchEngine: 'google',
@@ -33,7 +34,7 @@ function clean(raw) {
   const c = JSON.parse(JSON.stringify(DEFAULTS));
   if (!raw || typeof raw !== 'object') return c;
   if (typeof raw.hotkey === 'string' && /^[A-Za-z0-9+]{3,40}$/.test(raw.hotkey)) c.hotkey = raw.hotkey;
-  ['launchAtLogin', 'alwaysListen', 'onDeviceOnly'].forEach(function (k) { if (typeof raw[k] === 'boolean') c[k] = raw[k]; });
+  ['launchAtLogin', 'seenLoginNote', 'alwaysListen', 'onDeviceOnly'].forEach(function (k) { if (typeof raw[k] === 'boolean') c[k] = raw[k]; });
   if (['google', 'duckduckgo', 'bing'].indexOf(raw.searchEngine) >= 0) c.searchEngine = raw.searchEngine;
   if (Array.isArray(raw.apps)) {
     c.apps = raw.apps.filter(function (a) { return a && typeof a.name === 'string' && typeof a.path === 'string' && /^\/[^\0]*\.app$/i.test(a.path) && a.name.length <= 80; })

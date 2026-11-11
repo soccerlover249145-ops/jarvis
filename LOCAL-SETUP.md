@@ -12,9 +12,13 @@ git clone -b desktop-app https://github.com/soccerlover249145-ops/jarvis.git ~/j
 bash install-mac.sh
 ```
 
-It checks your Mac, installs the app's packages, runs the tests, builds the two Swift helpers and Jarvis.app, signs it for this Mac only (no Apple account needed), copies it to Applications and opens it. It never uses `sudo`, never asks for a key, and asks before replacing an older Jarvis.
+It checks your Mac, installs the app's packages, runs the tests, builds the two Swift helpers and Jarvis.app, signs it for this Mac only (no Apple account needed), copies it to Applications, offers to add it to your Dock, and opens it. It never uses `sudo`, never asks for a key, and asks before replacing an older Jarvis.
 
 **If macOS says Jarvis "can't be opened" or "can't be checked"** (the app is not signed with an Apple developer certificate): open Applications, right-click Jarvis, choose Open, then Open again. Or System Settings > Privacy & Security, scroll down, Open Anyway. You only do this once.
+
+**Opening by itself:** Jarvis opens as a normal window each time you log in to your Mac (it says so once, the first time). Switch it off in Settings > Mac, "Open Jarvis when I log in", or from the menu bar orb, "Open at login".
+
+**Updating later:** `cd ~/jarvis-mac && git pull && bash install-mac.sh`, then answer `y` to replace the old Jarvis.
 
 ### Permissions (once)
 
