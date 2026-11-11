@@ -49,7 +49,6 @@
   /** Gmail's own compose window, filled in. Opened only when the founder taps it. */
   function composeUrl(d) {
     var q = 'view=cm&fs=1&to=' + encodeURIComponent(splitAddrs(d.to).join(',')) + '&su=' + encodeURIComponent(String(d.subject || '')) + '&body=' + encodeURIComponent(String(d.body || ''));
-    if (d.cc) q += '&cc=' + encodeURIComponent(splitAddrs(d.cc).join(','));
     return 'https://mail.google.com/mail/?' + q;
   }
   /* an RFC 2822 message, base64url, for the Gmail API (UTF-8 subject in encoded-word form) */
@@ -57,7 +56,6 @@
   function encWord(s) { return /^[\x20-\x7e]*$/.test(s) ? s : '=?UTF-8?B?' + btoa(String.fromCharCode.apply(null, new TextEncoder().encode(s))) + '?='; }
   function raw(d) {
     var head = ['To: ' + splitAddrs(d.to).join(', ')];
-    if (d.cc) head.push('Cc: ' + splitAddrs(d.cc).join(', '));
     head.push('Subject: ' + encWord(String(d.subject).replace(/[\r\n]+/g, ' ')), 'MIME-Version: 1.0', 'Content-Type: text/plain; charset="UTF-8"', 'Content-Transfer-Encoding: 8bit');
     return b64url(head.join('\r\n') + '\r\n\r\n' + String(d.body).replace(/\r?\n/g, '\r\n'));
   }
@@ -115,7 +113,7 @@
     var to = field('To', d.to), su = field('Subject', d.subject), bo = field('Body', d.body, true);
     var msg = el('p', 'note mnote'); box.appendChild(msg);
     var acts = el('div', 'mact'); box.appendChild(acts);
-    function draft() { return { to: to.value, subject: su.value, body: bo.value, cc: d.cc || '' }; }
+    function draft() { return { to: to.value, subject: su.value, body: bo.value }; }
     var gm = pill('Open in Gmail', 'go'), cp = pill('Copy', 'alt');
     gm.addEventListener('click', function () { var w = check(draft()); if (w && !/subject|empty/i.test(w)) { msg.textContent = w; return; } window.open(composeUrl(draft()), '_blank', 'noopener,noreferrer'); msg.textContent = 'Opened in Gmail. Press Send there when it looks right.'; });
     cp.addEventListener('click', function () { var x = draft(), t = 'To: ' + x.to + '\nSubject: ' + x.subject + '\n\n' + x.body; (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { msg.textContent = 'Copied.'; }, function () { msg.textContent = 'This browser would not copy it; select the text instead.'; }); });

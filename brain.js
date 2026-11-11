@@ -167,10 +167,10 @@
         var r = Kin.mind.remember(i.text, i.kind || 'fact'); if (r.ok && ctx.onRemember) ctx.onRemember(); return r.ok ? (r.again ? 'Already remembered; refreshed.' : 'Remembered on this device.') : 'Not kept: ' + r.why; } });
     /* email: a draft shown as a card; only the founder's tap sends it (email.js) */
     if (Kin.email) T.push({ def: { name: 'email_draft', description: 'Show the founder an email you wrote, as a card with To, Subject and Body they can edit. It is NOT sent: the founder sends it with a tap. Use for any request to email, write to, reply to or follow up with someone by email.', eager_input_streaming: true,
-        input_schema: { type: 'object', properties: { to: { type: 'string', description: 'Email address(es), comma separated. Empty if you do not know it.' }, cc: { type: 'string' }, subject: { type: 'string' }, body: { type: 'string', description: 'The whole email as plain text, signed off in the founder\'s voice.' } }, required: ['subject', 'body'] } },
+        input_schema: { type: 'object', properties: { to: { type: 'string', description: 'Email address(es), comma separated. Empty if you do not know it.' }, subject: { type: 'string' }, body: { type: 'string', description: 'The whole email as plain text, signed off in the founder\'s voice.' } }, required: ['subject', 'body'] } },
       ok: function (i) { return str(i.subject) && str(i.body); }, status: 'Writing the email',
       run: function (i) {
-        var d = { to: String(i.to || '').slice(0, 600), cc: String(i.cc || '').slice(0, 600), subject: String(i.subject).slice(0, 300), body: String(i.body).slice(0, 20000) };
+        var d = { to: String(i.to || '').slice(0, 600), subject: String(i.subject).slice(0, 300), body: String(i.body).slice(0, 20000) };
         /* inside the Jarvis Mac app the draft opens in Mail (never sent); the Mac asks first */
         if (Kin.mac && Kin.mac.available()) return Kin.mac.draft(ctx, d);
         ctx.emails.push(d); if (ctx.onEmail) ctx.onEmail(d);
