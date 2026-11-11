@@ -563,8 +563,23 @@
       if (k !== 'go' && k !== 'draw' && k !== 'compose' && k !== 'poster') return { text: 'Stopped, sir. Nothing was spent.', declined: true };
       alive();
       if (k !== 'poster') return composeRoute(k);
-      /* no poster came of it (too much copy, over the credits, Higgsfield refused): compose it instead, with whatever credits are left */
-      return posterRoute().then(function (r) { if (r) return r; alive(); if (opts.onReroute) opts.onReroute('compose'); return composeRoute(hfCredits > 0 || budget <= 0 ? 'draw' : 'compose'); });
+      /* no poster came of it (too much copy, over the credits, Higgsfield refused). Composing it costs more than the card the
+         founder approved, so Kin asks again with the new price; nothing more is spent unless they choose to compose it */
+      return posterRoute().then(function (r) {
+        if (r) return r; alive();
+        var left = Math.max(0, Math.round(Math.min(hfLeft - hfCredits, Kin.hf.cap() - Kin.hf.used()) * 100) / 100), canPics = left > 0 && hfCredits === 0;
+        var why = notes.length ? notes[notes.length - 1] : 'No poster came back from Higgsfield.';
+        var rc = { kind: 'reroute', label: 'Kin stopped to ask', title: 'The poster could not be made', price: '$' + (canPics ? usdPics : usdDraw).toFixed(2), priceNote: 'more Claude usage to compose it instead · Opus 5.5',
+          lines: [why, 'Spent so far: about $' + spent.toFixed(2) + (hfCredits ? ' and ' + hfCredits + ' Higgsfield credits' : '') + '. Nothing more is spent unless you choose to compose it.'],
+          say: 'The poster could not be made, sir. Compose it instead for about ' + (canPics ? usdPics : usdDraw).toFixed(2) + ' dollars more, or stop?',
+          choices: [{ k: canPics ? 'compose' : 'draw', label: 'Compose it', kind: 'go', note: canPics ? 'Pictures only where they help, at most ' + left + ' credits.' : 'Drawn, no Higgsfield credits.' }]
+            .concat(canPics ? [{ k: 'draw', label: 'Without pictures', kind: 'alt', note: 'About $' + usdDraw.toFixed(2) + ', no Higgsfield credits.' }] : [])
+            .concat([{ k: 'stop', label: 'Stop the job', kind: 'stop', note: 'Ends the job here. Nothing more is spent.' }]) };
+        return (opts.choose ? opts.choose(rc) : Promise.resolve('stop')).then(function (k2) {
+          if (k2 !== 'compose' && k2 !== 'draw') throw abortErr();
+          alive(); if (opts.onReroute) opts.onReroute('compose'); return composeRoute(k2);
+        });
+      });
     }).then(function (r) { r.cost = spent; r.route = 'make'; r.credits = hfCredits; return r; },
       function (e) { if (e && typeof e === 'object') e.spent = spent; throw e; });
   }

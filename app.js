@@ -417,6 +417,12 @@
       done();
       if (!D.screen.supported()) { localReply('I can look at your screen on a Mac, in Chrome or Safari, sir. Not on this device.'); return true; }
       if (D.screen.on()) { localReply('I can see your screen, sir. Ask away.', 'Sharing'); return true; }
+      /* the browser only lets a page ask to share right after a tap or a key press; a spoken request has neither */
+      var ua = navigator.userActivation;
+      if (ua && !ua.isActive) {
+        var q = localReply('Tap Share screen to start, sir.', 'The browser needs a tap'), sb = el('button', 'pill sm go sharebtn'); sb.type = 'button'; sb.appendChild(el('span', 'pl', 'Share screen'));
+        sb.addEventListener('click', function () { gesture(); sb.disabled = true; shareScreen(); }); q.parentNode.appendChild(sb); showThread(); return true;
+      }
       shareScreen(); return true;
     }
     var a = D.tab.asked(text); if (!a) return false;
@@ -450,10 +456,12 @@
   var MARKET = 'kin.bb.market';
   function marketWatch() {
     var c = null; try { c = JSON.parse(localStorage.getItem(MARKET) || 'null'); } catch (e) {}
-    if (c && Date.now() - c.at < 3 * 3600000 && Array.isArray(c.items)) return Promise.resolve(c.items);
+    /* a result, even an empty one, is kept for three hours; a failed search is not tried again for half an hour */
+    if (c && Array.isArray(c.items) && Date.now() - c.at < (c.failed ? 1800000 : 3 * 3600000)) return Promise.resolve(c.items);
+    function keepIt(items, failed) { if (Kin.shared) return; try { localStorage.setItem(MARKET, JSON.stringify({ at: Date.now(), items: items, failed: !!failed })); } catch (e) {} }
     return brain.job('Search the web for news from the last three days about the founder\'s competitors and product category, as named in the pack. Answer in one line.', { web: true, noTools: true, budget: 0.2 }).then(function (r) {
       var items = (r.sources || []).filter(function (x) { return /^https:\/\//.test(x.url); }).slice(0, 4).map(function (x) { return { title: x.title || x.url, url: x.url, source: (x.url.match(/^https?:\/\/(?:www\.)?([^\/]+)/) || [])[1] || '' }; });
-      if (items.length && !Kin.shared) { try { localStorage.setItem(MARKET, JSON.stringify({ at: Date.now(), items: items })); } catch (e) {} }
+      keepIt(items, r.code !== 'ok');
       return items;
     });
   }
@@ -462,11 +470,12 @@
   function boardJob(offer, o) {
     var B = Kin.briefBoard;
     if (offer.kind === 'design') { B.hide(); setTimeout(function () { if (!S.busy) ask('Design: ' + offer.task); }, 360); return Promise.resolve({ handedOver: true }); }
-    var cap = B.settings.get().autoCap, budget = offer.auto ? cap : Math.max(0.3, offer.est * 2);
+    var cap = B.settings.get().autoCap, budget = o.auto ? cap : Math.max(0.3, offer.est * 2);
     return brain.job(offer.prompt, { signal: o.signal, web: offer.kind === 'research', budget: budget, onMade: function () { refreshMade(); } }).then(function (r) {
-      if (r.code === 'stopped' || (o.signal && o.signal.aborted)) throw Object.assign(new Error('Stopped'), { name: 'AbortError' });
-      if (r.code !== 'ok') throw new Error(r.text || 'It did not finish.');
-      if (!r.made || !r.made.length) throw new Error(r.capped ? 'It reached its spending limit' : 'Nothing was made');
+      var cost = r.cost || 0, fail = function (msg, extra) { throw Object.assign(new Error(msg), { cost: cost }, extra || {}); };
+      if (r.code === 'stopped' || (o.signal && o.signal.aborted)) fail('Stopped', { name: 'AbortError' });
+      if (r.code !== 'ok') fail(r.text || 'It did not finish.');
+      if (!r.made || !r.made.length) fail(r.cut ? 'Cut off before it was saved ($' + cost.toFixed(2) + ' spent). Tap Start again' : r.capped ? 'Stopped at its $' + budget.toFixed(2) + ' limit before saving' : 'It finished without saving anything');
       refreshMade(); if (Kin.desk) Kin.desk.notify.done('Kin finished a job', offer.label); return r;
     });
   }

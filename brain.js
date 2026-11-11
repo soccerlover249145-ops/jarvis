@@ -396,10 +396,14 @@
       }, function (e) { total.cost += qpm.start ? Kin.mind.partialCost(qpm.model, qpm.start, qpm.chars) : 0; if (e && typeof e === 'object') e.spent = spentSoFar(); throw e; });
     }
 
-    var local = job && job.noTools ? [] : makeTools(ctx);
+    /* a board job runs without the founder watching: it may read the pack and save what it makes, nothing else
+       (no memory, no charts, no weather); the market search gets no page tools at all */
+    var JOB_TOOLS = { search_atlas: 1, open_node: 1, list_dates: 1, make: 1 };
+    var local = job && job.noTools ? [] : makeTools(ctx).filter(function (x) { return !job || JOB_TOOLS[x.def.name]; });
     function toolList() {
       var t = local.map(function (x) { return x.def; });
       if (r === 'compute') t.push({ type: 'code_execution_20260521', name: 'code_execution' });
+      else if (job && job.noTools) { if (web && !noWeb && Kin.mind.webLeft() > 0) t.push({ type: 'web_search_20260209', name: 'web_search', max_uses: 1 }); }
       else if (web && !noWeb) {
         /* dynamic filtering: the search results are filtered by code at Anthropic before Claude reads them */
         var left = Kin.mind.webLeft();
@@ -409,7 +413,7 @@
       return t;
     }
     var deep = r === 'make' && !job, model = deep ? deepModel : MAIN; ctx.model = model;
-    var room = job ? 5000 : deep ? 32000 : opts.aloud ? 4000 : 16000, maxSteps = job ? 3 : deep ? 10 : opts.aloud ? 3 : 5;
+    var room = job ? 12000 : deep ? 32000 : opts.aloud ? 4000 : 16000, maxSteps = job ? 3 : deep ? 10 : opts.aloud ? 3 : 5;
     var effort = job ? 'low' : deep ? 'high' : opts.aloud ? 'low' : 'medium';
     var step = 0, pauses = 0, jsonRetries = 0, live = '', kept = '';
     function show() { if (opts.onText) opts.onText((kept ? kept + '\n\n' : '') + live); }
@@ -425,7 +429,17 @@
     function turn() {
       /* Thinking is adaptive (Claude decides how much); effort sets the depth. A request the safety
          systems decline is re-run by the API on a fallback model (server-side fallbacks). */
-      var params = { model: model, max_tokens: room, betas: [FALLBACK_BETA], fallbacks: 'default', thinking: { type: 'adaptive', display: 'summarized' },
+      var stepRoom = room;
+      if (job) {
+        /* worst case for this step: every input character as a token (conservatively a third of a token each, uncached),
+           the web searches it may make, and as much output as it is allowed; the output allowance shrinks to fit the budget */
+        var inTok = Math.ceil((JSON.stringify(system()).length + JSON.stringify(messages).length + JSON.stringify(toolList()).length) / 3);
+        var inUsd = Kin.mind.costOf(model, { input_tokens: inTok, output_tokens: 0 }) + (web ? (job.noTools ? 1 : Math.min(5, Kin.mind.webLeft())) * 0.01 : 0);
+        var perOut = Kin.mind.costOf(model, { input_tokens: 0, output_tokens: 1000000 }) / 1000000;
+        stepRoom = Math.min(room, Math.floor((job.budget - spentSoFar() - inUsd) / perOut));
+        if (stepRoom < (job.noTools ? 1500 : 4000)) return Promise.resolve({ text: acc.parts.join('\n\n').trim(), model: model, capped: true, worst: true });
+      }
+      var params = { model: model, max_tokens: stepRoom, betas: [FALLBACK_BETA], fallbacks: 'default', thinking: { type: 'adaptive', display: 'summarized' },
         output_config: { effort: effort }, system: system(), messages: cached(messages), tools: toolList() };
       var s = c.beta.messages.stream(params, reqOpts), pm = partialMeter(s, model);
       s.on('text', function (delta) { live += delta; show(); });
@@ -446,7 +460,7 @@
         var uses = m.content.filter(function (b) { return b.type === 'tool_use'; });
         digest(m.content, acc);
         /* the API paused a long server-side turn: send it back unchanged and it carries on where it stopped */
-        if (m.stop_reason === 'pause_turn' && ++pauses <= 3) { kept = acc.parts.join('\n\n'); live = ''; messages.push({ role: 'assistant', content: m.content }); return turn(); }
+        if (m.stop_reason === 'pause_turn' && ++pauses <= (job ? 1 : 3)) { kept = acc.parts.join('\n\n'); live = ''; messages.push({ role: 'assistant', content: m.content }); return turn(); }
         /* a board job stops at its spending limit: what it made so far is kept, nothing more is asked */
         if (job && spentSoFar() >= job.budget && uses.length) return { text: acc.parts.join('\n\n').trim() || 'Stopped at the spending limit for this job.', model: m.model, capped: true };
         if (!uses.length || m.stop_reason === 'max_tokens' || m.stop_reason === 'pause_turn' || ++step > maxSteps) return { text: acc.parts.join('\n\n').trim() || (kept + '\n\n' + live).trim(), model: m.model, cut: m.stop_reason === 'max_tokens' };

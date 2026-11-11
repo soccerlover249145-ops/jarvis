@@ -50,9 +50,9 @@
     { id: 'weather', name: 'Weather' }, { id: 'nok', name: 'Your company' }, { id: 'start', name: 'Kin can start' }, { id: 'today', name: 'Coming up' },
     { id: 'priorities', name: 'Top priorities' }, { id: 'market', name: 'Market watch' }, { id: 'footer', name: 'On this day' }
   ];
-  var DEF = { order: ['weather', 'nok', 'start', 'today', 'priorities', 'market', 'footer'], on: { weather: true, nok: true, start: true, today: true, priorities: true, market: true, footer: false }, units: 'F', owner: '', autoSmall: true, autoCap: 0.25 };
+  var DEF = { order: ['weather', 'nok', 'start', 'today', 'priorities', 'market', 'footer'], on: { weather: true, nok: true, start: true, today: true, priorities: true, market: true, footer: false }, units: 'F', owner: '', autoSmall: true, autoCap: 0.25, autoDay: 1 };
   var settings = {
-    get: function () { var v = ls.get('kin.bb.settings', null) || {}; var order = (v.order || []).filter(function (id) { return DEF.order.indexOf(id) >= 0; }); DEF.order.forEach(function (id) { if (order.indexOf(id) < 0) order.push(id); }); return { order: order, on: Object.assign({}, DEF.on, v.on || {}), units: v.units === 'C' ? 'C' : 'F', owner: typeof v.owner === 'string' ? v.owner.slice(0, 60) : '', autoSmall: v.autoSmall !== false, autoCap: isFinite(v.autoCap) && v.autoCap >= 0 && v.autoCap <= 2 ? +v.autoCap : DEF.autoCap }; },
+    get: function () { var v = ls.get('kin.bb.settings', null) || {}; var order = (v.order || []).filter(function (id) { return DEF.order.indexOf(id) >= 0; }); DEF.order.forEach(function (id) { if (order.indexOf(id) < 0) order.push(id); }); return { order: order, on: Object.assign({}, DEF.on, v.on || {}), units: v.units === 'C' ? 'C' : 'F', owner: typeof v.owner === 'string' ? v.owner.slice(0, 60) : '', autoSmall: v.autoSmall !== false, autoCap: isFinite(v.autoCap) && v.autoCap >= 0 && v.autoCap <= 2 ? +v.autoCap : DEF.autoCap, autoDay: v.autoDay != null && isFinite(v.autoDay) && v.autoDay >= 0 && v.autoDay <= 20 ? +v.autoDay : DEF.autoDay }; },
     set: function (patch) { var v = Object.assign(settings.get(), patch || {}); ls.set('kin.bb.settings', v); return v; },
     cards: CARDS,
     /* the town and the units are the page's single weather setting, kept by chart.js (Settings, under Weather) */
@@ -170,8 +170,25 @@
         why: auto ? 'Small and local (written here, nothing sent), so it can start on its own.' : !job.local && !outward ? (job.kind === 'research' ? 'Uses the web, so it waits for your tap.' : 'Uses pictures and credits, so it waits for your tap.') : outward ? 'This task acts outside the page, so Kin only prepares for it and waits for you.' : est > cap ? 'Bigger than your auto-start limit, so it waits for your tap.' : 'Waits for your tap.',
         prompt: (job.kind === 'draft' ? 'Draft the writing for' : job.kind === 'research' ? 'Research' : job.kind === 'plan' ? 'Make a plan for' : 'Design concepts for') + ' this task from the pack and put the result on the Made shelf. Do not send, post, buy, book or contact anyone. Task: ' + title + (n.d ? ' (due ' + n.d + ')' : '') + '.' });
     }
+    var ran = started.all();
+    out.forEach(function (o) { var r = ran[o.id]; if (!r) return; o.ranToday = r; if (r.st === 'done') o.state = 'done'; else if (r.st === 'stopped' || r.st === 'failed') o.state = r.st; });
     return out;
   }
+
+  /* ------------------------------------------------------------ what already ran today
+     kin.bb.started: { offerId: { d: day, st: running|done|stopped|failed, auto } }. A task starts on its own at most once a
+     day: reopening the brief or Refresh shows what it already made instead of starting it again.
+     kin.bb.autospend: { d: day, usd }: what jobs that started on their own spent today, held under the daily cap. */
+  function todayKey() { return iso(dayStart(new Date())); }
+  var started = {
+    all: function () { var v = ls.get('kin.bb.started', {}) || {}, t = todayKey(), out = {}; Object.keys(v).forEach(function (k) { if (v[k] && v[k].d === t) out[k] = v[k]; }); return out; },
+    get: function (id) { return started.all()[id] || null; },
+    set: function (id, st, auto) { var v = started.all(), prev = v[id]; v[id] = { d: todayKey(), st: st, auto: !!(auto || (prev && prev.auto)) }; ls.set('kin.bb.started', v); }
+  };
+  var autoSpend = {
+    get: function () { var v = ls.get('kin.bb.autospend', null); return v && v.d === todayKey() ? +v.usd || 0 : 0; },
+    add: function (usd) { if (!(usd > 0)) return; ls.set('kin.bb.autospend', { d: todayKey(), usd: Math.round((autoSpend.get() + usd) * 1e4) / 1e4 }); }
+  };
 
   /* ------------------------------------------------------------ gather */
   /** opts: { pack, place, units, owner, market: function () -> Promise<[{title, source, url, date}]>, fetchJSON, timeoutMs, now } */
@@ -385,7 +402,7 @@
   }
 
   /* ------------------------------------------------------------ the board */
-  var root = null, lastFocus = null, keyH = null;
+  var root = null, lastFocus = null, keyH = null, live = [];
   function show(d, opts) {
     opts = opts || {}; hide(true); if (!d) return null; d.settings = d.settings || settings.get();
     lastFocus = document.activeElement; var now = d.now || new Date();
@@ -418,16 +435,18 @@
       if (o.state === 'running') { var ch = h('span', 'bb-chip bb-run', 'Running'); ch.insertBefore(h('i', 'bb-spin'), ch.firstChild); act.appendChild(ch);
         var st = h('button', 'bb-pill bb-stop', 'Stop'); st.type = 'button'; st.addEventListener('click', function () { if (o.ctl) try { o.ctl.abort(); } catch (e) {} o.state = 'stopped'; ctx.paintJob(o, li, act); }); act.appendChild(st); return; }
       if (o.state === 'done') { var dn = h('button', 'bb-pill bb-ok', 'On the Made shelf'); dn.type = 'button'; if (typeof opts.onOpenMade === 'function') dn.addEventListener('click', function () { opts.onOpenMade(o); }); act.appendChild(dn); return; }
-      if (o.state === 'failed') { act.appendChild(h('span', 'bb-chip bb-bad', o.err ? 'Failed: ' + String(o.err).slice(0, 40) : 'Failed')); }
+      if (o.state === 'failed') { act.appendChild(h('span', 'bb-chip bb-bad', o.err ? 'Failed: ' + String(o.err).slice(0, 60) : 'Failed')); }
       if (o.state === 'stopped') act.appendChild(h('span', 'bb-chip', 'Stopped'));
       var go = h('button', 'bb-pill bb-go', o.state ? 'Start again' : 'Start'); go.type = 'button';
       go.disabled = typeof opts.onStart !== 'function'; if (go.disabled) go.title = 'Jobs can start once the page is connected to Claude.';
       go.addEventListener('click', function () { ctx.run(o, li, act); }); act.appendChild(go);
-    }, run: function (o, li, act) {
-      if (typeof opts.onStart !== 'function') return; o.ctl = typeof AbortController === 'function' ? new AbortController() : null; o.state = 'running'; ctx.paintJob(o, li, act);
-      Promise.resolve().then(function () { return opts.onStart(o, { signal: o.ctl && o.ctl.signal }); })
-        .then(function () { if (o.state === 'running') { o.state = 'done'; ctx.paintJob(o, li, act); } },
-              function (e) { if (o.state === 'running') { o.state = (e && (e.name === 'AbortError' || e.name === 'APIUserAbortError')) ? 'stopped' : 'failed'; o.err = e && e.message; ctx.paintJob(o, li, act); } });
+    }, run: function (o, li, act, auto) {
+      if (typeof opts.onStart !== 'function') return; o.ctl = typeof AbortController === 'function' ? new AbortController() : null; o.state = 'running'; o.auto = !!auto; ctx.paintJob(o, li, act);
+      started.set(o.id, 'running', auto); live.push(o);
+      function end(st, cost) { live = live.filter(function (x) { return x !== o; }); if (o.auto) autoSpend.add(cost); started.set(o.id, st); }
+      Promise.resolve().then(function () { return opts.onStart(o, { signal: o.ctl && o.ctl.signal, auto: !!auto }); })
+        .then(function (r) { end('done', r && r.cost); if (o.state === 'running') { o.state = 'done'; ctx.paintJob(o, li, act); } },
+              function (e) { var st = (e && (e.name === 'AbortError' || e.name === 'APIUserAbortError')) ? 'stopped' : 'failed'; end(st, e && e.cost); if (o.state === 'running') { o.state = st; o.err = e && e.message; ctx.paintJob(o, li, act); } });
     } };
     ids.forEach(function (id, i) { var c = card(id, spans[i], i, d); try { DRAW[id](c, d, ctx); } catch (e) { c.textContent = ''; empty(c, 'This card could not be drawn.'); }
       /* the "Test data" badge marks sample content only; an honest empty card carries no badge */
@@ -440,13 +459,19 @@
     requestAnimationFrame(function () { root && root.classList.add('bb-in'); try { panel.focus({ preventScroll: true }); } catch (e) {} });
     /* small, drafting-only jobs start on their own when the founder allows it (at most two per brief) */
     if (d.settings.autoSmall && opts.autoStart !== false && typeof opts.onStart === 'function' && d.settings.on.start) {
-      (d.offers || []).filter(function (o) { return o.auto && !o.state && o.est <= d.settings.autoCap && (o.kind === 'draft' || o.kind === 'plan'); }).slice(0, 2).forEach(function (o) {
-        var li = root.querySelector('[data-job="' + (window.CSS && CSS.escape ? CSS.escape(o.id) : o.id) + '"]'); if (li) ctx.run(o, li, li.querySelector('.bb-job-a')); });
+      /* each job's limit is reserved against today's cap before it starts, so the cap holds even if every job spends its limit */
+      var room = d.settings.autoDay - autoSpend.get();
+      (d.offers || []).filter(function (o) { return o.auto && !o.state && !o.ranToday && o.est <= d.settings.autoCap && (o.kind === 'draft' || o.kind === 'plan'); }).slice(0, 2).forEach(function (o) {
+        if (room < d.settings.autoCap) { o.why = 'Today\'s limit for jobs that start on their own is reached, so it waits for your tap.';
+          var w = root.querySelector('[data-job="' + (window.CSS && CSS.escape ? CSS.escape(o.id) : o.id) + '"] .bb-rm'); if (w) w.appendChild(h('span', 'bb-why bb-capped', o.why)); return; }
+        room -= d.settings.autoCap;
+        var li = root.querySelector('[data-job="' + (window.CSS && CSS.escape ? CSS.escape(o.id) : o.id) + '"]'); if (li) ctx.run(o, li, li.querySelector('.bb-job-a'), true); });
     }
     return root;
   }
   function hide(now) {
     if (keyH) { document.removeEventListener('keydown', keyH, true); keyH = null; }
+    live.slice().forEach(function (o) { if (o.ctl) try { o.ctl.abort(); } catch (e) {} });
     var r = root; root = null; if (!r) return;
     if (now) { r.remove(); return; } r.classList.remove('bb-in'); r.classList.add('bb-out');
     setTimeout(function () { r.remove(); }, 340);
@@ -467,9 +492,12 @@
         mv.appendChild(up); mv.appendChild(dn); row.appendChild(sw); row.appendChild(lab); row.appendChild(mv); wrap.appendChild(row); });
       var v2 = settings.get(), row = h('div', 'bb-set-row'), sw2 = h('button', 'bb-switch'); sw2.type = 'button'; sw2.setAttribute('role', 'switch'); sw2.setAttribute('aria-checked', v2.autoSmall ? 'true' : 'false'); sw2.setAttribute('aria-label', 'Start small jobs on my own');
       sw2.addEventListener('click', function () { settings.set({ autoSmall: !settings.get().autoSmall }); draw(); });
-      row.appendChild(sw2); row.appendChild(h('label', '', 'Start small jobs on my own (drafts and plans written here, under $' + v2.autoCap.toFixed(2) + ' each; never the web, pictures or anything sent)')); row.appendChild(h('span')); wrap.appendChild(row); };
+      row.appendChild(sw2); row.appendChild(h('label', '', 'Start small jobs on my own (drafts and plans written here, under $' + v2.autoCap.toFixed(2) + ' each, each task once a day; never the web, pictures or anything sent)')); row.appendChild(h('span')); wrap.appendChild(row);
+      var r3 = h('div', 'bb-set-row bb-set-cap'), inp = h('input'); inp.type = 'text'; inp.inputMode = 'decimal'; inp.id = 'bbAutoDay'; inp.maxLength = 5; inp.value = v2.autoDay.toFixed(2); inp.setAttribute('aria-label', 'Most jobs that start on their own may spend in a day, in dollars');
+      inp.addEventListener('change', function () { var n = parseFloat(String(inp.value).replace(/[^0-9.]/g, '')); if (isFinite(n) && n >= 0 && n <= 20) settings.set({ autoDay: Math.round(n * 100) / 100 }); draw(); });
+      r3.appendChild(h('span', 'bb-cap-l', '$')); r3.appendChild(inp); r3.appendChild(h('label', '', 'a day in all for jobs that start on their own (spent today: $' + autoSpend.get().toFixed(2) + ')')); wrap.appendChild(r3); };
     draw(); el.appendChild(wrap);
   }
 
-  Kin.briefBoard = { offers: offers, gather: gather, show: show, hide: hide, summary: summary, isBriefRequest: isBriefRequest, settings: settings, settingsUI: settingsUI, isOpen: function () { return !!root; }, _fromPack: fromPack, _wmo: WMO };
+  Kin.briefBoard = { started: started, autoSpend: autoSpend, offers: offers, gather: gather, show: show, hide: hide, summary: summary, isBriefRequest: isBriefRequest, settings: settings, settingsUI: settingsUI, isOpen: function () { return !!root; }, _fromPack: fromPack, _wmo: WMO };
 })();

@@ -256,3 +256,7 @@
 @media (prefers-reduced-motion: reduce) {
   .bb, .bb-card, .bb-track i { transition: none !important; animation: none !important; opacity: 1 !important; transform: none !important; }
 }
+
+.bb-set-cap { grid-template-columns: auto 72px 1fr; }
+.bb-set-cap .bb-cap-l { font: 400 14px/1 var(--bb-mono); color: var(--bb-ink2); }
+.bb-set-cap input { width: 72px; height: 32px; padding: 0 10px; border-radius: 999px; border: 1px solid rgba(150, 210, 255, .25); background: rgba(120, 190, 255, .06); color: var(--bb-ink, #EAF4FF); font: 400 14px/1 var(--bb-mono); }
