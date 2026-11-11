@@ -28,8 +28,45 @@ sentence to show the owner) and, when the owner clicked No, `declined: true`. Ne
 | `onTaskDone(cb)` | `cb({ title, body })` when a task ends (done, stopped, capped or failed); returns an unsubscribe function | |
 | `onHeard(cb)` | `cb({ text })` for each finished phrase the Mac's own hearing (JarvisEars, on device) picked up. Only with the live page. Treat it exactly like speech: run it through the wake-phrase check before acting | |
 
+| `keys.get()` | `{ ok, placeholder: true, keys: { claude, elevenlabs } }`: for each key this Mac's Keychain holds, a **stand-in** (placeholder) in the shape the page already accepts; `null` if none is kept. Never a real key | no (reads only which keys exist) |
+| `keys.saveFromPage(kind, value)` | `kind` is `'claude'` or `'elevenlabs'`. Checks the shape (`sk-ant-…`; ElevenLabs hex, optionally `sk_`), stores the key in the Keychain and answers `{ ok, placeholder }`. Same key or the placeholder again: `{ ok, unchanged: true }`, nothing asked. A bad shape: `{ ok: false, why }`, nothing stored, the value never echoed | yes, whenever it would add or replace a Keychain item |
+
 The dialogs are drawn by macOS, not the page, so a page cannot click or fake them. The page never sees the
-owner's file paths beyond what it passed in, never gets a screen picture, and never touches the Keychain.
+owner's file paths beyond what it passed in, never gets a screen picture, and never sees a real key.
+
+### Keys: paste once per Mac
+
+`keys.*` answer only the top frame of the main window, and only when its exact origin is
+`https://jarvis.unwebbed.app` (or the copy inside the app). Other sites, iframes and other windows are refused.
+
+How the stand-ins work: the page stores a placeholder where it would store a key and sends it in its usual header
+(`x-api-key` to api.anthropic.com, `xi-api-key` to api.elevenlabs.io). As the request leaves the app, the main
+process swaps the placeholder for the real key from the Keychain, only on https to that key's own host. A
+placeholder sent anywhere else stays a placeholder.
+
+What the web app does:
+
+```js
+/* on load, inside the Mac app: fill empty key stores with the Keychain's stand-ins */
+if (window.jarvisDesk && jarvisDesk.keys && !Kin.shared) {
+  jarvisDesk.keys.get().then(function (r) {
+    if (!r || !r.ok) return;
+    if (r.keys.claude && !Kin.brain.hasKey()) Kin.brain.setKey(r.keys.claude);          /* placeholder, not the key */
+    if (r.keys.elevenlabs && !Kin.voice.tts.hasKey()) Kin.voice.tts.setKey(r.keys.elevenlabs);
+  }).catch(function () {});
+}
+/* when the owner pastes a key in Settings, hand it to the Keychain and keep only the stand-in */
+function saveKey(kind, value) {            /* kind: 'claude' | 'elevenlabs' */
+  if (!(window.jarvisDesk && jarvisDesk.keys) || Kin.shared) return Promise.resolve({ ok: false, local: true });
+  return jarvisDesk.keys.saveFromPage(kind, value).then(function (r) {
+    if (r && r.ok) return { ok: true, store: r.placeholder };   /* store this instead of the real key */
+    return r;                                                  /* declined or bad shape: show r.why */
+  });
+}
+```
+
+Show the owner "Kept in your Mac's Keychain" next to a key that came from `keys.get()`. Removing a key in the
+page removes only the stand-in; the Keychain copy is removed from the Mac settings (menu bar orb, Settings…).
 
 ## Rules for the page
 

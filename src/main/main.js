@@ -25,7 +25,7 @@ const { makeConfig } = require('./config');
 const { makeEars } = require('./ears');
 const { makeHands } = require('./control/hands');
 const { makeSession } = require('./control/session');
-const { makeDesk, senderAllowed } = require('./desk');
+const { makeDesk, makeDeskKeys, senderAllowed, keysSenderAllowed } = require('./desk');
 
 const ORIGIN = 'app://jarvis';
 const LIVE = 'https://jarvis.unwebbed.app';
@@ -37,7 +37,7 @@ protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: t
 
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 
-let cfg, keychain, actions, screenCap, ears, hands, control, desk;
+let cfg, keychain, actions, screenCap, ears, hands, control, desk, deskKeys;
 let mainLive = false, settingsWin = null;
 let mainWin = null, compactWin = null, overlayWin = null, tray = null;
 let unseen = 0, quitting = false, earsState = 'off';
@@ -225,6 +225,15 @@ function deskHandle(ch, fn) {
     return fn(arg && typeof arg === 'object' ? arg : {}, e);
   });
 }
+/* jarvisDesk.keys: stricter still, the exact live origin or the app's own copy, top frame of the main window only */
+function keysHandle(ch, fn) {
+  ipcMain.handle(ch, async function (e, arg) {
+    const ok = keysSenderAllowed({ url: e.senderFrame && e.senderFrame.url, origin: ORIGIN, liveOrigin: LIVE, live: mainLive,
+      isMainWindow: !!mainWin && e.sender === mainWin.webContents, isTopFrame: !!mainWin && e.senderFrame === mainWin.webContents.mainFrame });
+    if (!ok) throw new Error('refused');
+    return fn(arg && typeof arg === 'object' ? arg : {}, e);
+  });
+}
 function handle(ch, fn) {
   ipcMain.handle(ch, async function (e, arg) {
     if (!ours(e)) throw new Error('refused');
@@ -277,6 +286,8 @@ function wireIpc() {
   deskHandle('desk:emailDraft', function (a) { return desk.newEmailDraft(a); });
   deskHandle('desk:runTask', function (a) { return desk.runTask(a); });
   deskHandle('desk:stop', function () { return desk.stop(); });
+  keysHandle('desk:keys:get', function () { return deskKeys.get(); });
+  keysHandle('desk:keys:save', function (a) { return deskKeys.saveFromPage(a); });
 
   handle('screen:look', async function () {
     const p = screenCap.permission();
@@ -429,6 +440,17 @@ app.whenReady().then(async function () {
         checkboxLabel: q.canAlways ? q.alwaysLabel : undefined, checkboxChecked: false
       });
       return { ok: r.response === 0, always: !!(q.canAlways && r.checkboxChecked) };
+    }
+  });
+
+  deskKeys = makeDeskKeys({
+    keychain: keychain,
+    placeholders: PLACEHOLDER,
+    onSaved: function (name, value) { secretCache[name] = value; },
+    confirm: async function (q) {
+      app.focus({ steal: true });
+      const r = await dialog.showMessageBox(mainWin && mainWin.isVisible() ? mainWin : null, { type: 'question', buttons: ['Keep it', 'No'], defaultId: 1, cancelId: 1, message: q.title, detail: q.detail });
+      return { ok: r.response === 0 };
     }
   });
 

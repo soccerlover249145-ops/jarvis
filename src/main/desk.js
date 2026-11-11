@@ -164,4 +164,81 @@ function makeDesk(deps) {
   };
 }
 
-module.exports = { makeDesk, draftUrl, senderAllowed, KINDS, ALWAYABLE, EMAIL };
+/* ---------- keys: paste each key once per Mac ----------
+   jarvisDesk.keys lets the live page use the Claude and ElevenLabs keys kept in this Mac's Keychain.
+   The page never receives a real key. keys.get() answers with PLACEHOLDERS (see secrets.js) for the keys the
+   Keychain holds; the page stores those like normal keys, and the main process swaps each placeholder for the
+   real key only on a request leaving for that key's own host over https (api.anthropic.com, api.elevenlabs.io).
+   keys.saveFromPage(kind, value) takes a key the owner just pasted in the page, checks its shape, asks the owner
+   in a native dialog whenever it would add or change a Keychain item, stores it, and answers with the
+   placeholder so the page can drop the real key. Keys are never logged, never sent to the page, never in errors. */
+
+const KEY_KINDS = {
+  claude: { name: 'anthropic', label: 'Claude API key', shape: /^sk-ant-[A-Za-z0-9_\-]{20,200}$/ },
+  elevenlabs: { name: 'elevenlabs', label: 'ElevenLabs voice key', shape: /^(?:sk_)?[a-f0-9]{32,64}$/i }
+};
+
+/** strictly: the live Jarvis page (exact https origin) or the app's own copy, as the top frame of the main window */
+function keysSenderAllowed(s) {
+  s = s || {};
+  const url = String(s.url || '');
+  let origin;
+  try { origin = new URL(url).origin; } catch (e) { return false; }
+  if (!s.isMainWindow || !s.isTopFrame) return false;
+  if (s.origin && url.startsWith(s.origin + '/')) return true;  /* app://jarvis/, the copy inside the app (a custom scheme has no URL origin) */
+  return !!(s.live && s.liveOrigin && origin === s.liveOrigin && /^https:$/.test(new URL(s.liveOrigin).protocol));
+}
+
+/** a key's shape, without ever echoing it */
+function keyShapeOk(kind, value) {
+  const k = KEY_KINDS[kind];
+  if (!k) return false;
+  const v = String(value == null ? '' : value);
+  if (!v || v.length > 300 || /[\s\0]/.test(v)) return false;
+  if (/placeholder|keychain/i.test(v)) return false;
+  return k.shape.test(v);
+}
+
+/**
+ * deps: { keychain: { get(name), set(name, value) }, placeholders: { anthropic, elevenlabs },
+ *         confirm({ title, detail }) -> Promise<{ ok }>, onSaved(name, value) }
+ */
+function makeDeskKeys(deps) {
+  return {
+    async get() {
+      const out = {};
+      for (const kind of Object.keys(KEY_KINDS)) {
+        const n = KEY_KINDS[kind].name;
+        let have = false;
+        try { have = !!(await deps.keychain.get(n)); } catch (e) { have = false; }
+        out[kind] = have ? deps.placeholders[n] : null;
+      }
+      return { ok: true, placeholder: true, keys: out };
+    },
+
+    async saveFromPage(input) {
+      input = input || {};
+      const kind = String(input.kind || '');
+      const k = KEY_KINDS[kind];
+      if (!k) return { ok: false, why: 'Unknown kind of key.' };
+      const value = String(input.value == null ? '' : input.value).trim();
+      if (value === deps.placeholders[k.name]) return { ok: true, placeholder: deps.placeholders[k.name], unchanged: true };
+      if (!keyShapeOk(kind, value)) return { ok: false, why: 'That does not look like a ' + k.label + '.' };
+      let cur = null;
+      try { cur = await deps.keychain.get(k.name); } catch (e) { cur = null; }
+      if (cur === value) return { ok: true, placeholder: deps.placeholders[k.name], unchanged: true };
+      const r = await deps.confirm({
+        title: cur ? 'Replace the ' + k.label + ' in your Keychain?' : 'Keep the ' + k.label + ' in your Keychain?',
+        detail: 'Jarvis will remember it on this Mac, so you paste it once. It is only ever sent to ' + (kind === 'claude' ? 'api.anthropic.com' : 'api.elevenlabs.io') +
+          ', and the Jarvis page never sees it again: it gets a stand-in.' + (cur ? '\n\nThe key saved now replaces the one already kept.' : '')
+      });
+      if (!r || !r.ok) return { ok: false, declined: true, why: 'You did not allow it.' };
+      const s = await deps.keychain.set(k.name, value);
+      if (!s || !s.ok) return { ok: false, why: 'The Keychain would not keep it.' };
+      if (deps.onSaved) deps.onSaved(k.name, value);
+      return { ok: true, placeholder: deps.placeholders[k.name] };
+    }
+  };
+}
+
+module.exports = { makeDesk, makeDeskKeys, draftUrl, senderAllowed, keysSenderAllowed, keyShapeOk, KEY_KINDS, KINDS, ALWAYABLE, EMAIL };

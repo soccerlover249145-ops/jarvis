@@ -83,3 +83,12 @@ Good habits: watch the first few tasks, give specific tasks ("in Safari, open sh
 ## Reporting a problem
 
 If Jarvis does something on the Mac you didn't approve, press Esc and quit it from the menu bar. The notice it showed at the end says how many steps it took and what it spent. To see more, start it from Terminal with `/Applications/Jarvis.app/Contents/MacOS/Jarvis` and repeat the task. Don't let it take control again until you know why.
+
+## Keys for the live page (jarvisDesk.keys)
+
+- The live page can ask which keys this Mac keeps (`keys.get()`) and hand over a key the owner pasted
+  (`keys.saveFromPage()`). It never receives a real key: both answer with placeholders, swapped for the real key
+  only on https requests to api.anthropic.com or api.elevenlabs.io (secrets.js).
+- Only the top frame of the main window, at exactly `https://jarvis.unwebbed.app` or `app://jarvis/`, may call them.
+- Adding or replacing a Keychain item always shows a native macOS dialog first. Shapes are checked
+  (`sk-ant-…`, ElevenLabs hex with optional `sk_`); a refused value is never echoed or logged.

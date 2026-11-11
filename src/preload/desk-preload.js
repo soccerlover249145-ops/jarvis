@@ -1,6 +1,7 @@
 'use strict';
 /* desk-preload.js: the preload for the live Jarvis page (https://jarvis.unwebbed.app) inside the Mac app.
-   It exposes only window.jarvisDesk (see src/main/desk.js and WEB-SHIM.md): no keys, no Keychain, no settings,
+   It exposes only window.jarvisDesk (see src/main/desk.js and WEB-SHIM.md): no real keys (keys.get answers with
+   stand-ins), no settings,
    no screen picture. Each call sends one fixed message; the main process checks the sender's origin and every
    argument again, and asks the owner in a native dialog before anything changes. */
 const { contextBridge, ipcRenderer } = require('electron');
@@ -18,6 +19,11 @@ contextBridge.exposeInMainWorld('jarvisDesk', Object.freeze({
   newEmailDraft: function (d) { d = d || {}; return ipcRenderer.invoke('desk:emailDraft', { to: d.to, cc: d.cc, subject: String(d.subject || ''), body: String(d.body || '') }); },
   runTask: function (text) { return ipcRenderer.invoke('desk:runTask', { text: String(text || '') }); },
   stop: call('desk:stop'),
+  /* keys kept in this Mac's Keychain: the page only ever gets stand-ins (placeholders), never a real key */
+  keys: Object.freeze({
+    get: function () { return ipcRenderer.invoke('desk:keys:get', {}); },
+    saveFromPage: function (kind, value) { return ipcRenderer.invoke('desk:keys:save', { kind: String(kind || ''), value: String(value || '') }); }
+  }),
   onTaskDone: sub('control:done'),
   onHeard: sub('desk:heard')
 }));
