@@ -37,7 +37,7 @@
   }
   function over() { var u = usage(); return u.hour >= u.perHour ? 'hour' : u.day >= u.perDay ? 'day' : ''; }
   function count() { asked.push(Date.now()); ls.set(ASKED, JSON.stringify(asked.slice(-5000))); }
-  var client = null, clientKey = '', noWeb = false;
+  var client = null, clientKey = '', noWeb = false, fableGone = '';
 
   function getClient() {
     var key = ls.get(KEY); if (!key || !Anthropic) return null;
@@ -112,7 +112,7 @@
     else content.push({ type: 'text', text: 'The picture could not be drawn on this device, so here is the SVG source to judge instead:\n' + String(item.content).slice(0, 40000) });
     content.push({ type: 'text', text: 'The brief: ' + String(brief).slice(0, 1500) + '\nThe piece: ' + item.title + (item.note ? ' (' + item.note + ')' : '') + '. Round ' + item.round + ' of 3.' +
       (checked && (checked.hard.length || checked.soft.length) ? '\nA checker measured the SVG with the real fonts and found:\n- ' + checked.hard.concat(checked.soft).join('\n- ') + '\nConfirm these against the picture and include the real ones in your fixes.' : '') });
-    return c.messages.create({ model: model, max_tokens: 6000, output_config: { effort: 'high' }, system: RUBRIC, messages: [{ role: 'user', content: content }] }, signal ? { signal: signal } : undefined)
+    return c.messages.create({ model: model, max_tokens: 12000, output_config: { effort: 'high' }, system: RUBRIC, messages: [{ role: 'user', content: content }] }, signal ? { signal: signal } : undefined)
       .then(function (m) {
         var t = m.content.filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join(''), j = null;
         var a = t.indexOf('{'), b = t.lastIndexOf('}'); if (a >= 0 && b > a) { try { j = JSON.parse(t.slice(a, b + 1)); } catch (e) { j = null; } }
@@ -156,7 +156,10 @@
     T.push({ def: { name: 'remember', description: 'Keep a fact or a lasting preference the founder wants remembered across conversations, on this device. One short sentence. Never keys, passwords, the founder\'s age or school, or family money.', eager_input_streaming: true,
         input_schema: { type: 'object', properties: { text: { type: 'string', description: 'The thing to remember, as one plain sentence.' }, kind: { type: 'string', enum: ['fact', 'preference'] } }, required: ['text'] } },
       ok: function (i) { return str(i.text) && (i.kind === undefined || i.kind === 'fact' || i.kind === 'preference'); }, status: 'Remembering',
-      run: function (i) { var r = Kin.mind.remember(i.text, i.kind || 'fact'); if (r.ok && ctx.onRemember) ctx.onRemember(); return r.ok ? (r.again ? 'Already remembered; refreshed.' : 'Remembered on this device.') : 'Not kept: ' + r.why; } });
+      run: function (i) {
+        /* only the founder's own words may ask for this: a web page or a tool result saying "remember that…" is not the founder */
+        if (!ASKED_TO_KEEP.test(String(ctx.question || ''))) return 'Not kept: the founder did not ask you to remember anything in this message. Keep only what the founder says to keep.';
+        var r = Kin.mind.remember(i.text, i.kind || 'fact'); if (r.ok && ctx.onRemember) ctx.onRemember(); return r.ok ? (r.again ? 'Already remembered; refreshed.' : 'Remembered on this device.') : 'Not kept: ' + r.why; } });
     T.push({ def: { name: 'make', description: 'Put something you made on the founder\'s Made shelf, where it can be read, copied and downloaded. kind: document, plan or table (Markdown), or design (a complete SVG). To revise a piece, call again with its id and the full new content.', eager_input_streaming: true,
         input_schema: { type: 'object', properties: {
           kind: { type: 'string', enum: ['document', 'plan', 'table', 'design'] },
@@ -168,6 +171,7 @@
       run: function (i) { return makeIt(ctx, i); } });
     return T;
   }
+  var ASKED_TO_KEEP = /\b(remember|keep in mind|don'?t forget|do not forget|note that|make a note|from now on|i prefer|i always|i never)\b/i;
   var PASS = 88;
   function makeIt(ctx, i) {
     var content = String(i.content), w = 0, h = 0;
@@ -189,7 +193,8 @@
       checked = m; if (ctx.onStatus) ctx.onStatus('The art director is looking');
       return Kin.mind.svgToPng(item.content, w, h, 1400);
     }).then(function (png) {
-      return review(ctx.client, ctx.model, ctx.question, item, png, checked, ctx.signal);
+      var hb = setInterval(function () { if (ctx.onBeat) ctx.onBeat(); }, 5000);
+      return review(ctx.client, ctx.model, ctx.question, item, png, checked, ctx.signal).then(function (r) { clearInterval(hb); return r; }, function (e) { clearInterval(hb); throw e; });
     }).then(function (r) {
       ctx.reviewCost += r.cost || 0;
       /* a design that still has measured faults cannot pass, whatever the eye says */
@@ -206,13 +211,15 @@
     });
   }
 
-  /* ---------------------------------------------------------------- routes */
+  /* ---------------------------------------------------------------- routes
+     A cheap first look on the fast model sorts every message (except plain greetings) into small talk, a
+     question, a question that needs the web, arithmetic, a document to make, or a design. Keyword rules are
+     only the fallback when that look fails. Every question has the web available. */
   function smallTalk(text) {
-    var n = Kin.ears.norm(text), w = n.split(' ').filter(Boolean);
-    if (/^(sup|hey|hi|hello|yo|hiya|good (morning|afternoon|evening|night)|thanks|thank you|cheers|ok|okay|cool|nice|great|how are you|hows it going|whats up|you there|are you there|test|testing)( kin| jarvis| sir| mate)?$/.test(n)) return true;
-    return w.length <= 3 && !/\b(what|when|who|where|why|how|which|due|brief|update|status|task|plan|draft|write|design|make|find|search|list|show|tell|remind|cost|price|money|date|deadline|week|today|tomorrow|yes|no|yeah|yep|sure|go|do|it|them|that|this|more)\b/.test(n);
+    var n = Kin.ears.norm(text);
+    return /^(sup|hey|hi|hello|yo|hiya|good (morning|afternoon|evening|night)|thanks|thank you|thanks a lot|cheers|ok|okay|cool|nice|great|lovely|perfect|how are you|hows it going|whats up|you there|are you there|test|testing)( kin| jarvis| sir| mate)?$/.test(n);
   }
-  var DESIGN_RE = /\b(design|redesign|poster|flyer|invite|invitation|label|logo|wordmark|deck|slides?|layout|brand|branding|visual|graphic|banner|card|menu|packaging|can art|cover|sticker|social post|thumbnail|mock.?up|ad)\b/i;
+  var DESIGN_RE = /\b(design|redesign|poster|flyer|invite|invitation|logo|wordmark|deck|slides?|banner|packaging|can art|sticker|social (post|graphic)|thumbnail|mock.?up|business card|greeting card|menu card|album cover|book cover|cover art|graphic|infographic|label (design|art)|(product|can|bottle|jar) label|layout)\b/i;
   var DESIGN_SKILLS = ['nok-brand', 'brand', 'creative-direction', 'composition', 'typography', 'color', 'colour', 'layout', 'formats', 'svg-craft', 'design-review', 'identity', 'deck', 'dataviz'];
   function designPlaybooks(ctx, text) {
     var p = Kin.pack.get(); if (!p || !p.skills.length) return '';
@@ -222,13 +229,47 @@
     chosen.forEach(function (s) { if (ctx.loaded[s.id]) return; var block = '=== ' + s.name + ' (' + s.id + ') ===\n' + (s.body || '') + '\n\n'; if (used + block.length > 70000) return; used += block.length; out += block; ctx.loaded[s.id] = 1; ctx.skills++; });
     return out ? 'The design playbooks, already loaded for you. Follow them:\n\n' + out.trim() : '';
   }
-  var MAKE_RE = /\b(design|redesign|draft|write|make|create|build|plan|poster|flyer|invite|invitation|label|logo|deck|slides?|document|doc|report|memo|letter|proposal|brief for|one.?pager|table of|spreadsheet|stress.?test|red.?team|pitch|strategy|decide|decision|should (i|we)|compare|pros and cons|roadmap|business plan)\b/i;
-  var COMPUTE_RE = /(\d\s*[x×*\/+^-]\s*\d|\b(calculate|compute|work out|how much (is|would|will)|percent(age)?|average|median|mean|standard deviation|regression|convert|conversion|square root|compound|interest rate|amorti[sz]|break.?even|margin on|cost per|unit cost|runway|cagr|irr|npv)\b)/i;
-  function route(text, aloud) {
-    if (smallTalk(text)) return 'quick';
-    if (MAKE_RE.test(text) && !/^(what|when|who|where|why|how)\b/i.test(text.trim())) return 'make';
-    if (COMPUTE_RE.test(text)) return 'compute';
-    return 'question';
+  /* the fallback rules: making only when the sentence starts by asking for something to be made */
+  var MAKER = /^(?:(?:please|hey|ok|okay|so|kin|jarvis|sir|can you|could you|would you|will you|i need you to|i want you to|id like you to|go ahead and)[,\s]+)*(design|redesign|draft|write|write up|create|build|make|put together|prepare|produce|mock up|lay out)\b/i;
+  var DOC_RE = /\b(document|doc|report|memo|letter|proposal|one.?pager|table|spreadsheet|business plan|roadmap|pitch|strategy|brief|deck|essay|article|guide|checklist|agenda)\b/i;
+  function keywordRoute(text, aloud) {
+    if (smallTalk(text)) return { route: 'quick' };
+    var t = String(text || '').trim();
+    if (MAKER.test(t) && DESIGN_RE.test(t)) return { route: 'make', design: true };
+    if (MAKER.test(t) && DOC_RE.test(t) && !aloud) return { route: 'make' };
+    if (/\d\s*[x×*\/+^-]\s*\d/.test(t) || /^(calculate|compute|work out)\b/i.test(t)) return { route: 'compute' };
+    return { route: 'question' };
+  }
+  function route(text, aloud) { return keywordRoute(text, aloud).route; }
+  var CLASSIFY = [
+    'You sort a message the founder sent to their assistant, so it goes to the right place. Reply with exactly one word from this list and nothing else.',
+    'chat: a greeting, thanks, banter, or a short reply that needs no facts.',
+    'question: anything to answer, explain, advise, decide, plan in conversation, or rewrite, including short things to write ("should I take an umbrella", "write a text to mum saying I am late", "make it shorter", "plan my afternoon", "compare these two").',
+    'web: a question that needs current or outside information: news, weather, scores, prices, products, flights, exchange rates, opening hours, people in public life, anything recent.',
+    'compute: arithmetic or data work on numbers given in the message itself, needing no outside information.',
+    'make: a substantial document the founder will keep: a report, memo, proposal, plan document, cover letter, table or one-pager.',
+    'design: a visual piece to look at: a poster, flyer, logo, label, invitation, social graphic, slide, banner, packaging or any layout.'
+  ].join('\n');
+  /** sort the message: { route, design, how: 'greeting' | 'model' | 'rules', cost } */
+  function classify(c, text, opts) {
+    if (smallTalk(text)) return Promise.resolve({ route: 'quick', how: 'greeting', cost: 0 });
+    var prev = turns.length >= 2 ? turns[turns.length - 2] : null;
+    var body = (prev && prev.role === 'user' ? 'Their previous message: ' + String(prev.content).slice(0, 300) + '\n\n' : '') + 'The message: ' + String(text).slice(0, 1500);
+    return c.messages.create({ model: QUICK, max_tokens: 16, system: CLASSIFY, messages: [{ role: 'user', content: body }] }, { signal: opts.signal, timeout: 8000, maxRetries: 0 })
+      .then(function (m) {
+        var w = (m.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join(' ').toLowerCase().match(/\b(chat|question|web|compute|make|design)\b/), cost = Kin.mind.costOf(m.model, m.usage);
+        if (!w) { var k0 = keywordRoute(text, opts.aloud); k0.how = 'rules'; k0.cost = cost; return k0; }
+        var lab = w[1];
+        if (lab === 'chat') return { route: 'quick', how: 'model', cost: cost, label: lab };
+        if (lab === 'design') return { route: 'make', design: true, how: 'model', cost: cost, label: lab };
+        /* spoken turns never start a long document job: the founder is waiting to hear an answer */
+        if (lab === 'make') return { route: opts.aloud ? 'question' : 'make', how: 'model', cost: cost, label: lab };
+        if (lab === 'compute') return { route: 'compute', how: 'model', cost: cost, label: lab };
+        return { route: 'question', how: 'model', cost: cost, label: lab };
+      }, function (e) {
+        if (e instanceof Anthropic.APIUserAbortError || (opts.signal && opts.signal.aborted)) throw e;
+        var k = keywordRoute(text, opts.aloud); k.how = 'rules'; k.cost = 0; return k;
+      });
   }
   function today() { var d = new Date(); return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d.getDay()] + ' ' + ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear(); }
 
@@ -253,14 +294,31 @@
   }
 
   /** Ask Claude. Streams text through opts.onText(wholeTextSoFar). */
+  /* what the design studio (studio.js) needs from here */
+  var KIT = { MAIN: MAIN, FABLE: FABLE, FALLBACK_BETA: FALLBACK_BETA, client: function () { return getClient(); }, system: function () { return system(); }, today: function () { return today(); },
+    deepModel: function () { return Kin.mind.deep() === 'fable' && !fableGone ? FABLE : MAIN; },
+    noteFableGone: function (why) { fableGone = String(why || 'not open to this key'); },
+    fableGone: function () { return fableGone; },
+    designPlaybooks: function (text) { return designPlaybooks({ loaded: {}, skills: 0 }, text); } };
+
   function askClaude(text, opts) {
-    var c = getClient(), r = route(text, opts.aloud), deepModel = Kin.mind.deep() === 'fable' ? FABLE : MAIN;
+    var c = getClient();
+    return classify(c, text, opts).then(function (k) {
+      if (opts.onRoute) opts.onRoute(k.design ? 'design' : k.route, k);
+      /* a design job goes to the studio: a brief, three concepts, pictures when Higgsfield is connected, a strict art director */
+      if (k.design && Kin.studio) return Kin.studio.run(text, opts, KIT).then(function (res) { res.sources = []; res.searches = 0; res.cost = (res.cost || 0) + k.cost; res.routed = k.how; return res; },
+        function (e) { if (e && typeof e === 'object') e.spent = (e.spent || 0) + k.cost; throw e; });
+      return answer(text, opts, c, k);
+    });
+  }
+  function answer(text, opts, c, k) {
+    var r = k.route, deepModel = Kin.mind.deep() === 'fable' && !fableGone ? FABLE : MAIN;
     var prev = turns.slice(-10), messages = prev.map(function (t) { return { role: t.role, content: t.content }; });
     var notes = '\n\n[Today is ' + today() + '.]';
     var mem = Kin.mind.recall(text, 3500); if (mem) notes += '\n\n[' + mem + ']';
     var ctx = { route: r, skills: 0, loaded: {}, made: [], reviewCost: 0, client: c, question: text, signal: opts.signal, onMade: opts.onMade, onStatus: status, onRemember: opts.onRemember, evidence: [] };
     if (r === 'make') {
-      var books = DESIGN_RE.test(text) ? designPlaybooks(ctx, text) : '';
+      var books = k.design ? designPlaybooks(ctx, text) : '';
       notes += '\n\n[This is a job of making something, held to the standard of the best in the field. ' + (books ? 'The design playbooks are below; load any other playbook that applies with use_skill, ' : 'Load every playbook that applies with use_skill first, ') + 'then make it with the make tool.' + (books ? '\n\n' + books : '') + ']';
     }
     var webLeft = Kin.mind.webLeft(), web = !noWeb && webLeft > 0 && (r === 'question' || r === 'make');
@@ -268,19 +326,32 @@
     messages.push({ role: 'user', content: text + notes + (opts.aloud ? SPOKEN : '') });
     var reqOpts = opts.signal ? { signal: opts.signal } : undefined;
     var acc = { parts: [], sources: [], cites: [], seen: {}, src: function (u, t) { if (!/^https?:\/\//i.test(u) || acc.seen[u] || acc.sources.length >= 8) return; acc.seen[u] = 1; acc.sources.push({ url: u, title: String(t || '').slice(0, 140) }); } };
-    var total = { cost: 0, searches: 0, model: '' };
+    var total = { cost: k.cost || 0, searches: 0, model: '' };
     function status(s) { if (opts.onStatus) opts.onStatus(s); }
+    function beat() { if (opts.onBeat) opts.onBeat(); }
+    ctx.onBeat = beat;
+    /* whatever happens, what was spent is counted: a stop, the watchdog or an error after billed steps */
+    function spentSoFar() { return total.cost + ctx.reviewCost; }
+    function partialMeter(s, m0) {
+      var pm = { model: m0, start: null, chars: 0 };
+      s.on('streamEvent', function (ev) {
+        beat();
+        if (ev.type === 'message_start' && ev.message) { pm.start = ev.message.usage; pm.model = ev.message.model || m0; }
+        else if (ev.type === 'content_block_delta' && ev.delta) pm.chars += String(ev.delta.text || ev.delta.thinking || ev.delta.partial_json || '').length;
+      });
+      return pm;
+    }
 
     if (r === 'quick') {
       /* Small talk: the fast model, no tools, a couple of sentences. */
-      var qs = c.messages.stream({ model: QUICK, max_tokens: 1024, output_config: { effort: 'low' }, system: system(), messages: messages }, reqOpts), live = '';
+      var qs = c.messages.stream({ model: QUICK, max_tokens: 1024, output_config: { effort: 'low' }, system: system(), messages: messages }, reqOpts), live = '', qpm = partialMeter(qs, QUICK);
       qs.on('text', function (delta) { live += delta; if (opts.onText) opts.onText(live); });
       return qs.finalMessage().then(function (m) {
-        total.cost = Kin.mind.costOf(m.model, m.usage);
+        total.cost += Kin.mind.costOf(m.model, m.usage);
         if (m.stop_reason === 'refusal') return { text: 'I would rather not answer that one, sir.', refused: true, model: m.model, route: r, cost: total.cost };
         digest(m.content, acc);
         return { text: acc.parts.join('\n\n') || live, model: m.model, route: r, cost: total.cost, sources: [], made: [] };
-      });
+      }, function (e) { total.cost += qpm.start ? Kin.mind.partialCost(qpm.model, qpm.start, qpm.chars) : 0; if (e && typeof e === 'object') e.spent = spentSoFar(); throw e; });
     }
 
     var local = makeTools(ctx);
@@ -289,7 +360,8 @@
       if (r === 'compute') t.push({ type: 'code_execution_20260521', name: 'code_execution' });
       else if (web && !noWeb) {
         /* dynamic filtering: the search results are filtered by code at Anthropic before Claude reads them */
-        t.push({ type: 'web_search_20260209', name: 'web_search', max_uses: 5 });
+        var left = Kin.mind.webLeft();
+        if (left > 0) t.push({ type: 'web_search_20260209', name: 'web_search', max_uses: Math.min(5, left) });
         t.push({ type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 3, max_content_tokens: 20000, citations: { enabled: true } });
       }
       return t;
@@ -313,7 +385,7 @@
          systems decline is re-run by the API on a fallback model (server-side fallbacks). */
       var params = { model: model, max_tokens: room, betas: [FALLBACK_BETA], fallbacks: 'default', thinking: { type: 'adaptive' },
         output_config: { effort: effort }, system: system(), messages: cached(messages), tools: toolList() };
-      var s = c.beta.messages.stream(params, reqOpts);
+      var s = c.beta.messages.stream(params, reqOpts), pm = partialMeter(s, model);
       s.on('text', function (delta) { live += delta; show(); });
       s.on('streamEvent', function (ev) {
         if (ev.type !== 'content_block_start' || !ev.content_block) return;
@@ -351,25 +423,32 @@
           return turn();
         });
       }, function (err) {
+        /* the part of this request that ran before it stopped was billed too */
+        if (pm.start) total.cost += Kin.mind.partialCost(pm.model, pm.start, pm.chars);
         /* web search or fetch switched off for the organization: answer without the web this time and from now on */
         if (err instanceof Anthropic.BadRequestError && /web (search|fetch)[^.]*not enabled|not enabled[^.]*web (search|fetch)/i.test(String(err.message || '')) && !noWeb) { noWeb = true; return turn(); }
-        if (model === FABLE && step === 0 && (err instanceof Anthropic.BadRequestError || err instanceof Anthropic.PermissionDeniedError || err instanceof Anthropic.NotFoundError) && /model|retention|fable|not available|access/i.test(String(err.message || ''))) { model = MAIN; ctx.model = MAIN; ctx.fableOff = String(err.message || '').slice(0, 160); return turn(); }
+        if (model === FABLE && step === 0 && (err instanceof Anthropic.BadRequestError || err instanceof Anthropic.PermissionDeniedError || err instanceof Anthropic.NotFoundError) && /model|retention|fable|not available|access/i.test(String(err.message || ''))) { model = MAIN; ctx.model = MAIN; ctx.fableOff = String(err.message || '').slice(0, 160); fableGone = ctx.fableOff; return turn(); }
         /* a tool input that could not be parsed at all: ask again, twice at most. API errors go up. */
         if (err instanceof Anthropic.APIError || !/pars|JSON/i.test(String((err && err.message) || '')) || jsonRetries++ >= 1) throw err;
         return turn();
       });
     }
     return turn().then(function (res) {
-      res.route = r; res.sources = acc.sources; res.made = ctx.made; res.searches = total.searches;
-      res.cost = total.cost + ctx.reviewCost; if (!res.model) res.model = total.model || model; if (ctx.fableOff) res.fableOff = ctx.fableOff;
+      res.routed = k.how; res.route = r; res.sources = acc.sources; res.made = ctx.made; res.searches = total.searches;
+      res.cost = spentSoFar(); if (!res.model) res.model = total.model || model; if (ctx.fableOff || (fableGone && deepModel !== FABLE && r === 'make' && Kin.mind.deep() === 'fable')) res.fableOff = ctx.fableOff || fableGone;
       if (r === 'make' || opts.aloud || res.refused || res.cut || !res.text || res.text.length < 160 || (opts.signal && opts.signal.aborted)) return res;
       status('Checking the answer');
-      return selfCheck(c, text, res.text, ctx.evidence, acc.cites, reqOpts).then(function (k) {
-        res.cost += k.cost || 0; res.checked = k.verdict;
-        if (k.verdict === 'revised' && k.answer) { res.draft = res.text; res.text = k.answer; }
+      /* the check sees what the answer could rest on: tool results, web quotes, the pack's rules, brief and numbers, and what Kin remembers */
+      var packText = String(system()[0].text || '').slice(PERSONA.length).trim();
+      var evidence = ctx.evidence.concat(acc.cites.map(function (x) { return 'web: ' + x; }));
+      if (packText) evidence.push('pack (rules, brief, numbers, playbook list):\n' + packText.slice(0, 12000));
+      if (mem) evidence.push('memory:\n' + mem);
+      return selfCheck(c, text, res.text, evidence, reqOpts).then(function (kc) {
+        res.cost += kc.cost || 0; res.checked = kc.verdict;
+        if (kc.verdict === 'revised' && kc.answer) { res.draft = res.text; res.text = kc.answer; }
         return res;
       });
-    });
+    }, function (e) { if (e && typeof e === 'object') e.spent = spentSoFar(); throw e; });
   }
 
   var CHECK = [
@@ -377,8 +456,8 @@
     'Check: does it answer exactly what was asked, first? Is every specific claim (names, numbers, dates, prices) supported by the evidence or clearly marked as general knowledge? Anything wrong, missing that matters, or padded? Does it follow the house style (lead with the answer, short sentences, "sir" at most once, no em dashes)?',
     'If it is right, reply {"verdict":"ok"}. If it needs changes, reply {"verdict":"revise","answer":"<the whole corrected answer, same voice and format, no notes about the check>"}. Do not add facts the evidence does not support; remove or qualify them instead. JSON only.'
   ].join('\n');
-  function selfCheck(c, q, draft, evidence, cites, reqOpts) {
-    var ev = evidence.concat(cites.map(function (x) { return 'web: ' + x; })).join('\n').slice(0, 16000) || '(no tool results: the answer came from general knowledge)';
+  function selfCheck(c, q, draft, evidence, reqOpts) {
+    var ev = evidence.join('\n\n').slice(0, 30000) || '(no tool results: the answer came from general knowledge)';
     return c.messages.create({ model: MAIN, max_tokens: 6000, output_config: { effort: 'low' }, system: CHECK,
       messages: [{ role: 'user', content: 'QUESTION\n' + String(q).slice(0, 3000) + '\n\nDRAFT\n' + draft + '\n\nEVIDENCE\n' + ev }] }, reqOpts)
       .then(function (m) {
@@ -432,7 +511,7 @@
     /** { hour, day, perHour, perDay }: questions sent to Claude lately, and the limits */
     limits: usage,
     setLimits: function (o) { o = o || {}; if (o.perHour >= 1 && o.perHour <= 500) ls.set(LIMH, String(Math.round(o.perHour))); if (o.perDay >= 1 && o.perDay <= 5000) ls.set(LIMD, String(Math.round(o.perDay))); return usage(); },
-    smallTalk: smallTalk, route: route, local: localAnswer,
+    smallTalk: smallTalk, route: route, keywordRoute: keywordRoute, local: localAnswer,
     /** Always resolves, never throws: { text, source: "claude" | "local" | "limit", code?, detail?, model?, route?, sources?, made?, cost? } */
     ask: function (text, opts) {
       opts = opts || {};
@@ -444,7 +523,7 @@
         if (o) return Promise.resolve({ text: o === 'hour' ? 'I have reached the hourly limit you set, sir.' : 'I have reached the daily limit you set, sir.', source: 'limit', code: 'limit', which: o });
         count();
         return askClaude(text, opts).then(function (r) { r.source = 'claude'; if (r.text) keep(text, r.text); if (r.cost) Kin.mind.addSpend(r.cost); return r; },
-          function (err) { var e = explain(err); return { text: e.text, detail: e.detail || '', source: 'claude', code: e.code }; });
+          function (err) { var spent = err && err.spent || 0; if (spent) Kin.mind.addSpend(spent); var e = explain(err); return { text: e.text, detail: e.detail || '', source: 'claude', code: e.code, cost: spent }; });
       } catch (err) { var x = explain(err); return Promise.resolve({ text: x.text, detail: x.detail || '', source: 'claude', code: x.code || 'error' }); }
     }
   };

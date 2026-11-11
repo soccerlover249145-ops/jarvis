@@ -38,9 +38,12 @@
       Kin makes (age, school, family money). Returns a reason, or '' when the text may be kept. */
   function refuse(text) {
     var t = String(text || '');
-    if (/sk-ant-|\bsk_[A-Za-z0-9]{16,}|\b(api[ _-]?key|password|passcode|pin code|secret key|access token)\b/i.test(t)) return 'Keys and passwords are never kept in memory.';
-    if (/\b(\d{1,2}\s*(years?|yrs?)\s*old|my age|how old i am|born in (19|20)\d\d|grade \d{1,2}|(high|middle|elementary|primary|secondary) school|my school)\b/i.test(t)) return 'Your age and school are never kept, by your own rules.';
-    if (/\b(family|parents?|mum|mom|dad|father|mother)\b[^.]{0,60}(\$|£|€|\d+\s*(k|thousand|million|dollars))|(\$|£|€)\s?\d[^.]{0,60}\b(family|parents?|mum|mom|dad|father|mother)\b/i.test(t)) return 'Family money is never kept, by your own rules.';
+    var AGE_W = '(ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)';
+    if (/sk-ant-|\bsk_[A-Za-z0-9]{16,}|\b[a-z]{2,6}_[A-Za-z0-9_]{10,}\b|\beyJ[A-Za-z0-9_-]{10,}|\b(api[ _-]?key|password|passcode|pin( code)?|secret key|client secret|(access|api|auth|bearer|refresh|session) token|my token|token is|alarm code|door code|security code|cvv|sort code|account number|routing number)\b/i.test(t)) return 'Keys, codes and passwords are never kept in memory.';
+    if (/\b(?:\d[ -]?){13,19}\b/.test(t) || /\b(card|visa|mastercard|amex)\b[^.]{0,30}\d{4}/i.test(t)) return 'Card numbers are never kept in memory.';
+    if (/\b(code|pin|combination|passcode)\b[^.]{0,20}\b\d{4,8}\b/i.test(t)) return 'Keys, codes and passwords are never kept in memory.';
+    if (new RegExp('\\b(\\d{1,2}\\s*(years?|yrs?)\\s*old|i\'?m \\d{1,2}\\b|i am \\d{1,2}\\b|(i\'?m|i am|turning|turned) ' + AGE_W + '\\b|' + AGE_W + ' years? old|my age|how old i am|my birthday|born (in|on) |grade \\d{1,2}|(year|grade) (seven|eight|nine|ten|eleven|twelve)\\b|(high|middle|elementary|primary|secondary|grammar|prep) school|my school|i go to [A-Z]?[a-z]+ (high|academy|college|prep)|\\b(high|academy)\\b[^.]{0,20}\\b(student|pupil|class|grade))', 'i').test(t)) return 'Your age and school are never kept, by your own rules.';
+    if (/\b(family|parents?|mum|mom|dad|father|mother|grandma|grandpa|uncle|aunt)\b[^.]{0,60}(\$|£|€|\d|\b(thousand|million|hundred|grand|pounds|dollars|euros|money|loan|lent|invested|gave)\b)|(\$|£|€)\s?\d[^.]{0,60}\b(family|parents?|mum|mom|dad|father|mother)\b/i.test(t)) return 'Family money is never kept, by your own rules.';
     return '';
   }
   function remember(text, kind, extra) {
@@ -101,7 +104,11 @@
   var CORRECTION = /^(no[,.!]|nope\b|wrong\b|that'?s (wrong|not right|not it|incorrect)|not quite\b|incorrect\b|actually[,]? |you got that wrong|that isn'?t right)/i;
   /** the founder correcting the last answer: kept as a lesson tied to the question it was about */
   function noteCorrection(text, prevQ, prevA) {
-    if (!prevQ || !CORRECTION.test(String(text || '').trim())) return null;
+    var t0 = String(text || '').trim();
+    if (!prevQ || !CORRECTION.test(t0)) return null;
+    /* "Actually, what time is it in Tokyo?" is a new question, not a correction */
+    var after = t0.replace(CORRECTION, '').trim();
+    if (/\?\s*$/.test(t0) || /^(what|when|who|where|why|how|which|can|could|would|will|is|are|do|does|did|should|tell|show|give|find)\b/i.test(after) || after.split(/\s+/).length < 3) return null;
     return remember('When asked "' + String(prevQ).slice(0, 140) + '", the founder corrected the answer: "' + String(text).slice(0, 260) + '"', 'correction', { q: prevQ });
   }
 
@@ -111,6 +118,8 @@
     var old = item.id && data.made.filter(function (m) { return m.id === item.id; })[0];
     if (old) { Object.keys(item).forEach(function (k) { old[k] = item[k]; }); old.at = Date.now(); old.round = (old.round || 1) + (item.content ? 1 : 0); save('made'); return old; }
     var m = { id: item.id || uid('d'), kind: item.kind, title: item.title, note: item.note || '', content: item.content, at: Date.now(), round: 1, score: null };
+    /* a design from the studio also keeps its brief, the art director's notes and the other concepts */
+    ['src', 'brief', 'concept', 'notes', 'why', 'caps', 'others', 'pictures', 'credits', 'usd', 'issues'].forEach(function (k) { if (item[k] !== undefined) m[k] = item[k]; });
     data.made.unshift(m); if (data.made.length > MADE_MAX) data.made.length = MADE_MAX; save('made'); return m;
   }
   function getMade(id) { return data.made.filter(function (m) { return m.id === id; })[0] || null; }
@@ -127,15 +136,19 @@
     var err = doc.getElementsByTagName('parsererror')[0];
     if (err) return { ok: false, why: 'The SVG does not parse: ' + String(err.textContent || '').replace(/\s+/g, ' ').slice(0, 160) };
     var root = doc.documentElement; if (!root || root.nodeName.toLowerCase() !== 'svg') return { ok: false, why: 'The root element is not <svg>.' };
-    Array.prototype.slice.call(root.querySelectorAll('script, foreignObject, iframe, object, embed, audio, video, animate, set, animateMotion, animateTransform, animateColor')).forEach(function (n) { n.parentNode.removeChild(n); });
+    Array.prototype.slice.call(root.querySelectorAll('script, style, foreignObject, iframe, object, embed, audio, video, animate, set, animateMotion, animateTransform, animateColor')).forEach(function (n) { n.parentNode.removeChild(n); });
+    /* the same elements under any namespace prefix (an XHTML <h:script>, say) */
+    Array.prototype.slice.call(root.getElementsByTagName('*')).filter(function (n) { return /^(script|style|iframe|object|embed|foreignobject)$/i.test(n.localName); }).forEach(function (n) { if (n.parentNode) n.parentNode.removeChild(n); });
     /* a link inside a picture goes nowhere useful: keep what it wraps, drop the link */
     Array.prototype.slice.call(root.querySelectorAll('a')).forEach(function (a) { while (a.firstChild) a.parentNode.insertBefore(a.firstChild, a); a.parentNode.removeChild(a); });
     Array.prototype.slice.call(root.querySelectorAll('*')).concat([root]).forEach(function (n) {
       Array.prototype.slice.call(n.attributes).forEach(function (at) {
-        var name = at.name.toLowerCase(), v = String(at.value || '').trim();
-        if (/^on/.test(name)) n.removeAttribute(at.name);
-        else if ((name === 'href' || name === 'xlink:href' || name === 'src') && !/^#|^data:image\/(png|jpe?g|gif|webp);/i.test(v)) n.removeAttribute(at.name);
-        else if (name === 'style' && /url\(\s*['"]?(?!#|data:)/i.test(v)) n.removeAttribute(at.name);
+        var name = at.name.toLowerCase(), local = String(at.localName || name).toLowerCase(), v = String(at.value || '').trim();
+        if (/^on/.test(local)) n.removeAttribute(at.name);
+        /* a link under any prefix (xlink:, x:, …) may only point inside the picture or carry a picture as data */
+        else if ((local === 'href' || local === 'src') && !/^#|^data:image\/(png|jpe?g|gif|webp);/i.test(v)) n.removeAttribute(at.name);
+        /* url(...) anywhere (fill, filter, mask, style) may only point inside the picture */
+        else if (/url\(\s*['"]?(?!#)/i.test(v)) n.removeAttribute(at.name);
       });
     });
     if (!root.getAttribute('xmlns')) root.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
@@ -202,7 +215,7 @@
           var texts = Array.prototype.slice.call(root.querySelectorAll('text')).map(function (t) {
             var b = t.getBoundingClientRect(), fs = parseFloat(getComputedStyle(t).fontSize) || 0, x = (b.left - rr.left) * kx, y = (b.top - rr.top) * ky, bw = b.width * kx, bh = b.height * ky;
             if (fs > 0) { var line = Math.min(bh, 1.45 * fs), top = Math.max(0, 0.75 * line - 0.74 * fs), bot = Math.max(0, 0.25 * line - 0.18 * fs); y += top; bh = Math.max(1, bh - top - bot); }
-            return { txt: (t.textContent || '').replace(/\s+/g, ' ').trim(), x: x, y: y, w: bw, h: bh, fs: fs || bh, bleed: !!(t.closest && t.closest('[data-bleed="true"]')) };
+            return { txt: (t.textContent || '').replace(/\s+/g, ' ').trim(), x: x, y: y, w: bw, h: bh, fs: fs || bh, bleed: !!(t.closest && t.closest('[data-bleed="true"]')), decor: !!(t.closest && t.closest('[data-layer="decor"]')) };
           }).filter(function (t) { return t.txt && t.w > 0 && t.h > 0; });
           var hard = [], soft = [], q = function (t) { return '"' + (t.txt.length > 40 ? t.txt.slice(0, 38) + '…' : t.txt) + '"'; }, edge = 0.04 * short;
           texts.forEach(function (t) {
@@ -212,7 +225,10 @@
           });
           for (var i = 0; i < texts.length; i++) for (var j = i + 1; j < texts.length; j++) {
             var a = texts[i], b = texts[j], ix = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x), iy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
-            if (ix > 0 && iy > 0 && ix * iy > 0.2 * Math.min(a.w * a.h, b.w * b.h)) hard.push(q(a) + ' and ' + q(b) + ' print over each other.');
+            if (!(ix > 0 && iy > 0 && ix * iy > 0.2 * Math.min(a.w * a.h, b.w * b.h))) continue;
+            /* layered type on purpose (a ghost word behind a headline, marked decor, or three times the size) is a judgement for the art director, not a fault */
+            if (a.decor || b.decor || a.bleed || b.bleed || Math.max(a.fs, b.fs) >= 3 * Math.min(a.fs, b.fs)) soft.push(q(a) + ' and ' + q(b) + ' are layered; make sure the front one reads clearly.');
+            else hard.push(q(a) + ' and ' + q(b) + ' print over each other.');
           }
           wordProblems(texts.map(function (t) { return t.txt; }).join(' \n ')).forEach(function (x) { hard.push(x); });
           done({ hard: hard.slice(0, 8), soft: soft.slice(0, 6), texts: texts.length });
@@ -432,9 +448,13 @@
   };
   var SEARCH_USD = 0.01;
   function price(model) { var k = Object.keys(PRICES).filter(function (p) { return String(model || '').indexOf(p) === 0; }).sort(function (a, b) { return b.length - a.length; })[0]; return PRICES[k] || PRICES['claude-opus-5-5']; }
+  function tokens(p, u) { return (u.input_tokens || 0) * p[0] + (u.output_tokens || 0) * p[1] + (u.cache_read_input_tokens || 0) * p[2] + (u.cache_creation_input_tokens || 0) * p[3]; }
+  /** a request stopped part way (a stop, the watchdog, an error): what it probably cost, from the input counted at its start and the output that arrived */
+  function partialCost(model, start, chars) { var u = Object.assign({}, start || {}); u.output_tokens = Math.max(u.output_tokens || 0, Math.ceil((chars || 0) / 3.5)); delete u.iterations; return costOf(model, u); }
   function costOf(model, u) {
-    if (!u) return 0; var p = price(model);
-    var c = (u.input_tokens || 0) * p[0] + (u.output_tokens || 0) * p[1] + (u.cache_read_input_tokens || 0) * p[2] + (u.cache_creation_input_tokens || 0) * p[3];
+    if (!u) return 0;
+    /* with server-side fallbacks the top-level usage covers only the attempt that answered; usage.iterations holds every attempt, each at its own model's price */
+    var c = Array.isArray(u.iterations) && u.iterations.length ? u.iterations.reduce(function (sum, it) { return sum + (it ? tokens(price(it.model || model), it) : 0); }, 0) : tokens(price(model), u);
     var ws = u.server_tool_use && u.server_tool_use.web_search_requests || 0;
     return c / 1e6 + ws * SEARCH_USD;
   }
@@ -455,7 +475,7 @@
     log: function () { return data.log.slice(); }, addLog: addLog, dropLog: dropLog,
     instant: instant, numify: numify, onTimer: onTimer, timer: function () { return timer ? { left: Math.ceil((timer.end - Date.now()) / 1000), label: timer.label } : null }, stopTimer: stopTimer, fmt: fmt,
     md: md,
-    costOf: costOf, addSpend: addSpend, spendToday: spendToday, webCap: webCap, setWebCap: setWebCap, webToday: webToday, addWeb: addWeb, webLeft: webLeft,
+    costOf: costOf, partialCost: partialCost, addSpend: addSpend, spendToday: spendToday, webCap: webCap, setWebCap: setWebCap, webToday: webToday, addWeb: addWeb, webLeft: webLeft,
     deep: function () { return ls.get('kin.deep', 'fable') === 'opus' ? 'opus' : 'fable'; }, setDeep: function (v) { ls.set('kin.deep', v === 'fable' ? 'fable' : 'opus'); },
     wipe: function () { data = { memory: [], made: [], log: [] }; stopTimer(true); var k = kv(); if (k) ['memory', 'made', 'log'].forEach(function (n) { k.del('mind.' + n).catch(function () {}); }); }
   };

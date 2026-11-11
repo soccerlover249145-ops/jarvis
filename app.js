@@ -51,7 +51,7 @@
       src.appendChild(ol); d.appendChild(src);
     }
     (r.made || []).forEach(function (id) { var m = Kin.mind.getMade(id); if (!m || d.querySelector('[data-made="' + id + '"]')) return; var b = document.createElement('button'); b.type = 'button'; b.className = 'madeb'; b.dataset.made = id; b.textContent = 'Open ' + (m.kind === 'design' ? 'the design' : 'the ' + m.kind) + ': ' + m.title; d.appendChild(b); });
-    if (r.source === 'claude' && !r.code) {
+    if (r.source === 'claude' && !r.code && !r.declined) {
       var meta = document.createElement('div'); meta.className = 'meta'; var bits = [];
       var model = String(r.model || ''); bits.push(/haiku/.test(model) ? 'Quick' : /fable/.test(model) ? 'Fable 5.2' : 'Opus 5.5' + (r.fableOff ? ' (Fable 5.2 was not open to this key)' : ''));
       if (r.route === 'make') bits.push('deep'); if (r.route === 'compute') bits.push('with code');
@@ -159,6 +159,8 @@
   function join(a, b) { var na = ears.norm(a), nb = ears.norm(b); if (!na) return b; if (nb.indexOf(na) === 0) return b; if (na.length >= nb.length && na.slice(-nb.length) === nb) return a; return (a + ' ' + b).trim(); }
   function commit() {
     clearTimeout(hearT); var q = (buf + ' ' + tail).trim(), n = ears.norm(q); buf = tail = ''; if (!q || S.talk !== 'awake') return;
+    /* a yes or no to a question Kin asked before spending: short words like "yeah" count here */
+    if (pendingConfirm && !echo(q) && pendingConfirm.answer(q)) { showHeard(''); return; }
     if (n.length < 2 || /^(um+|uh+|hm+|mm+|ah+|oh|er+|okay|ok|yeah|yep|right|so|well|and|the|a|i)$/.test(n)) { showHeard(''); caption(null); return; }
     /* last line of defence: never send Kin its own words */
     if (echo(q)) { showHeard(''); caption(null); return; }
@@ -210,13 +212,47 @@
   }
 
   /* ------------------------------------------------------------ asking */
+  /* ------------------------------------------------------------ asking before spending
+     A job that will cost real money (a big design job, Higgsfield credits) stops and asks once.
+     The founder answers with the buttons, or by saying or typing yes or no. */
+  var pendingConfirm = null;
+  var YES = /^(yes|yeah|yep|yup|sure|ok|okay|go|go ahead|do it|make them|make it|please do|approved|yes please)( sir| kin| jarvis)?$/, NO = /^(no|nope|not now|skip|skip (them|pictures)|cancel|stop|dont|do not|no thanks)( sir| kin| jarvis)?$/;
+  function confirmCard(card) {
+    return new Promise(function (res) {
+      var t = $('thread'), d = document.createElement('div'); d.className = 'msg kin ask';
+      var sm = document.createElement('small'); sm.textContent = 'Kin asks before spending'; d.appendChild(sm);
+      var h = document.createElement('p'); h.className = 'asktitle'; h.textContent = card.title; d.appendChild(h);
+      (card.lines || []).forEach(function (l) { var q = document.createElement('p'); q.className = 'note'; q.textContent = l; d.appendChild(q); });
+      var bt = document.createElement('div'); bt.className = 'btns';
+      var y = document.createElement('button'); y.type = 'button'; y.className = 'askyes'; y.textContent = card.yes || 'Go ahead';
+      var n = document.createElement('button'); n.type = 'button'; n.className = 'lnk dim'; n.textContent = card.no || 'Not now';
+      bt.appendChild(y); bt.appendChild(n); d.appendChild(bt);
+      /* the question sits above the answer that is waiting on it */
+      var cur = t.lastElementChild; if (S.busy && cur && cur.classList.contains('kin') && !cur.classList.contains('ask')) t.insertBefore(d, cur); else t.appendChild(d);
+      function done(v) {
+        if (!pendingConfirm || pendingConfirm.d !== d) return; pendingConfirm = null; S.confirming = false; y.disabled = n.disabled = true;
+        var r = document.createElement('p'); r.className = 'note'; r.textContent = v ? 'Approved.' : 'Declined. Nothing was spent on this.'; d.appendChild(r);
+        caption(v ? 'Thank you, sir. Working on it.' : 'Understood, sir.', v ? 'Working' : ''); res(v);
+      }
+      pendingConfirm = { d: d, done: done, answer: function (q) { var x = ears.norm(q); if (YES.test(x)) { done(true); return true; } if (NO.test(x)) { done(false); return true; } return false; } };
+      S.confirming = true;
+      y.addEventListener('click', function () { gesture(); done(true); }); n.addEventListener('click', function () { gesture(); done(false); });
+      if (S.ctl) S.ctl.signal.addEventListener('abort', function () { done(false); });
+      showThread(); d.scrollIntoView({ block: 'end' });
+      caption(card.title, 'Tap ' + (card.yes || 'Go ahead') + ', or say yes or no');
+      if (card.say && (S.talk === 'awake' || S.speakTyped) && S.unlocked) say(card.say, true);
+    });
+  }
+  Kin.confirm = confirmCard;
+
   function ask(text) {
     text = String(text || '').trim(); if (!text) return;
+    if (pendingConfirm && pendingConfirm.answer(text)) { inp.value = ''; lastLen = 0; return; }
     if (command(text)) { inp.value = ''; lastLen = 0; return; }
     if (S.busy) return;
     var now = Kin.mind.instant(text);
     if (now) { instantly(text, now); return; }
-    var aloud = S.talk === 'awake', p = null, got = false, t0 = Date.now(), momT = 0, watchI = 0, sess = null, lastSign = Date.now(), stalled = false, pr;
+    var aloud = S.talk === 'awake', p = null, got = false, t0 = Date.now(), momT = 0, watchI = 0, sess = null, lastSign = Date.now(), stalled = false, pr, making = false;
     inp.value = ''; lastLen = 0; multi = single = 0; S.asks++; touch();
     addMsg('you', text); p = addMsg('kin', '…');
     caption(text.length > 150 ? text.slice(0, 147) + '…' : text, 'Thinking', 'you');
@@ -224,7 +260,7 @@
     var speakIt = (aloud || S.speakTyped) && S.unlocked;
     /* a long silence feels broken: say so once, and never wait forever, before the first word or after it */
     momT = setTimeout(function () { if (S.busy && !got && !S.talking && speakIt) say(voice.CLIPS.moment, true); }, 6500);
-    watchI = setInterval(function () { if (!S.busy) { clearInterval(watchI); return; } if (Date.now() - lastSign > (got ? Kin.T.quiet : Kin.T.firstText)) { stalled = true; try { S.ctl.abort(); } catch (e) {} } }, 1000);
+    watchI = setInterval(function () { if (!S.busy) { clearInterval(watchI); return; } if (S.confirming) { lastSign = Date.now(); return; } if (Date.now() - lastSign > (making ? Kin.T.making : got ? Kin.T.quiet : Kin.T.firstText)) { stalled = true; try { S.ctl.abort(); } catch (e) {} } }, 1000);
     function finish(r) {
       S.last = { ms: Date.now() - t0, source: r.source, code: r.code || '', model: r.model || '' };
       var out = r.text || (r.code === 'stopped' ? (got ? p.textContent : 'Stopped.') : 'I have nothing to say to that, sir.');
@@ -250,9 +286,13 @@
           /* only a spoken conversation is spoken while it streams: a typed answer is checked first, then its opening is read out */
           if (aloud && speakIt && voice.live()) { var c = head(plain(t)); if (!sess && /[.!?]["')\]]?\s/.test(c)) { clearTimeout(momT); sess = voice.begin(); } if (sess) { S.said = ears.norm(c); sess.feed(c); } } },
         onTool: function () { got = true; lastSign = Date.now(); },
+        /* every event of a stream is a sign of life: thinking, a tool's input arriving, a search */
+        onBeat: function () { lastSign = Date.now(); },
+        onRoute: function (route) { making = route === 'make' || route === 'design'; },
         onStatus: function (st) { lastSign = Date.now(); if (!S.talking && !got) caption(text.length > 150 ? text.slice(0, 147) + '…' : text, st, 'you'); else if (!S.talking) $('capS').textContent = st; },
         onMade: function () { lastSign = Date.now(); refreshMade(); },
-        onRemember: function () { refreshSettings(); }
+        onRemember: function () { refreshSettings(); },
+        confirm: confirmCard
       });
     } catch (e) { pr = Promise.resolve({ text: 'Something went wrong on this page, sir. The reason is on screen.', detail: String((e && e.message) || e).slice(0, 200), source: 'local', code: 'error' }); }
     /* whatever happens, Kin must never be left "thinking" */
@@ -332,12 +372,35 @@
       if (m.kind === 'design') { var fig = document.createElement('div'); fig.className = 'design'; var img = document.createElement('img'); img.alt = m.title; img.onload = function () { setTimeout(function () { try { URL.revokeObjectURL(img.src); } catch (e) {} }, 1000); };
           /* a picture cannot reach the page's fonts, so the fonts go inside it, as they did for the art director */
           Kin.mind.withFonts(m.content).then(function (full) { img.src = Kin.mind.svgUrl(full); }, function () { img.src = Kin.mind.svgUrl(m.content); }); fig.appendChild(img); el.appendChild(fig);
-        if (m.fixes && m.fixes.length && m.score != null && m.score < 85) { var fx = document.createElement('p'); fx.className = 'note'; fx.textContent = 'Still open: ' + m.fixes.join(' '); el.appendChild(fx); } }
+        if (m.fixes && m.fixes.length && m.score != null && m.score < 85) { var fx = document.createElement('p'); fx.className = 'note'; fx.textContent = 'Still open: ' + m.fixes.join(' '); el.appendChild(fx); }
+        studioDetails(el, m); }
       else { var doc = document.createElement('div'); doc.className = 'md doc'; Kin.mind.md(m.content, doc); el.appendChild(doc); }
       return;
     }
     if (!made.length) { var e1 = document.createElement('p'); e1.className = 'empty'; e1.textContent = 'Nothing made yet. Ask for a document, a plan, a table or a design, and it lands here.'; el.appendChild(e1); return; }
     made.forEach(function (x) { var b = document.createElement('button'); b.type = 'button'; b.className = 'mrow'; var k = document.createElement('small'); k.textContent = x.kind + ' · ' + new Date(x.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + (x.score != null ? ' · ' + x.score : ''); var t = document.createElement('span'); t.textContent = x.title; b.appendChild(k); b.appendChild(t); b.addEventListener('click', function () { shelfOpen = x.id; refreshMade(); }); el.appendChild(b); });
+  }
+  /** a design from the studio: the idea, the art director's view, the brief, and the two concepts that lost */
+  function studioDetails(el, m) {
+    function sec(title) { var h = document.createElement('h4'); h.className = 'sech'; h.textContent = title; el.appendChild(h); }
+    function line(text, cls) { if (!text) return; var q = document.createElement('p'); q.className = cls || 'note'; q.textContent = text; el.appendChild(q); return q; }
+    if (m.concept) { sec('The idea'); line(m.concept.name + ': ' + m.concept.idea, 'idea'); }
+    if ((m.notes && m.notes.length) || m.why) { sec('Art director'); if (m.why) line(m.why); (m.notes || []).forEach(function (x) { line('· ' + x); }); if (m.caps && m.caps.length) line('Held below the bar for: ' + m.caps.join(', ') + '.'); }
+    if (m.others && m.others.length) {
+      sec('The other concepts'); var g = document.createElement('div'); g.className = 'others';
+      m.others.forEach(function (o) {
+        var f = document.createElement('figure'), im = document.createElement('img'); im.alt = o.name;
+        Kin.mind.withFonts(o.svg || '').then(function (full) { im.src = Kin.mind.svgUrl(full); }, function () { im.src = Kin.mind.svgUrl(o.svg || ''); });
+        var cap = document.createElement('figcaption'); cap.textContent = o.name + (o.score != null ? ' · ' + o.score : '') + (o.caps && o.caps.length ? ' (' + o.caps.join(', ') + ')' : '');
+        var idea = document.createElement('span'); idea.textContent = o.idea; cap.appendChild(document.createElement('br')); cap.appendChild(idea);
+        f.appendChild(im); f.appendChild(cap); g.appendChild(f);
+      });
+      el.appendChild(g);
+    }
+    if (m.brief) { sec('The brief'); var b = m.brief; [['For', b.audience], ['Message', b.message], ['Territory', b.idea], ['References', b.references], ['Constraints', b.constraints], ['Format', b.format]].forEach(function (r) { if (r[1]) line(r[0] + ': ' + r[1]); }); }
+    if (m.usd) line('Claude usage for this job: ' + (m.usd < 0.01 ? 'less than a cent' : 'about $' + m.usd.toFixed(2)) + '.');
+    if (m.pictures && m.pictures.length) { sec('Pictures from Higgsfield'); line(m.pictures.length + (m.pictures.length === 1 ? ' picture' : ' pictures') + (m.credits ? ', about ' + m.credits + ' credits' : '') + '.'); }
+    if (m.issues && m.issues.length) { sec('Worth knowing'); m.issues.forEach(function (x) { line(x); }); }
   }
   $('shelfb').addEventListener('click', function () { gesture(); openShelf(shelfTab); });
   $('shelfx').addEventListener('click', function () { $('shelf').hidden = true; });
@@ -395,6 +458,7 @@
     $('keyNote').textContent = Kin.shared ? Kin.SHARED_TEXT : brain.hasKey() ? 'A key is saved on this device: ' + brain.keyHint() + '. Small talk uses ' + brain.QUICK + ', real questions use ' + brain.MAIN + '.' : 'No key on this device. Kin answers from the pack only.';
     var dp = Kin.mind.deep(); [].forEach.call(document.querySelectorAll('#deepSeg button'), function (b) { b.setAttribute('aria-pressed', b.dataset.deep === dp); });
     $('webCap').value = Kin.mind.webCap();
+    hfSettings();
     var sp = Kin.mind.spendToday();
     $('webNote').textContent = 'Web searches today: ' + Kin.mind.webToday() + ' of ' + Kin.mind.webCap() + '. Each search costs about one US cent, on top of the words. Reading a page has no extra charge. At the limit Kin answers without the web and says so.';
     $('spendNote').textContent = sp.n ? 'Today on this device: ' + sp.n + (sp.n === 1 ? ' answer' : ' answers') + ', about $' + sp.usd.toFixed(2) + '. An estimate from the token counts Anthropic reports; your Console shows the real bill.' : 'Nothing spent today on this device.';
@@ -436,6 +500,19 @@
   function setLimit(e) { var h = parseInt($('limH').value, 10), d = parseInt($('limD').value, 10); brain.setLimits({ perHour: h, perDay: d }); refreshSettings(); }
   $('limH').addEventListener('change', setLimit); $('limD').addEventListener('change', setLimit);
   $('deepSeg').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; Kin.mind.setDeep(b.dataset.deep); refreshSettings(); });
+  function hfSettings() {
+    var on = Kin.hf.connected(), st = Kin.hf.status();
+    $('hfConnect').hidden = on; $('hfDrop').hidden = !on;
+    $('hfNote').textContent = Kin.shared ? Kin.SHARED_TEXT : (st.why ? st.why + ' ' : st.last && !on ? st.last + ' ' : '') + (on
+      ? 'Connected on this device. Design jobs can use real pictures: Kin prices them first and asks you before any credits are spent. The sign-in token stays on this device and is handed to Anthropic with each picture job, which then talks to Higgsfield.'
+      : 'Not connected. Without it, designs are drawn rather than photographed. Connecting opens Higgsfield\'s sign-in page and brings you back here. It needs a paid Higgsfield plan.');
+    $('hfCap').value = Kin.hf.cap();
+    $('hfCapNote').textContent = 'Kin will not approve pictures past this many Higgsfield credits a day. Used today on this device: ' + Kin.hf.used() + ' of ' + Kin.hf.cap() + '.';
+  }
+  Kin.onHf = function () { refreshSettings(); };
+  $('hfConnect').addEventListener('click', function () { gesture(); Kin.hf.connect().catch(function (e) { $('hfNote').textContent = (e && e.message) || 'Could not start the sign-in.'; }); });
+  $('hfDrop').addEventListener('click', function () { Kin.hf.disconnect(); refreshSettings(); });
+  $('hfCap').addEventListener('change', function () { Kin.hf.setCap($('hfCap').value); refreshSettings(); });
   $('webCap').addEventListener('change', function () { Kin.mind.setWebCap(parseInt($('webCap').value, 10)); refreshSettings(); });
   $('memAll').addEventListener('click', function () { var b = $('memAll'); if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Tap again to forget everything Kin remembers'; setTimeout(function () { b.dataset.sure = ''; b.textContent = 'Forget all'; }, 5000); return; } Kin.mind.forgetAll(); b.dataset.sure = ''; b.textContent = 'Forget all'; refreshSettings(); });
   /* with no pack, one button on the main screen opens the file picker; the two steps sit beside it */
@@ -450,11 +527,13 @@
   $('packDrop').addEventListener('click', function () { clearTalk(); Kin.pack.remove().then(refreshSettings, refreshSettings).then(packCard); });
   $('erase').addEventListener('click', function () {
     var b = $('erase'); if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Tap again to erase the key, the pack and the conversation'; setTimeout(function () { b.dataset.sure = ''; b.textContent = 'Erase everything on this device'; }, 5000); return; }
-    ears.stop(); voice.stop(); voice.tts.dropKey(); brain.wipe(); Kin.mind.wipe(); try { Object.keys(localStorage).forEach(function (k) { if (/^kin\./.test(k)) localStorage.removeItem(k); }); } catch (e) {}
+    ears.stop(); voice.stop(); voice.tts.dropKey(); brain.wipe(); Kin.mind.wipe(); if (Kin.hf) { Kin.hf.disconnect(); Kin.hf.wipe(); } try { Object.keys(localStorage).forEach(function (k) { if (/^kin\./.test(k)) localStorage.removeItem(k); }); } catch (e) {}
     Kin.pack.kv.wipe().then(function () { location.reload(); });
   });
 
   /* ------------------------------------------------------------ start */
+  /* coming back from Higgsfield's sign-in page: finish it, then say so */
+  var hfBack = Kin.hf.finish().catch(function () { return false; });
   Promise.all([Kin.pack.load(), Kin.mind.load().catch(function () {})]).then(function (r) { var p = r[0];
     $('packname').textContent = p ? p.name : '';
     return ears.permission();
@@ -468,6 +547,8 @@
     paint(); Kin.ready = true; packCard();
     if (voice.tts.hasKey()) voice.tts.refresh().then(function () { refreshSettings(); });
     if (Kin.shared || (!brain.hasKey() && !Kin.pack.get() && !S.autoListen)) { $('sheet').hidden = false; refreshSettings(); }
+    /* said last, so the start-up lines do not cover it */
+    return hfBack.then(function (ok) { if (ok === true) { caption('Higgsfield is connected, sir.', 'Designs can use real pictures now'); captionFade(9000); } else if (ok === false) { $('sheet').hidden = false; refreshSettings(); } });
   });
   paint();
 })();

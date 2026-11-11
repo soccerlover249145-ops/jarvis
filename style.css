@@ -162,3 +162,17 @@ button { background: none; border: 0; padding: 0; cursor: pointer; -webkit-tap-h
 
 /* the line under the face would print over an open conversation */
 body:has(#thread:not([hidden])) .caption { visibility: hidden; }
+
+/* asking before spending */
+.msg.ask { border: 1px solid color-mix(in srgb, var(--signal) 55%, transparent); border-radius: 12px; padding: 12px 14px; margin: 10px 0; max-width: 560px; }
+.msg.ask .asktitle { font: 400 17px/1.35 var(--f-display); color: var(--fg); margin: 4px 0 6px; }
+.askyes { font: var(--label); letter-spacing: .16em; text-transform: uppercase; color: #000; background: var(--signal); padding: 9px 16px; border-radius: 999px; }
+.askyes:disabled, .msg.ask .lnk:disabled { opacity: .45; }
+/* a studio design: its idea, the art director's view, the brief, the other concepts */
+.sech { font: var(--label); letter-spacing: .16em; text-transform: uppercase; color: var(--dim); margin: 18px 0 6px; }
+.idea { font: 400 16px/1.4 var(--f-display); color: var(--fg); margin: 0 0 8px; }
+.others { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 6px 0 4px; }
+.others figure { margin: 0; }
+.others img { display: block; width: 100%; height: auto; max-height: 34vh; object-fit: contain; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.others figcaption { font: var(--data); color: var(--fg2); margin-top: 6px; }
+.others figcaption span { color: var(--dim); }

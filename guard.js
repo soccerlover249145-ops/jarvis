@@ -35,6 +35,7 @@
     echo: 15000,       /* how long a phrase that repeats Kin's last words is treated as an echo */
     firstText: 75000,  /* give up when nothing at all has come back by then */
     quiet: 45000,      /* give up when an answer that started arriving goes quiet for this long */
+    making: 240000,    /* a job of making something (a document, a design) may go this long without a sign of life: long thinking is silent */
     ttsWait: 15000,    /* one sentence of the keyed voice may take this long to arrive */
     retry: 300,        /* wait before listening again after the browser ends a session; doubles each time one dies at once */
     beat: 5000,        /* how often the listening heartbeat looks */

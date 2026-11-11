@@ -197,22 +197,25 @@
         playing = false; pump();
       });
     }
-    function push(text) { text = String(text || '').trim(); if (!text || finished) return; q.push({ text: text, state: '' }); if (my === run) state('speaking'); pump(); }
+    var said = {};
+    function key(t) { return String(t).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+    function push(text) { text = String(text || '').trim(); if (!text || finished) return; said[key(text)] = 1; q.push({ text: text, state: '' }); if (my === run) state('speaking'); pump(); }
     return {
       done: done, ctl: ctl,
       push: push,
       end: function () { ended = true; pump(); return done; },
       /** give the answer so far (plain words). Whole sentences that are new are spoken at once. */
       feed: function (clean) {
-        clean = String(clean || ''); if (clean.indexOf(fed) !== 0) return;
+        /* the answer can start over (a short lead-in before a tool call is dropped): follow the new text, never repeating a sentence already said */
+        clean = String(clean || ''); if (clean.indexOf(fed) !== 0) fed = '';
         var rest = clean.slice(fed.length), re = /[.!?]["')\]]?\s/g, m, cut = -1;
         while ((m = re.exec(rest))) cut = m.index + m[0].length;
-        if (cut <= 0) return; var chunk = rest.slice(0, cut); fed += chunk; sentences(chunk).forEach(push);
+        if (cut <= 0) return; var chunk = rest.slice(0, cut); fed += chunk; sentences(chunk).filter(function (x) { return !said[key(x)]; }).forEach(push);
       },
       /** the whole answer is known: speak whatever has not been spoken yet, then finish */
       finish: function (clean) {
-        clean = String(clean || ''); var rest = clean.indexOf(fed) === 0 ? clean.slice(fed.length) : (fed ? '' : clean);
-        sentences(rest).forEach(push); ended = true; pump(); return done;
+        clean = String(clean || ''); if (clean.indexOf(fed) !== 0) fed = '';
+        sentences(clean.slice(fed.length)).filter(function (x) { return !said[key(x)]; }).forEach(push); ended = true; pump(); return done;
       }
     };
   }
