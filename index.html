@@ -28,15 +28,23 @@
   <header class="top">
     <span class="mark">Kin</span>
     <span class="packname" id="packname"></span>
+    <button type="button" class="icon" id="shelfb" aria-label="What Kin made, and the logbook"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h10"/></svg></button>
     <button type="button" class="icon" id="gear" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg></button>
   </header>
 
   <button type="button" class="caption" id="caption" aria-live="polite"><span id="capT"></span><small id="capS"></small></button>
 
+  <div class="loadcard" id="loadCard" hidden>
+    <p><b>Load your data</b> so Kin knows your company.</p>
+    <ol><li>In the Atlas: Kin&rsquo;s settings &gt; Your data &gt; Export everything.</li><li>Here: tap Load my data and pick that file.</li></ol>
+    <label class="loadbtn filebtn">Load my data<input type="file" id="packFile2" accept="application/json,.json"></label>
+    <p class="note" id="loadNote"></p>
+  </div>
+
   <div class="thread" id="thread" hidden></div>
 
   <div class="prow">
-    <button type="button" class="status" id="status" aria-label="Show or hide the conversation"><i class="led"></i><span id="stS">Status: off</span><i class="sep"></i><span id="stM">Mic off</span></button>
+    <button type="button" class="status" id="status" aria-label="Show or hide the conversation"><i class="led"></i><span id="stS">Status: off</span><i class="sep"></i><span id="stM">Mic off</span><span class="sep tsep"></span><span id="stT" hidden></span></button>
   </div>
 
   <form class="bar" id="bar" autocomplete="off">
@@ -45,12 +53,20 @@
     <button type="submit" class="icon send" id="send" aria-label="Send"><svg viewBox="0 0 24 24"><path d="M4 12h15M13 6l6 6-6 6"/></svg></button>
   </form>
 
+  <section class="sheet" id="shelf" hidden aria-label="What Kin made">
+    <div class="sheethead"><h2>Made</h2><button type="button" class="icon" id="shelfx" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="sheetbody">
+      <div class="seg" id="shelftabs" role="group"><button type="button" data-tab="made" aria-pressed="true">Made</button><button type="button" data-tab="log" aria-pressed="false">Logbook</button></div>
+      <div id="shelfbody"></div>
+    </div>
+  </section>
+
   <section class="sheet" id="sheet" hidden aria-label="Settings">
     <div class="sheethead"><h2>Settings</h2><button type="button" class="icon" id="sheetx" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <div class="sheetbody">
       <p class="note warn" id="sharedNote" hidden></p>
       <div class="steps" id="steps"></div>
-      <p class="note warn" id="leaves">What leaves this device. Your speech goes to the browser maker (Google in Chrome, Microsoft in Edge, Apple in Safari) to be turned into text, whenever the mic is on, asleep or awake. With a Claude key, what you say or type, the last few exchanges, and the parts of your pack Kin uses go to Anthropic. With a voice key, every sentence Kin speaks goes to ElevenLabs. Nothing is ever sent to this website.</p>
+      <p class="note warn" id="leaves">What leaves this device. Your speech goes to the browser maker (Google in Chrome, Microsoft in Edge, Apple in Safari) to be turned into text, whenever the mic is on, asleep or awake. With a Claude key, what you say or type, the last few exchanges, what Kin remembers that bears on the question, and the parts of your pack Kin uses go to Anthropic; web searches and page reads are run by Anthropic too. With a voice key, every sentence Kin speaks goes to ElevenLabs. Nothing is ever sent to this website.</p>
 
       <h3>Listening</h3>
       <p class="note" id="earsNote"></p>
@@ -74,9 +90,19 @@
       <div class="row"><span></span><div class="btns"><button type="button" class="lnk" id="keySave">Save key</button><button type="button" class="lnk dim" id="keyDrop">Remove key</button></div></div>
       <p class="note" id="keyNote"></p>
       <p class="note warn">The key is kept in this browser on this device only and is sent to Anthropic and nowhere else. With a key, what you say or type, the last few exchanges, your pack&rsquo;s rules and brief, and the entries Kin looks up are sent to Anthropic to get each answer. Anyone who can use this browser can use the key, so create one just for this, give it a monthly spend limit in the Anthropic Console, and remove it here if the device is lost.</p>
+      <div class="row"><span>Hard jobs</span><div class="seg" id="deepSeg" role="group"><button type="button" data-deep="opus">Opus 5.5</button><button type="button" data-deep="fable">Fable 5.2</button></div></div>
+      <p class="note">Documents, plans, designs and decisions go to the strongest model and think harder. Fable 5.2 is the default: Anthropic&rsquo;s most capable model, about twice the price of Opus 5.5 per word. Choose Opus 5.5 to spend less. Ordinary questions use Opus 5.5 either way.</p>
+      <label class="row"><span>Web per day</span><input type="text" inputmode="numeric" id="webCap" maxlength="3" autocomplete="off" aria-label="Web searches per day"></label>
+      <p class="note" id="webNote"></p>
+      <p class="note" id="spendNote"></p>
       <label class="row"><span>Per hour</span><input type="text" inputmode="numeric" id="limH" maxlength="3" autocomplete="off" aria-label="Questions to Claude per hour"></label>
       <label class="row"><span>Per day</span><input type="text" inputmode="numeric" id="limD" maxlength="4" autocomplete="off" aria-label="Questions to Claude per day"></label>
       <p class="note" id="limNote"></p>
+
+      <h3>What Kin remembers</h3>
+      <p class="note">Kept in this browser on this device only. Kin adds to it when you say &ldquo;remember that&nbsp;&hellip;&rdquo;, when you correct an answer, and when you tap Good or Not right under one. It never keeps keys, passwords, your age or school, or family money.</p>
+      <div id="memList"></div>
+      <div class="row"><span></span><div class="btns"><button type="button" class="lnk dim" id="memAll">Forget all</button></div></div>
 
       <h3>Knowledge</h3>
       <p class="note" id="packNote"></p>
@@ -93,6 +119,7 @@
 <script src="vendor/anthropic-sdk.js"></script>
 <script src="guard.js"></script>
 <script src="pack.js"></script>
+<script src="mind.js"></script>
 <script src="voice.js"></script>
 <script src="ears.js"></script>
 <script src="brain.js"></script>

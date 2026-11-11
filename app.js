@@ -40,11 +40,35 @@
     var s = document.createElement('small'); s.textContent = who === 'you' ? 'You' : 'Kin'; var p = document.createElement('p'); p.textContent = text;
     d.appendChild(s); d.appendChild(p); t.appendChild(d); t.scrollTop = t.scrollHeight; return p;
   }
+  /** a finished answer: rendered Markdown, then where it came from, what it cost, what was made, and two thumbs */
+  function settle(p, text, r, q) {
+    var d = p.parentNode, body = document.createElement('div'); body.className = 'md';
+    Kin.mind.md(text, body); d.replaceChild(body, p);
+    if (r.sources && r.sources.length) {
+      var src = document.createElement('div'); src.className = 'src'; var h = document.createElement('small'); h.textContent = 'Sources'; src.appendChild(h);
+      var ol = document.createElement('ol');
+      r.sources.forEach(function (x) { var li = document.createElement('li'), a = document.createElement('a'), host = ''; try { host = new URL(x.url).hostname.replace(/^www\./, ''); } catch (e) {} a.href = x.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = x.title || host || x.url; li.appendChild(a); if (host && x.title) { var hs = document.createElement('span'); hs.textContent = ' · ' + host; li.appendChild(hs); } ol.appendChild(li); });
+      src.appendChild(ol); d.appendChild(src);
+    }
+    (r.made || []).forEach(function (id) { var m = Kin.mind.getMade(id); if (!m || d.querySelector('[data-made="' + id + '"]')) return; var b = document.createElement('button'); b.type = 'button'; b.className = 'madeb'; b.dataset.made = id; b.textContent = 'Open ' + (m.kind === 'design' ? 'the design' : 'the ' + m.kind) + ': ' + m.title; d.appendChild(b); });
+    if (r.source === 'claude' && !r.code) {
+      var meta = document.createElement('div'); meta.className = 'meta'; var bits = [];
+      var model = String(r.model || ''); bits.push(/haiku/.test(model) ? 'Quick' : /fable/.test(model) ? 'Fable 5.2' : 'Opus 5.5' + (r.fableOff ? ' (Fable 5.2 was not open to this key)' : ''));
+      if (r.route === 'make') bits.push('deep'); if (r.route === 'compute') bits.push('with code');
+      if (r.searches) bits.push(r.searches + (r.searches === 1 ? ' search' : ' searches'));
+      if (r.checked === 'ok') bits.push('checked'); else if (r.checked === 'revised') bits.push('checked and corrected');
+      if (r.cost) bits.push('about $' + (r.cost < 0.01 ? r.cost.toFixed(3) : r.cost.toFixed(2)));
+      var mt = document.createElement('span'); mt.textContent = bits.join(' · '); meta.appendChild(mt);
+      ['Good', 'Not right'].forEach(function (lab, k) { var b = document.createElement('button'); b.type = 'button'; b.className = 'thumb'; b.textContent = lab; b.addEventListener('click', function () { if (meta.dataset.rated) return; meta.dataset.rated = '1'; Kin.mind.rate(q, text, k === 0); b.setAttribute('aria-pressed', 'true'); mt.textContent = bits.join(' · ') + (k === 0 ? ' · noted, sir' : ' · noted; I will do better, sir'); }); meta.appendChild(b); });
+      d.appendChild(meta);
+    }
+    var t = $('thread'); t.scrollTop = t.scrollHeight;
+  }
 
   /* ------------------------------------------------------------ speaking */
   /** what is said aloud is shorter than what is shown: plain words, the first few sentences */
   function plain(text) {
-    return String(text).replace(/```[\s\S]*?```/g, ' ').replace(/^\s*\|.*\|\s*$/gm, ' ').replace(/^#{1,4}\s+/gm, '').replace(/^\s*(?:[-*]|\d+[.)])\s+/gm, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/[*_`>|]/g, '').replace(/#(\d+)/g, 'number $1').replace(/\s*\n+\s*/g, '. ').replace(/\.\s*\./g, '.').replace(/:\./g, ':').replace(/\s+/g, ' ').trim();
+    return String(text).replace(/```[\s\S]*?```/g, ' ').replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '$1').replace(/\(?https?:\/\/[^\s)]+\)?/g, ' ').replace(/^\s*\|.*\|\s*$/gm, ' ').replace(/^#{1,4}\s+/gm, '').replace(/^\s*(?:[-*]|\d+[.)])\s+/gm, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/[*_`>|]/g, '').replace(/#(\d+)/g, 'number $1').replace(/\s*\n+\s*/g, '. ').replace(/\.\s*\./g, '.').replace(/:\./g, ':').replace(/\s+/g, ' ').trim();
   }
   /** the part of a long answer that is read aloud. It only ever grows as the answer grows, so it can be spoken while streaming. */
   function head(t) { if (t.length <= 620) return t; var cut = t.slice(0, 620), end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('? ')); return cut.slice(0, end > 200 ? end + 1 : 620); }
@@ -65,6 +89,14 @@
     if (was && !S.talking) { S.deafUntil = Date.now() + Kin.T.hard; S.softUntil = Date.now() + Kin.T.deaf; S.saidAt = Date.now(); if (S.ttsWhy) S.ttsShown = true; if (ears.isSafari) ears.hold(false); touch(); captionFade(3200); }
     paint();
   });
+  /** why the browser will not let Kin listen, in a few words for the caption and in full for settings */
+  function blockedWhy(reason) {
+    if (reason === 'no-microphone') return { short: 'This device has no microphone I can use.', small: 'Plug one in or allow it, then reload', full: 'This device has no microphone I can use, or another app is holding it. Plug one in or close the other app, then reload.' };
+    if (reason === 'service-not-allowed') return ears.isSafari
+      ? { short: 'Safari’s speech service is off.', small: 'Turn on Dictation, then reload. Details in settings', full: 'Safari’s speech service is off. Turn on Dictation in System Settings > Keyboard, and allow Safari under Privacy & Security > Speech Recognition, then reload.' }
+      : { short: 'The browser’s speech service refused.', small: 'Allow the microphone, then reload. Details in settings', full: 'This browser’s speech service refused to start. In Chrome, click the icon left of the address and allow the microphone for this site, then reload. If it still refuses, the browser’s speech service may be off on this computer.' };
+    return { short: 'The microphone is blocked for this site.', small: 'Allow it, then reload. Details in settings', full: 'The microphone is blocked for this site. In Safari: Settings > Websites > Microphone > Allow (in Chrome: the icon left of the address), then reload.' };
+  }
   function deaf() { return S.talking || Date.now() < S.deafUntil; }
   /** An open mic also hears Kin. Words that are mostly what Kin just said are its echo, not a question.
       Soon after it spoke, most of its words coming back is enough; later only a long run of them is.
@@ -158,7 +190,7 @@
     if (e.type === 'final') return heard(e.text, true);
     S.micState = e.state; S.micWhy = e.reason || ''; S.hearing = e.state === 'listening';
     if (e.state === 'listening') { ls.set('kin.micok', '1'); if (S.talk === 'off') { S.talk = 'asleep'; caption(sayPhrase(), sleepHint()); } else if (S.talk === 'asleep' && !S.talking) caption(sayPhrase(), sleepHint()); }
-    if (e.state === 'blocked') { S.talk = S.talk === 'awake' ? 'awake' : 'off'; caption(e.reason === 'no-microphone' ? 'This device has no microphone I can use.' : 'The microphone is blocked for this site.', 'Allow it in the browser’s site settings, then reload'); }
+    if (e.state === 'blocked') { S.talk = S.talk === 'awake' ? 'awake' : 'off'; var bw = blockedWhy(e.reason); caption(bw.short, bw.small); }
     if (e.state === 'off' && e.reason !== 'stopped') { buf = tail = ''; clearTimeout(hearT); if (S.talk === 'asleep') S.talk = 'off'; if (!S.talking && !S.busy) caption(e.reason === 'stalled' ? 'Listening keeps cutting out here.' : 'The microphone closed.', 'Tap the mic to listen again'); }
     if (e.state === 'off' && e.reason === 'stopped' && S.talk === 'asleep') { S.talk = 'off'; caption(null); }
     paint(); refreshSettings();
@@ -182,6 +214,8 @@
     text = String(text || '').trim(); if (!text) return;
     if (command(text)) { inp.value = ''; lastLen = 0; return; }
     if (S.busy) return;
+    var now = Kin.mind.instant(text);
+    if (now) { instantly(text, now); return; }
     var aloud = S.talk === 'awake', p = null, got = false, t0 = Date.now(), momT = 0, watchI = 0, sess = null, lastSign = Date.now(), stalled = false, pr;
     inp.value = ''; lastLen = 0; multi = single = 0; S.asks++; touch();
     addMsg('you', text); p = addMsg('kin', '…');
@@ -197,20 +231,28 @@
       if (r.code === 'stopped' && stalled) out = got ? p.textContent + ' … The answer stopped arriving, sir. Ask again.' : 'Claude did not answer, sir. Check the connection and the key in settings, then ask again.';
       if (r.source === 'local' && !S.toldLocal && !brain.hasKey()) { S.toldLocal = true; out = 'No Claude key on this device yet, sir, so this is only what I hold here. ' + out; }
       /* the detail of an error is for the eye only: it is never spoken and never sent to a voice service */
-      p.textContent = r.detail ? out + '\n' + r.detail : out;
+      if (r.detail) p.textContent = out + '\n' + r.detail; else settle(p, out, r, text);
       if (r.code === 'limit') { S.queued = ''; if (S.talk === 'awake') sleep(true); caption(out, 'Change the limit in settings'); if (speakIt) say(out, true); else captionFade(9000); refreshSettings(); return; }
       if (r.code === 'stopped' && got && !stalled) { if (sess) voice.stop(); caption(null); return; }
       if (sess) { var fin = spoken(out); S.said = ears.norm(fin); sess.finish(fin); }
       else if (speakIt && voice.canSpeak()) { caption(spoken(out).slice(0, 190), r.detail ? 'The reason is in the conversation' : ''); say(out); }
       else { caption(spoken(out).slice(0, 260), r.source === 'local' ? 'From this device only' : !S.unlocked && aloud ? 'Tap once so I can speak' : ''); captionFade(9000); touch(); }
+      /* what was made opens on the shelf; a typed answer with sources, or longer than what is read out, opens the conversation */
+      if (r.made && r.made.length) openShelf('made', r.made[r.made.length - 1]);
+      else if (!aloud && !r.detail && ((r.sources && r.sources.length) || plain(out).length > 620)) showThread();
+      else if (aloud && r.sources && r.sources.length && !S.talking) $('capS').textContent = 'Sources: tap the status line';
       if (S.queued && S.talk === 'awake') { var q = S.queued; S.queued = ''; setTimeout(function () { ask(q); }, 300); }
     }
     try {
-      pr = brain.ask(text, { aloud: aloud || S.speakTyped, signal: S.ctl.signal,
+      pr = brain.ask(text, { aloud: aloud, signal: S.ctl.signal,
         onText: function (t) { got = true; lastSign = Date.now(); p.textContent = t; var m = /^(.{30,190}?[.!?])(\s|$)/.exec(spoken(t)); if (m && !S.talking) caption(m[1], 'Kin');
           /* with a voice key, the first whole sentence is spoken while the rest is still arriving */
-          if (speakIt && voice.live()) { var c = head(plain(t)); if (!sess && /[.!?]["')\]]?\s/.test(c)) { clearTimeout(momT); sess = voice.begin(); } if (sess) { S.said = ears.norm(c); sess.feed(c); } } },
-        onTool: function () { got = true; lastSign = Date.now(); }
+          /* only a spoken conversation is spoken while it streams: a typed answer is checked first, then its opening is read out */
+          if (aloud && speakIt && voice.live()) { var c = head(plain(t)); if (!sess && /[.!?]["')\]]?\s/.test(c)) { clearTimeout(momT); sess = voice.begin(); } if (sess) { S.said = ears.norm(c); sess.feed(c); } } },
+        onTool: function () { got = true; lastSign = Date.now(); },
+        onStatus: function (st) { lastSign = Date.now(); if (!S.talking && !got) caption(text.length > 150 ? text.slice(0, 147) + '…' : text, st, 'you'); else if (!S.talking) $('capS').textContent = st; },
+        onMade: function () { lastSign = Date.now(); refreshMade(); },
+        onRemember: function () { refreshSettings(); }
       });
     } catch (e) { pr = Promise.resolve({ text: 'Something went wrong on this page, sir. The reason is on screen.', detail: String((e && e.message) || e).slice(0, 200), source: 'local', code: 'error' }); }
     /* whatever happens, Kin must never be left "thinking" */
@@ -219,6 +261,16 @@
       function () { end(); caption('Something went wrong on this page, sir.', ''); captionFade(9000); paint(); });
   }
   Kin.ask = ask;
+  /** a phrase handled on this device at once: a log line, a timer, a protocol, help */
+  function instantly(text, r) {
+    inp.value = ''; lastLen = 0; multi = single = 0; touch();
+    addMsg('you', text); var p = addMsg('kin', ''); Kin.mind.md(r.show, p); p.className = 'md';
+    var speakIt = (S.talk === 'awake' || S.unlocked) && S.unlocked;
+    caption(r.say, r.protocol || 'Done here, no call needed');
+    if (speakIt) say(r.say, true).then(function () { if (r.sleep && S.talk === 'awake') sleep(true); }); else { captionFade(7000); if (r.sleep && S.talk === 'awake') sleep(true); }
+    if (r.open) openShelf(r.open);
+    refreshMade();
+  }
 
   /* ------------------------------------------------------------ controls */
   $('bar').addEventListener('submit', function (e) {
@@ -238,7 +290,9 @@
     paint();
   });
   cap.addEventListener('click', function () { gesture(); if (S.talk !== 'awake') wakeNow(); else if (S.talking) voice.stop(); else touch(); });
-  $('status').addEventListener('click', function () { var t = $('thread'); t.hidden = !t.hidden; if (!t.hidden && !t.children.length) { var d = document.createElement('p'); d.className = 'empty'; d.textContent = 'Nothing said yet.'; t.appendChild(d); } });
+  /** open the conversation at its newest answer, from the top of that answer */
+  function showThread() { var t = $('thread'); t.hidden = false; var m = t.querySelector('.msg.kin:last-child'); t.scrollTop = m && m.offsetTop > 0 && m.offsetHeight > t.clientHeight * 0.6 ? Math.max(0, (m.previousElementSibling || m).offsetTop - 12) : t.scrollHeight; }
+  $('status').addEventListener('click', function () { var t = $('thread'); if (!t.hidden) { t.hidden = true; return; } showThread(); if (!t.children.length) { var d = document.createElement('p'); d.className = 'empty'; d.textContent = 'Nothing said yet.'; t.appendChild(d); } });
   document.addEventListener('keydown', function (e) {
     var tag = (e.target.tagName || '').toLowerCase(), typing = tag === 'input';
     if (e.key === 'Escape') { if (!$('sheet').hidden) { $('sheet').hidden = true; return; } stopAll(); }
@@ -251,13 +305,58 @@
   }
   document.addEventListener('pointerup', first, true); document.addEventListener('keydown', first, true);
 
+  /* ------------------------------------------------------------ the shelf: what Kin made, and the logbook */
+  var shelfTab = 'made', shelfOpen = '';
+  function openShelf(tab, id) { shelfTab = tab || 'made'; shelfOpen = id || ''; $('shelf').hidden = false; refreshMade(); }
+  function refreshMade() {
+    var el = $('shelfbody'); if (!el || $('shelf').hidden) return; el.textContent = '';
+    [].forEach.call(document.querySelectorAll('#shelftabs button'), function (b) { b.setAttribute('aria-pressed', b.dataset.tab === shelfTab); });
+    if (shelfTab === 'log') {
+      var log = Kin.mind.log();
+      if (!log.length) { var e0 = document.createElement('p'); e0.className = 'empty'; e0.textContent = 'Nothing logged yet. Say "bench, 135 for 8" or "log that I changed the brake pads".'; el.appendChild(e0); return; }
+      log.slice(0, 200).forEach(function (x) { var r = document.createElement('div'); r.className = 'logrow'; var k = document.createElement('small'); k.textContent = new Date(x.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' · ' + x.kind; var t = document.createElement('p'); t.textContent = x.text; var del = document.createElement('button'); del.type = 'button'; del.className = 'lnk dim'; del.textContent = 'Delete'; del.addEventListener('click', function () { Kin.mind.dropLog(x.id); refreshMade(); }); r.appendChild(k); r.appendChild(t); r.appendChild(del); el.appendChild(r); });
+      return;
+    }
+    var made = Kin.mind.made(), m = shelfOpen && Kin.mind.getMade(shelfOpen);
+    if (m) {
+      var back = document.createElement('button'); back.type = 'button'; back.className = 'lnk'; back.textContent = 'All made things'; back.addEventListener('click', function () { shelfOpen = ''; refreshMade(); }); el.appendChild(back);
+      var h = document.createElement('h3'); h.className = 'mtitle'; h.textContent = m.title; el.appendChild(h);
+      var sub = document.createElement('p'); sub.className = 'note'; sub.textContent = [m.kind, m.note, m.score != null ? 'art director ' + m.score + ' of 100' : '', m.round > 1 ? 'round ' + m.round : ''].filter(Boolean).join(' · '); el.appendChild(sub);
+      var bt = document.createElement('div'); bt.className = 'btns';
+      var dl = document.createElement('button'); dl.type = 'button'; dl.className = 'lnk'; dl.textContent = 'Download'; dl.addEventListener('click', function () { if (m.kind !== 'design') { Kin.mind.download(Kin.mind.fileName(m), m.content, 'text/markdown'); return; }
+        /* the downloaded file carries its fonts, so it looks the same wherever it is opened */
+        Kin.mind.withFonts(m.content).then(function (full) { Kin.mind.download(Kin.mind.fileName(m), full, 'image/svg+xml'); }, function () { Kin.mind.download(Kin.mind.fileName(m), m.content, 'image/svg+xml'); }); });
+      var cp = document.createElement('button'); cp.type = 'button'; cp.className = 'lnk'; cp.textContent = 'Copy'; cp.addEventListener('click', function () { try { navigator.clipboard.writeText(m.content).then(function () { cp.textContent = 'Copied'; }, function () { cp.textContent = 'Copy failed'; }); } catch (e) { cp.textContent = 'Copy failed'; } });
+      var rm = document.createElement('button'); rm.type = 'button'; rm.className = 'lnk dim'; rm.textContent = 'Remove'; rm.addEventListener('click', function () { Kin.mind.dropMade(m.id); shelfOpen = ''; refreshMade(); });
+      bt.appendChild(dl); bt.appendChild(cp); bt.appendChild(rm); el.appendChild(bt);
+      if (m.kind === 'design') { var fig = document.createElement('div'); fig.className = 'design'; var img = document.createElement('img'); img.alt = m.title; img.onload = function () { setTimeout(function () { try { URL.revokeObjectURL(img.src); } catch (e) {} }, 1000); };
+          /* a picture cannot reach the page's fonts, so the fonts go inside it, as they did for the art director */
+          Kin.mind.withFonts(m.content).then(function (full) { img.src = Kin.mind.svgUrl(full); }, function () { img.src = Kin.mind.svgUrl(m.content); }); fig.appendChild(img); el.appendChild(fig);
+        if (m.fixes && m.fixes.length && m.score != null && m.score < 85) { var fx = document.createElement('p'); fx.className = 'note'; fx.textContent = 'Still open: ' + m.fixes.join(' '); el.appendChild(fx); } }
+      else { var doc = document.createElement('div'); doc.className = 'md doc'; Kin.mind.md(m.content, doc); el.appendChild(doc); }
+      return;
+    }
+    if (!made.length) { var e1 = document.createElement('p'); e1.className = 'empty'; e1.textContent = 'Nothing made yet. Ask for a document, a plan, a table or a design, and it lands here.'; el.appendChild(e1); return; }
+    made.forEach(function (x) { var b = document.createElement('button'); b.type = 'button'; b.className = 'mrow'; var k = document.createElement('small'); k.textContent = x.kind + ' · ' + new Date(x.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + (x.score != null ? ' · ' + x.score : ''); var t = document.createElement('span'); t.textContent = x.title; b.appendChild(k); b.appendChild(t); b.addEventListener('click', function () { shelfOpen = x.id; refreshMade(); }); el.appendChild(b); });
+  }
+  $('shelfb').addEventListener('click', function () { gesture(); openShelf(shelfTab); });
+  $('shelfx').addEventListener('click', function () { $('shelf').hidden = true; });
+  $('shelftabs').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; shelfTab = b.dataset.tab; shelfOpen = ''; refreshMade(); });
+  $('thread').addEventListener('click', function (e) { var b = e.target.closest('[data-made]'); if (b) openShelf('made', b.dataset.made); });
+  Kin.mind.onTimer(function (t) {
+    var el = $('stT');
+    if (t && t.done) { el.hidden = true; flare(); voice.chime('wake'); caption(t.label + ' is up, sir.', 'Timer'); if (S.unlocked) say(voice.CLIPS.done, true); captionFade(8000); return; }
+    if (!t) { el.hidden = true; return; }
+    el.hidden = false; el.textContent = t.label + ' ' + Math.floor(t.left / 60) + ':' + ('0' + t.left % 60).slice(-2);
+  });
+
   /* ------------------------------------------------------------ settings */
   function steps() {
     var micOk = S.micState === 'listening' || ls.get('kin.micok', '') === '1', p = Kin.pack.get(), rows = [
       [micOk, 'Allow the microphone', ears.supported ? 'Tap the mic once and choose Allow. The browser remembers it for this site. The browser, not this page, turns your speech into text, on its maker’s servers.' : 'This browser cannot listen by itself. Use the keyboard’s mic or type.'],
       [brain.hasKey(), 'Paste a Claude API key', 'From console.anthropic.com. With one, your questions and the parts of the pack Kin looks up go to Anthropic for an answer. Without one Kin answers only from the pack on this device.'],
       [voice.tts.hasKey(), 'Optional: paste a voice key', 'From elevenlabs.io. With one, every sentence Kin speaks is sent there and spoken in the voice you pick. Without one, the browser’s own voice reads the answers.'],
-      [!!p, 'Import your Kin pack', 'Export it from the Atlas, then pick the file below. The file is stored on this device only.'],
+      [!!p, 'Import your Kin pack', 'In the Atlas: Kin’s settings > Your data > Export everything. Then here: Settings > Import Kin pack (below). The file is stored on this device only.'],
       [S.wakes > 0, 'Say “hey Jarvis”', 'Or your own wake phrase. Then just talk.']
     ];
     var el = $('steps'); el.textContent = '';
@@ -285,7 +384,7 @@
     if (!ears.supported) en.textContent = 'This browser has no built-in speech recognition, so Kin cannot hear a wake phrase here. Use Chrome or Edge on a computer, Chrome on Android, or Safari on an iPhone. You can still talk through the keyboard’s mic.';
     else if (ears.standalone && ears.isIOS) en.textContent = 'Opened from the iPhone home screen. Apple does not offer speech recognition to home-screen web apps, so if the mic does nothing here, open this address in Safari itself.';
     else if (S.micState === 'listening') en.textContent = S.startedByLoad ? 'Listening since the page opened. The browser already had your Allow for this site.' : 'Listening. It started after your tap.';
-    else if (S.micState === 'blocked') en.textContent = 'The browser is blocking the microphone for this site. Open the site settings from the address bar, allow the microphone, and reload.';
+    else if (S.micState === 'blocked') en.textContent = blockedWhy(S.micWhy).full;
     else en.textContent = S.perm === 'granted' && !ears.isSafari ? 'The microphone is allowed. Kin starts listening when the page opens.' : 'The browser wants one tap before it will listen. Tap the mic, or anywhere on the page.' + (ears.isSafari ? ' Safari may ask for the microphone again on later visits, and it cannot listen while Kin is speaking.' : '');
     if (ears.supported) en.textContent += ' Your speech is turned into text by the browser maker’s servers (Google in Chrome, Microsoft in Edge, Apple in Safari) whenever the mic is on, including while Kin is asleep and waiting for the wake phrase.';
     $('wakeP').value = S.wake; voiceSettings();
@@ -294,16 +393,24 @@
     var sysName = voice.systemVoiceName(), remote = voice.systemVoiceRemote() ? ' That voice is spoken by the browser maker’s servers, so the sentences are sent there.' : '';
     $('voiceNote').textContent = voice.live() ? 'Used only if the voice key fails.' + remote : cur.mode === 'device' ? 'Everything is spoken by the browser’s own voice' + (sysName ? ' (' + sysName + ').' : '.') + remote : 'The recorded voice says the fixed lines (welcome, one moment, standing by). Answers use the browser’s own voice' + (sysName ? ' (' + sysName + ')' : '') + '. Tap a name to hear it.' + remote;
     $('keyNote').textContent = Kin.shared ? Kin.SHARED_TEXT : brain.hasKey() ? 'A key is saved on this device: ' + brain.keyHint() + '. Small talk uses ' + brain.QUICK + ', real questions use ' + brain.MAIN + '.' : 'No key on this device. Kin answers from the pack only.';
+    var dp = Kin.mind.deep(); [].forEach.call(document.querySelectorAll('#deepSeg button'), function (b) { b.setAttribute('aria-pressed', b.dataset.deep === dp); });
+    $('webCap').value = Kin.mind.webCap();
+    var sp = Kin.mind.spendToday();
+    $('webNote').textContent = 'Web searches today: ' + Kin.mind.webToday() + ' of ' + Kin.mind.webCap() + '. Each search costs about one US cent, on top of the words. Reading a page has no extra charge. At the limit Kin answers without the web and says so.';
+    $('spendNote').textContent = sp.n ? 'Today on this device: ' + sp.n + (sp.n === 1 ? ' answer' : ' answers') + ', about $' + sp.usd.toFixed(2) + '. An estimate from the token counts Anthropic reports; your Console shows the real bill.' : 'Nothing spent today on this device.';
+    var mem = Kin.mind.memory(), ml = $('memList'); ml.textContent = '';
+    if (!mem.length) { var e0 = document.createElement('p'); e0.className = 'note'; e0.textContent = 'Nothing yet. Say "remember that …", or use the thumbs under an answer.'; ml.appendChild(e0); }
+    mem.slice().sort(function (a, b) { return b.at - a.at; }).forEach(function (m) { var r = document.createElement('div'); r.className = 'memrow'; var t = document.createElement('p'); var k = document.createElement('small'); k.textContent = { fact: 'Fact', preference: 'Preference', correction: 'Correction', good: 'Worked', bad: 'Not right', lesson: 'Lesson' }[m.kind] || m.kind; t.appendChild(k); t.appendChild(document.createTextNode(' ' + m.text)); var del = document.createElement('button'); del.type = 'button'; del.className = 'lnk dim'; del.textContent = 'Forget'; del.addEventListener('click', function () { Kin.mind.forget(m.id); refreshSettings(); }); r.appendChild(t); r.appendChild(del); ml.appendChild(r); });
     var u = brain.limits(); $('limH').value = u.perHour; $('limD').value = u.perDay;
     $('limNote').textContent = 'Kin stops sending questions to Claude after this many in an hour or in a day, says so, and goes to sleep. Used this hour: ' + u.hour + ' of ' + u.perHour + '. Today: ' + u.day + ' of ' + u.perDay + '.';
     $('sharedNote').hidden = !Kin.shared; $('sharedNote').textContent = Kin.shared ? Kin.SHARED_TEXT + ' You can still try it here without keys.' : '';
     $('apiKey').value = '';
-    var p = Kin.pack.get(); $('packNote').textContent = p ? p.name + ': ' + p.nodes.length + ' entries, ' + p.skills.length + ' playbooks' + (p.exported ? ', exported ' + p.exported.slice(0, 10) : '') + '.' : Kin.shared ? Kin.SHARED_TEXT : 'No pack on this device.';
+    var p = Kin.pack.get(); $('packNote').textContent = p ? p.name + ': ' + p.nodes.length + ' entries, ' + p.skills.length + ' playbooks' + (p.exported ? ', exported ' + p.exported.slice(0, 10) : '') + '.' : Kin.shared ? Kin.SHARED_TEXT : 'No pack on this device yet. ' + brain.PACK_STEPS;
     $('packname').textContent = p ? p.name : '';
     $('about').textContent = 'This page is a shell. It holds no company data and no keys. Your keys, your pack and the last few exchanges are stored only in this browser on this device, and are never uploaded to this website. What leaves the device is listed at the top of these settings.' + (ears.isSafari ? ' Safari forgets a site’s saved data after about a week without a visit, so you may need to paste the keys and import the pack again.' : '');
   }
   $('gear').addEventListener('click', function () { $('sheet').hidden = false; refreshSettings(); });
-  $('sheetx').addEventListener('click', function () { $('sheet').hidden = true; });
+  $('sheetx').addEventListener('click', function () { $('sheet').hidden = true; packCard(); });
   $('wakeP').addEventListener('change', function (e) { var v = e.target.value.replace(/\s+/g, ' ').trim().slice(0, 48); if (ears.norm(v).split(' ').filter(Boolean).length < 2) v = WAKE_DEF; S.wake = v; ls.set('kin.wake', v); e.target.value = v; });
   $('voiceSeg').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; gesture(); var v = b.dataset.v; if (v === 'device') { voice.set({ mode: 'device' }); ls.set('kin.vmode', 'device'); } else { voice.set({ mode: 'jarvis', who: v }); ls.set('kin.vmode', 'jarvis'); ls.set('kin.voice', v); } refreshSettings(); say(voice.CLIPS.service, true); });
   function ttsBusy(msg) { S.ttsBusy = msg || ''; voiceSettings(); }
@@ -328,16 +435,27 @@
   $('keyDrop').addEventListener('click', function () { brain.dropKey(); clearTalk(); refreshSettings(); });
   function setLimit(e) { var h = parseInt($('limH').value, 10), d = parseInt($('limD').value, 10); brain.setLimits({ perHour: h, perDay: d }); refreshSettings(); }
   $('limH').addEventListener('change', setLimit); $('limD').addEventListener('change', setLimit);
+  $('deepSeg').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; Kin.mind.setDeep(b.dataset.deep); refreshSettings(); });
+  $('webCap').addEventListener('change', function () { Kin.mind.setWebCap(parseInt($('webCap').value, 10)); refreshSettings(); });
+  $('memAll').addEventListener('click', function () { var b = $('memAll'); if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Tap again to forget everything Kin remembers'; setTimeout(function () { b.dataset.sure = ''; b.textContent = 'Forget all'; }, 5000); return; } Kin.mind.forgetAll(); b.dataset.sure = ''; b.textContent = 'Forget all'; refreshSettings(); });
+  /* with no pack, one button on the main screen opens the file picker; the two steps sit beside it */
+  function packCard() { var c = $('loadCard'); if (c) c.hidden = !!Kin.pack.get() || Kin.shared || !$('sheet').hidden; }
+  Kin.packCard = packCard;
+  $('packFile2').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0]; if (!f) return; gesture(); $('loadNote').textContent = 'Reading…';
+    Kin.pack.importFile(f).then(function (p) { $('loadNote').textContent = ''; $('packname').textContent = p.name; packCard(); caption('Your data is loaded, sir. ' + p.nodes.length + ' entries.', 'Ask me anything'); captionFade(8000); }, function (err) { $('loadNote').textContent = (err && err.message) || 'That file could not be read.'; });
+    e.target.value = '';
+  });
   $('packFile').addEventListener('change', function (e) { var f = e.target.files && e.target.files[0]; if (!f) return; $('packNote').textContent = 'Reading…'; Kin.pack.importFile(f).then(function () { refreshSettings(); }, function (err) { $('packNote').textContent = (err && err.message) || 'That file could not be read.'; }); e.target.value = ''; });
-  $('packDrop').addEventListener('click', function () { clearTalk(); Kin.pack.remove().then(refreshSettings, refreshSettings); });
+  $('packDrop').addEventListener('click', function () { clearTalk(); Kin.pack.remove().then(refreshSettings, refreshSettings).then(packCard); });
   $('erase').addEventListener('click', function () {
     var b = $('erase'); if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Tap again to erase the key, the pack and the conversation'; setTimeout(function () { b.dataset.sure = ''; b.textContent = 'Erase everything on this device'; }, 5000); return; }
-    ears.stop(); voice.stop(); voice.tts.dropKey(); brain.wipe(); try { Object.keys(localStorage).forEach(function (k) { if (/^kin\./.test(k)) localStorage.removeItem(k); }); } catch (e) {}
+    ears.stop(); voice.stop(); voice.tts.dropKey(); brain.wipe(); Kin.mind.wipe(); try { Object.keys(localStorage).forEach(function (k) { if (/^kin\./.test(k)) localStorage.removeItem(k); }); } catch (e) {}
     Kin.pack.kv.wipe().then(function () { location.reload(); });
   });
 
   /* ------------------------------------------------------------ start */
-  Kin.pack.load().then(function (p) {
+  Promise.all([Kin.pack.load(), Kin.mind.load().catch(function () {})]).then(function (r) { var p = r[0];
     $('packname').textContent = p ? p.name : '';
     return ears.permission();
   }).then(function (perm) {
@@ -347,7 +465,7 @@
     if (ears.supported && perm === 'granted' && !ears.isSafari) { S.startedByLoad = true; ears.start(); }
     else if (ears.supported) caption(S.autoListen ? 'Tap anywhere and I’ll listen, sir.' : 'Tap the mic and choose Allow.', S.autoListen ? 'This browser wants one tap first' : 'Then say “hey Jarvis”');
     else caption('This browser cannot listen by itself.', 'Type, or use the keyboard’s mic');
-    paint(); Kin.ready = true;
+    paint(); Kin.ready = true; packCard();
     if (voice.tts.hasKey()) voice.tts.refresh().then(function () { refreshSettings(); });
     if (Kin.shared || (!brain.hasKey() && !Kin.pack.get() && !S.autoListen)) { $('sheet').hidden = false; refreshSettings(); }
   });

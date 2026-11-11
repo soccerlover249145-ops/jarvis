@@ -1,0 +1,462 @@
+/* mind.js: what Kin keeps and does on this device without asking Claude.
+   - memory: facts and preferences the founder asked Kin to remember, and lessons from thumbs and corrections
+   - made:   documents, plans, tables and designs Kin made, with download and copy
+   - log:    the logbook (mods, builds, batches, workouts, notes) and its instant phrases
+   - timers, protocols (morning brief, shutdown, focus): instant, no model call
+   - spend:  an estimate of what each answer cost, and a daily web search count
+   Everything is stored in this browser only (IndexedDB and localStorage). At an address shared with another
+   site (see guard.js) nothing is read or written. */
+(function () {
+  'use strict';
+  var Kin = window.Kin = window.Kin || {};
+
+  /* ---------------------------------------------------------------- storage */
+  var data = { memory: [], made: [], log: [] }, loaded = false, saveT = {};
+  function kv() { return Kin.pack && Kin.pack.kv; }
+  function save(name) {
+    if (Kin.shared || !kv()) return;
+    clearTimeout(saveT[name]);
+    saveT[name] = setTimeout(function () { kv().set('mind.' + name, data[name]).catch(function () {}); }, 150);
+  }
+  function load() {
+    if (Kin.shared || !kv()) { loaded = true; return Promise.resolve(); }
+    return Promise.all(['memory', 'made', 'log'].map(function (n) {
+      return kv().get('mind.' + n).then(function (v) { data[n] = Array.isArray(v) ? v.filter(function (x) { return x && typeof x === 'object'; }) : []; }).catch(function () { data[n] = []; });
+    })).then(function () { loaded = true; });
+  }
+  var ls = {
+    get: function (k, d) { if (Kin.shared) return d; try { var v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } },
+    set: function (k, v) { if (Kin.shared) return; try { localStorage.setItem(k, v); } catch (e) {} }
+  };
+  function uid(p) { return p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+  function words(s) { return Kin.pack ? Kin.pack.words(s) : String(s || '').toLowerCase().split(/\W+/).filter(Boolean); }
+  function today() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+
+  /* ---------------------------------------------------------------- memory and lessons */
+  var MEM_MAX = 200, LESSON_MAX = 80;
+  /** Things that must never be kept: keys and passwords, and what the founder's own rules keep out of everything
+      Kin makes (age, school, family money). Returns a reason, or '' when the text may be kept. */
+  function refuse(text) {
+    var t = String(text || '');
+    if (/sk-ant-|\bsk_[A-Za-z0-9]{16,}|\b(api[ _-]?key|password|passcode|pin code|secret key|access token)\b/i.test(t)) return 'Keys and passwords are never kept in memory.';
+    if (/\b(\d{1,2}\s*(years?|yrs?)\s*old|my age|how old i am|born in (19|20)\d\d|grade \d{1,2}|(high|middle|elementary|primary|secondary) school|my school)\b/i.test(t)) return 'Your age and school are never kept, by your own rules.';
+    if (/\b(family|parents?|mum|mom|dad|father|mother)\b[^.]{0,60}(\$|£|€|\d+\s*(k|thousand|million|dollars))|(\$|£|€)\s?\d[^.]{0,60}\b(family|parents?|mum|mom|dad|father|mother)\b/i.test(t)) return 'Family money is never kept, by your own rules.';
+    return '';
+  }
+  function remember(text, kind, extra) {
+    text = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+    if (!text) return { ok: false, why: 'Nothing to remember.' };
+    var why = refuse(text); if (why) return { ok: false, why: why };
+    kind = /^(fact|preference|lesson|correction|good|bad)$/.test(kind) ? kind : 'fact';
+    var n = Kin.ears ? Kin.ears.norm(text) : text.toLowerCase();
+    var same = data.memory.filter(function (m) { return (Kin.ears ? Kin.ears.norm(m.text) : m.text.toLowerCase()) === n; })[0];
+    if (same) { same.at = Date.now(); same.kind = kind; save('memory'); return { ok: true, id: same.id, again: true }; }
+    var m = { id: uid('m'), text: text, kind: kind, at: Date.now(), uses: 0 };
+    if (extra && extra.q) m.q = String(extra.q).slice(0, 300);
+    data.memory.push(m);
+    prune(); save('memory');
+    return { ok: true, id: m.id };
+  }
+  function isLesson(m) { return /^(lesson|correction|good|bad)$/.test(m.kind); }
+  /** keep the list small: oldest and least used go first, separately for lessons and for facts */
+  function prune() {
+    function cut(filter, max) {
+      var list = data.memory.filter(filter); if (list.length <= max) return;
+      list.sort(function (a, b) { return (a.uses - b.uses) || (a.at - b.at); });
+      var drop = {}; list.slice(0, list.length - max).forEach(function (m) { drop[m.id] = 1; });
+      data.memory = data.memory.filter(function (m) { return !drop[m.id]; });
+    }
+    cut(isLesson, LESSON_MAX); cut(function (m) { return !isLesson(m); }, MEM_MAX);
+  }
+  function forget(id) { var n = data.memory.length; data.memory = data.memory.filter(function (m) { return m.id !== id; }); if (data.memory.length !== n) save('memory'); return data.memory.length !== n; }
+  function forgetAll() { data.memory = []; save('memory'); }
+  /** the memories and lessons that matter for this question, ranked by shared words, kind and age, within a size cap */
+  function recall(question, maxChars) {
+    var q = words(question), now = Date.now();
+    function score(m) {
+      var w = words(m.text + ' ' + (m.q || '')), hit = 0;
+      q.forEach(function (x) { if (x.length > 2 && w.indexOf(x) >= 0) hit++; });
+      var age = (now - m.at) / 864e5, base = m.kind === 'preference' ? 2 : m.kind === 'correction' ? 2.5 : m.kind === 'bad' ? 1.5 : 1;
+      return hit * 2 + base + Math.max(0, 1 - age / 60) + Math.min(m.uses, 5) * 0.1;
+    }
+    var facts = data.memory.filter(function (m) { return !isLesson(m); }).map(function (m) { return { m: m, s: score(m) }; }),
+      lessons = data.memory.filter(isLesson).map(function (m) { return { m: m, s: score(m) }; });
+    facts.sort(function (a, b) { return b.s - a.s; }); lessons.sort(function (a, b) { return b.s - a.s; });
+    var out = [], used = 0, cap = maxChars || 3500;
+    function take(list, n, fmt) { list.slice(0, n).forEach(function (x) { var line = fmt(x.m); if (used + line.length > cap) return; used += line.length; out.push(line); x.m.uses++; }); }
+    var f = [], l = [];
+    take(facts, 14, function (m) { var s = '- ' + m.text; f.push(s); return s; });
+    take(lessons, 6, function (m) { var s = '- ' + (m.kind === 'correction' ? 'Corrected: ' : m.kind === 'bad' ? 'Marked not right: ' : m.kind === 'good' ? 'Marked good: ' : '') + m.text; l.push(s); return s; });
+    if (out.length) save('memory');
+    var txt = '';
+    if (f.length) txt += 'What the founder asked you to remember (stored on this device):\n' + f.join('\n');
+    if (l.length) txt += (txt ? '\n\n' : '') + 'Lessons from earlier answers (follow them):\n' + l.join('\n');
+    return txt;
+  }
+  /** a thumbs up or down on an answer */
+  function rate(q, a, good) {
+    var text = (good ? 'This kind of answer worked: ' : 'Avoid answering like this: ') + 'asked "' + String(q || '').slice(0, 140) + '", answered "' + String(a || '').replace(/\s+/g, ' ').slice(0, 220) + '"';
+    return remember(text, good ? 'good' : 'bad', { q: q });
+  }
+  var CORRECTION = /^(no[,.!]|nope\b|wrong\b|that'?s (wrong|not right|not it|incorrect)|not quite\b|incorrect\b|actually[,]? |you got that wrong|that isn'?t right)/i;
+  /** the founder correcting the last answer: kept as a lesson tied to the question it was about */
+  function noteCorrection(text, prevQ, prevA) {
+    if (!prevQ || !CORRECTION.test(String(text || '').trim())) return null;
+    return remember('When asked "' + String(prevQ).slice(0, 140) + '", the founder corrected the answer: "' + String(text).slice(0, 260) + '"', 'correction', { q: prevQ });
+  }
+
+  /* ---------------------------------------------------------------- made things */
+  var MADE_MAX = 60;
+  function addMade(item) {
+    var old = item.id && data.made.filter(function (m) { return m.id === item.id; })[0];
+    if (old) { Object.keys(item).forEach(function (k) { old[k] = item[k]; }); old.at = Date.now(); old.round = (old.round || 1) + (item.content ? 1 : 0); save('made'); return old; }
+    var m = { id: item.id || uid('d'), kind: item.kind, title: item.title, note: item.note || '', content: item.content, at: Date.now(), round: 1, score: null };
+    data.made.unshift(m); if (data.made.length > MADE_MAX) data.made.length = MADE_MAX; save('made'); return m;
+  }
+  function getMade(id) { return data.made.filter(function (m) { return m.id === id; })[0] || null; }
+  function dropMade(id) { data.made = data.made.filter(function (m) { return m.id !== id; }); save('made'); }
+
+  /** Clean an SVG before it is shown, stored or downloaded: no scripts, no event handlers, no outside links,
+      no embedded web content. It is only ever shown inside an <img>, which runs nothing anyway. */
+  function cleanSvg(src) {
+    var txt = String(src || '').trim();
+    var a = txt.indexOf('<svg'), b = txt.lastIndexOf('</svg>');
+    if (a < 0 || b < a) return { ok: false, why: 'There is no <svg> element in it.' };
+    txt = txt.slice(a, b + 6);
+    var doc; try { doc = new DOMParser().parseFromString(txt, 'image/svg+xml'); } catch (e) { return { ok: false, why: 'The SVG could not be read.' }; }
+    var err = doc.getElementsByTagName('parsererror')[0];
+    if (err) return { ok: false, why: 'The SVG does not parse: ' + String(err.textContent || '').replace(/\s+/g, ' ').slice(0, 160) };
+    var root = doc.documentElement; if (!root || root.nodeName.toLowerCase() !== 'svg') return { ok: false, why: 'The root element is not <svg>.' };
+    Array.prototype.slice.call(root.querySelectorAll('script, foreignObject, iframe, object, embed, audio, video, animate, set, animateMotion, animateTransform, animateColor')).forEach(function (n) { n.parentNode.removeChild(n); });
+    /* a link inside a picture goes nowhere useful: keep what it wraps, drop the link */
+    Array.prototype.slice.call(root.querySelectorAll('a')).forEach(function (a) { while (a.firstChild) a.parentNode.insertBefore(a.firstChild, a); a.parentNode.removeChild(a); });
+    Array.prototype.slice.call(root.querySelectorAll('*')).concat([root]).forEach(function (n) {
+      Array.prototype.slice.call(n.attributes).forEach(function (at) {
+        var name = at.name.toLowerCase(), v = String(at.value || '').trim();
+        if (/^on/.test(name)) n.removeAttribute(at.name);
+        else if ((name === 'href' || name === 'xlink:href' || name === 'src') && !/^#|^data:image\/(png|jpe?g|gif|webp);/i.test(v)) n.removeAttribute(at.name);
+        else if (name === 'style' && /url\(\s*['"]?(?!#|data:)/i.test(v)) n.removeAttribute(at.name);
+      });
+    });
+    if (!root.getAttribute('xmlns')) root.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    var out = new XMLSerializer().serializeToString(root);
+    var vb = (root.getAttribute('viewBox') || '').split(/[\s,]+/).map(Number), w = parseFloat(root.getAttribute('width')) || vb[2] || 1200, h = parseFloat(root.getAttribute('height')) || vb[3] || 1200;
+    return { ok: true, svg: out, w: w, h: h };
+  }
+  /* ---- the fonts this page carries, embedded into a design so it looks the same in the preview, the art
+     director's picture and the downloaded file. Outside fonts cannot be loaded here. */
+  var FONTS = [['Jost', 'fonts/jost.woff2', '300 500'], ['IBM Plex Mono', 'fonts/plexmono-400.woff2', '400'], ['IBM Plex Mono', 'fonts/plexmono-500.woff2', '500']], fontP = null;
+  function b64(buf) { var s = '', u = new Uint8Array(buf); for (var i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); }
+  function fonts() {
+    if (!fontP) fontP = Promise.all(FONTS.map(function (f) { return fetch(f[1]).then(function (r) { if (!r.ok) throw new Error('font'); return r.arrayBuffer(); }).then(function (b) { return { family: f[0], weight: f[2], b64: b64(b) }; }).catch(function () { return null; }); }))
+      .then(function (l) { return l.filter(Boolean); });
+    return fontP;
+  }
+  /** the SVG with @font-face rules for the families it uses, as data, so nothing is fetched when it is drawn */
+  function withFonts(svg) {
+    var uses = FONTS.filter(function (f, k) { return FONTS.map(function (x) { return x[0]; }).indexOf(f[0]) === k && svg.indexOf(f[0]) >= 0; });
+    if (!uses.length) return Promise.resolve(svg);
+    return fonts().then(function (fl) {
+      var css = fl.filter(function (f) { return svg.indexOf(f.family) >= 0; }).map(function (f) { return '@font-face{font-family:"' + f.family + '";src:url(data:font/woff2;base64,' + f.b64 + ') format("woff2");font-weight:' + f.weight + ';}'; }).join('');
+      if (!css) return svg;
+      var a = svg.indexOf('<svg'), b = svg.indexOf('>', a); if (a < 0 || b < 0) return svg;
+      return svg.slice(0, b + 1) + '<defs><style type="text/css">' + css + '</style></defs>' + svg.slice(b + 1);
+    });
+  }
+  /** Words the founder's own rules ban, read from the pack's rules ("never say "x"", "Banned words: a, b"). */
+  function banned() {
+    var p = Kin.pack && Kin.pack.get(), out = [], seen = {}; if (!p || !p.rules) return out;
+    var add = function (w) { w = String(w || '').trim().toLowerCase(); if (w.length >= 2 && w.length <= 40 && !seen[w]) { seen[w] = 1; out.push(w); } };
+    p.rules.replace(/\b(?:never|don'?t|do not)\s+(?:say|use|write|call\s+(?:it|us|them|the drink)?|mention|describe\s+(?:it|us)?\s*as)?\s*[\u201c"]([^"\u201d\n]{2,40})[\u201d"]/gi, function (m, w) { add(w); return m; });
+    p.rules.replace(/\b(?:banned|forbidden)(?: words?| phrases?)?\s*[:\-]\s*([^\n]+)/gi, function (m, l) { l.split(/[,;]/).forEach(function (w) { add(w.replace(/[\u201c\u201d"'.]/g, '')); }); return m; });
+    return out.slice(0, 40);
+  }
+  /** what the text breaks: long dashes, and the banned words */
+  function wordProblems(text) {
+    var t = String(text || ''), out = [];
+    var dash = (t.match(/[\u2013\u2014]/g) || []).length; if (dash) out.push('Uses ' + dash + ' long dash' + (dash === 1 ? '' : 'es') + '; the rules say none. Use a comma, a colon or a full stop.');
+    banned().forEach(function (w) { var re = new RegExp('(^|[^a-z])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^a-z])', 'i'); if (re.test(t)) out.push('Uses "' + w + '", which the rules ban.'); });
+    return out;
+  }
+  /** Measure a design the way a checker would: draw it hidden in this page with the real fonts, then look for
+      text running off the canvas, text on text, text crowding an edge, text too small to read, and banned words. */
+  function measure(svg, w, h) {
+    return new Promise(function (res) {
+      var host = null;
+      function done(v) { try { if (host) host.remove(); } catch (e) {} res(v); }
+      try {
+        var doc = new DOMParser().parseFromString(svg, 'image/svg+xml'), root = document.importNode(doc.documentElement, true);
+        Array.prototype.slice.call(root.querySelectorAll('style')).forEach(function (n) { n.remove(); });
+        Array.prototype.slice.call(root.querySelectorAll('[style]')).concat([root]).forEach(function (n) { n.removeAttribute('style'); });
+        root.setAttribute('width', w); root.setAttribute('height', h);
+        host = document.createElement('div'); host.setAttribute('aria-hidden', 'true');
+        host.style.position = 'fixed'; host.style.left = '-30000px'; host.style.top = '0'; host.style.width = w + 'px'; host.style.height = h + 'px'; host.style.visibility = 'hidden'; host.style.pointerEvents = 'none';
+        host.appendChild(root); document.body.appendChild(host);
+        var loads = []; if (document.fonts && document.fonts.load) ['300 40px Jost', '400 40px Jost', '500 40px Jost', '400 40px "IBM Plex Mono"', '500 40px "IBM Plex Mono"'].forEach(function (f) { loads.push(document.fonts.load(f).catch(function () {})); });
+        var t0 = setTimeout(function () { done({ hard: [], soft: [], failed: true }); }, 5000);
+        Promise.all(loads).then(function () { return document.fonts && document.fonts.ready; }).then(function () {
+          clearTimeout(t0);
+          var rr = root.getBoundingClientRect(), vb = root.viewBox && root.viewBox.baseVal, W = vb && vb.width || w, H = vb && vb.height || h, kx = W / (rr.width || 1), ky = H / (rr.height || 1), short = Math.min(W, H);
+          /* a text box from the browser is the whole line box (ascent to descent), far taller than the letters.
+             Tight display type would read as overlapping, so each box is cut to where the ink sits: cap height above the baseline, a short descender below */
+          var texts = Array.prototype.slice.call(root.querySelectorAll('text')).map(function (t) {
+            var b = t.getBoundingClientRect(), fs = parseFloat(getComputedStyle(t).fontSize) || 0, x = (b.left - rr.left) * kx, y = (b.top - rr.top) * ky, bw = b.width * kx, bh = b.height * ky;
+            if (fs > 0) { var line = Math.min(bh, 1.45 * fs), top = Math.max(0, 0.75 * line - 0.74 * fs), bot = Math.max(0, 0.25 * line - 0.18 * fs); y += top; bh = Math.max(1, bh - top - bot); }
+            return { txt: (t.textContent || '').replace(/\s+/g, ' ').trim(), x: x, y: y, w: bw, h: bh, fs: fs || bh, bleed: !!(t.closest && t.closest('[data-bleed="true"]')) };
+          }).filter(function (t) { return t.txt && t.w > 0 && t.h > 0; });
+          var hard = [], soft = [], q = function (t) { return '"' + (t.txt.length > 40 ? t.txt.slice(0, 38) + '…' : t.txt) + '"'; }, edge = 0.04 * short;
+          texts.forEach(function (t) {
+            if (t.x < -0.01 * W || t.y < -0.01 * H || t.x + t.w > 1.01 * W || t.y + t.h > 1.01 * H) hard.push(q(t) + ' runs off the canvas.');
+            else if (!t.bleed && (t.x < edge || t.y < edge || W - (t.x + t.w) < edge || H - (t.y + t.h) < edge)) soft.push(q(t) + ' sits within 4% of an edge; give it more margin.');
+            if (t.fs < 0.016 * short) soft.push(q(t) + ' is very small (' + Math.round(t.fs) + ' units on a ' + Math.round(short) + ' canvas); it may not read.');
+          });
+          for (var i = 0; i < texts.length; i++) for (var j = i + 1; j < texts.length; j++) {
+            var a = texts[i], b = texts[j], ix = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x), iy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+            if (ix > 0 && iy > 0 && ix * iy > 0.2 * Math.min(a.w * a.h, b.w * b.h)) hard.push(q(a) + ' and ' + q(b) + ' print over each other.');
+          }
+          wordProblems(texts.map(function (t) { return t.txt; }).join(' \n ')).forEach(function (x) { hard.push(x); });
+          done({ hard: hard.slice(0, 8), soft: soft.slice(0, 6), texts: texts.length });
+        }, function () { clearTimeout(t0); done({ hard: [], soft: [], failed: true }); });
+      } catch (e) { done({ hard: [], soft: [], failed: true }); }
+    });
+  }
+  function svgUrl(svg) { return URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' })); }
+  /** Draw an SVG to a PNG (base64, no prefix), at most `max` pixels on the long side. Resolves null when the browser will not. */
+  function svgToPng(svg, w, h, max) {
+    return new Promise(function (res) {
+      withFonts(svg).then(function (full) { draw(full); }, function () { draw(svg); });
+      function draw(svg) {
+      var url = svgUrl(svg), img = new Image(), done = false;
+      function fin(v) { if (done) return; done = true; try { URL.revokeObjectURL(url); } catch (e) {} res(v); }
+      var t = setTimeout(function () { fin(null); }, 6000);
+      img.onload = function () {
+        try {
+          var k = Math.min(1, (max || 1200) / Math.max(w, h)), cw = Math.max(1, Math.round(w * k)), ch = Math.max(1, Math.round(h * k));
+          var c = document.createElement('canvas'); c.width = cw; c.height = ch; var g = c.getContext('2d');
+          g.fillStyle = '#ffffff'; g.fillRect(0, 0, cw, ch); g.drawImage(img, 0, 0, cw, ch);
+          var data = c.toDataURL('image/png'); clearTimeout(t); fin(/^data:image\/png;base64,/.test(data) ? data.split(',')[1] : null);
+        } catch (e) { clearTimeout(t); fin(null); }
+      };
+      img.onerror = function () { clearTimeout(t); fin(null); };
+      img.src = url;
+      }
+    });
+  }
+  function download(name, text, type) {
+    try {
+      var url = URL.createObjectURL(new Blob([text], { type: type || 'text/plain' })), a = document.createElement('a');
+      a.href = url; a.download = name; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 4000); return true;
+    } catch (e) { return false; }
+  }
+  function fileName(m) { var base = String(m.title || 'kin').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 50) || 'kin'; return base + (m.kind === 'design' ? '.svg' : '.md'); }
+
+  /* ---------------------------------------------------------------- a small, safe Markdown renderer.
+     Builds DOM nodes with textContent only, so nothing in the text can become markup. */
+  function inline(el, text) {
+    var re = /(\*\*([^*]+)\*\*|\*([^*\s][^*]*)\*|_([^_\s][^_]*)_|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))/g, last = 0, m;
+    text = String(text);
+    while ((m = re.exec(text))) {
+      if (m.index > last) el.appendChild(document.createTextNode(text.slice(last, m.index)));
+      var n;
+      if (m[2]) { n = document.createElement('strong'); n.textContent = m[2]; }
+      else if (m[3] || m[4]) { n = document.createElement('em'); n.textContent = m[3] || m[4]; }
+      else if (m[5]) { n = document.createElement('code'); n.textContent = m[5]; }
+      else { n = document.createElement('a'); n.textContent = m[6]; n.href = m[7]; n.target = '_blank'; n.rel = 'noopener noreferrer'; }
+      el.appendChild(n); last = re.lastIndex;
+    }
+    if (last < text.length) el.appendChild(document.createTextNode(text.slice(last)));
+  }
+  function md(text, into) {
+    var root = into || document.createElement('div'); root.textContent = '';
+    var lines = String(text || '').replace(/\r/g, '').split('\n'), i = 0;
+    function para(buf) { if (!buf.length) return; var p = document.createElement('p'); inline(p, buf.join(' ')); root.appendChild(p); }
+    var buf = [];
+    while (i < lines.length) {
+      var l = lines[i];
+      if (/^```/.test(l)) { para(buf); buf = []; var code = []; i++; while (i < lines.length && !/^```/.test(lines[i])) code.push(lines[i++]); i++; var pre = document.createElement('pre'); pre.textContent = code.join('\n'); root.appendChild(pre); continue; }
+      var h = /^(#{1,4})\s+(.*)$/.exec(l);
+      if (h) { para(buf); buf = []; var hn = document.createElement(h[1].length <= 2 ? 'h3' : 'h4'); inline(hn, h[2]); root.appendChild(hn); i++; continue; }
+      if (/^\s*\|.*\|\s*$/.test(l) && i + 1 < lines.length && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1])) {
+        para(buf); buf = []; var tbl = document.createElement('table'), cells = function (s) { return s.trim().replace(/^\||\|$/g, '').split('|').map(function (c) { return c.trim(); }); };
+        var tr = document.createElement('tr'); cells(l).forEach(function (c) { var th = document.createElement('th'); inline(th, c); tr.appendChild(th); }); var th0 = document.createElement('thead'); th0.appendChild(tr); tbl.appendChild(th0);
+        var tb = document.createElement('tbody'); i += 2;
+        while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { var r = document.createElement('tr'); cells(lines[i]).forEach(function (c) { var td = document.createElement('td'); inline(td, c); r.appendChild(td); }); tb.appendChild(r); i++; }
+        tbl.appendChild(tb); var wrap = document.createElement('div'); wrap.className = 'tbl'; wrap.appendChild(tbl); root.appendChild(wrap); continue;
+      }
+      var li = /^\s*([-*]|\d+[.)])\s+(.*)$/.exec(l);
+      if (li) {
+        para(buf); buf = []; var ol = /\d/.test(li[1]), list = document.createElement(ol ? 'ol' : 'ul');
+        while (i < lines.length) { var x = /^\s*([-*]|\d+[.)])\s+(.*)$/.exec(lines[i]); if (!x) break; var item = document.createElement('li'); inline(item, x[2]); list.appendChild(item); i++; }
+        root.appendChild(list); continue;
+      }
+      if (/^>\s?/.test(l)) { para(buf); buf = []; var q = document.createElement('blockquote'); inline(q, l.replace(/^>\s?/, '')); root.appendChild(q); i++; continue; }
+      if (/^\s*(-{3,}|\*{3,})\s*$/.test(l)) { para(buf); buf = []; root.appendChild(document.createElement('hr')); i++; continue; }
+      if (!l.trim()) { para(buf); buf = []; i++; continue; }
+      buf.push(l.trim()); i++;
+    }
+    para(buf);
+    return root;
+  }
+
+  /* ---------------------------------------------------------------- numbers said as words */
+  var NUM1 = { zero: 0, oh: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19 };
+  var NUM10 = { twenty: 20, thirty: 30, forty: 40, fourty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
+  function isNum(w) { return w in NUM1 || w in NUM10 || w === 'hundred' || w === 'thousand'; }
+  /** "one thirty five" is 135 and "four oh five" is 405, as people say weights */
+  function runValue(ws) {
+    var ch = [], i = 0, w, v;
+    while (i < ws.length) { w = ws[i];
+      if (w === 'hundred' || w === 'thousand' || w === 'oh') ch.push(w);
+      else if (w in NUM10) { v = NUM10[w]; if (i + 1 < ws.length && ws[i + 1] in NUM1 && NUM1[ws[i + 1]] > 0 && NUM1[ws[i + 1]] < 10) { v += NUM1[ws[i + 1]]; i++; } ch.push(v); }
+      else if (w in NUM1) ch.push(NUM1[w]);
+      i++; }
+    if (ch.indexOf('hundred') >= 0 || ch.indexOf('thousand') >= 0) { var total = 0, cur = 0; ch.forEach(function (c) { if (c === 'hundred') cur = (cur || 1) * 100; else if (c === 'thousand') { total += (cur || 1) * 1000; cur = 0; } else if (c !== 'oh') cur += c; }); return total + cur; }
+    if (ch.length === 1) return ch[0] === 'oh' ? 0 : ch[0];
+    if (ch.length === 2 && typeof ch[0] === 'number' && typeof ch[1] === 'number' && ch[0] >= 1 && ch[1] >= 10) return ch[0] * 100 + ch[1];
+    if (ch.length === 3 && ch[1] === 'oh' && typeof ch[0] === 'number' && ch[0] <= 9 && typeof ch[2] === 'number' && ch[2] <= 9) return ch[0] * 100 + ch[2];
+    return +ch.map(function (c) { return c === 'oh' ? 0 : c; }).join('');
+  }
+  function numify(text) {
+    var tk = String(text || '').split(/(\s+|[,;!?]|\.(?=\s|$))/), out = [], i = 0;
+    var word = function (k) { return (tk[k] || '').toLowerCase(); }, next = function (k) { k++; while (k < tk.length && /^\s*$/.test(tk[k])) k++; return k; };
+    while (i < tk.length) {
+      var w = word(i);
+      if (isNum(w) && w !== 'oh') {
+        var run = [w], j = i, k = next(j);
+        while (k < tk.length && isNum(word(k))) { run.push(word(k)); j = k; k = next(k); }
+        out.push(String(runValue(run))); i = j + 1;
+      } else { out.push(tk[i]); i++; }
+    }
+    return out.join('');
+  }
+
+  /* ---------------------------------------------------------------- the logbook: instant, no model */
+  var LOG_MAX = 1000;
+  function kindOf(t) {
+    if (/\b(torque|torqued|bolt|axle|controller|battery|motor|sprocket|chain|brake|tyre|tire|fork|shock|swap(ped)?|install(ed)?|upgrade|mod(ded)?)\b/i.test(t)) return 'mod';
+    if (/\b(batch|brew|syrup|ph|brix|ferment|bottled|canned|recipe|flavou?r)\b/i.test(t)) return 'batch';
+    if (/\b(print(ed)?|solder(ed)?|wired|wiring|cad|prototype|build|built|assembl(e|ed|y))\b/i.test(t)) return 'build';
+    return 'note';
+  }
+  function addLog(kind, text, extra) {
+    var e = { id: uid('l'), kind: kind, text: String(text).slice(0, 400), at: Date.now() };
+    if (extra) Object.keys(extra).forEach(function (k) { e[k] = extra[k]; });
+    data.log.unshift(e); if (data.log.length > LOG_MAX) data.log.length = LOG_MAX; save('log'); return e;
+  }
+  function dropLog(id) { data.log = data.log.filter(function (e) { return e.id !== id; }); save('log'); }
+  var EXERCISE = 'bench(?: press)?|squats?|deadlifts?|overhead press|ohp|press|rows?|pull ?ups?|chin ?ups?|dips?|curls?|lunges?|rdls?|hip thrusts?|leg press|incline(?: bench)?|push ?ups?|lat pull ?downs?|cleans?|snatch(?:es)?';
+  var SET_RE = new RegExp('^(?:log |logged )?(' + EXERCISE + ')[ ,:]+(\\d+(?:\\.\\d+)?)\\s*(?:lbs?|pounds|kg|kilos)?\\s*(?:for|x|by|times)\\s*(\\d+)(?:\\s*(?:reps?))?[.!]?$', 'i');
+  function instantLog(raw) {
+    var t = numify(String(raw || '').trim()).replace(/\s+/g, ' ');
+    var s = SET_RE.exec(t);
+    if (s) { var e = addLog('workout', s[1].toLowerCase() + ' ' + s[2] + ' for ' + s[3], { exercise: s[1].toLowerCase(), weight: +s[2], reps: +s[3] }); return { say: 'Done, sir.', show: 'Logged a set: ' + e.text + '.', clip: 'done' }; }
+    var m = /^(?:kin[, ]+|jarvis[, ]+)?(?:please )?(?:log(?: that)?|note(?: that)?|add to (?:the |my )?log(?:book)?)[:, ]+(.{3,})$/i.exec(t);
+    if (m && !/^(in|into|onto)\b/i.test(m[1])) { var txt = m[1].replace(/[.!]+$/, ''), k = kindOf(txt); addLog(k, txt); return { say: 'Done, sir.', show: 'Logged (' + k + '): ' + txt + '.', clip: 'done' }; }
+    if (/^(?:what(?:'s| is) in (?:the |my )?log(?:book)?|show (?:me )?(?:the |my )?log(?:book)?|read (?:me )?(?:the |my )?log(?:book)?)[?.!]*$/i.test(t)) {
+      if (!data.log.length) return { say: 'The logbook is empty, sir.', show: 'The logbook is empty, sir.' };
+      var last = data.log.slice(0, 5).map(function (e) { return e.text; });
+      return { say: 'The last ' + last.length + ' entries, sir: ' + last.join('. ') + '.', show: 'Last entries:\n' + data.log.slice(0, 5).map(function (e) { return '- ' + new Date(e.at).toLocaleDateString() + ' (' + e.kind + '): ' + e.text; }).join('\n'), open: 'log' };
+    }
+    return null;
+  }
+
+  /* ---------------------------------------------------------------- timers: instant, no model */
+  var timer = null, timerSubs = [];
+  function onTimer(f) { timerSubs.push(f); }
+  function tick() { timerSubs.forEach(function (f) { try { f(timer ? { left: Math.max(0, Math.ceil((timer.end - Date.now()) / 1000)), label: timer.label } : null); } catch (e) {} }); }
+  function startTimer(sec, label) {
+    stopTimer(true); var end = Date.now() + sec * 1000;
+    timer = { end: end, label: label, iv: setInterval(function () { if (!timer) return; if (Date.now() >= timer.end) { var l = timer.label; stopTimer(true); timerSubs.forEach(function (f) { try { f({ done: true, label: l }); } catch (e) {} }); } else tick(); }, 250) };
+    tick();
+  }
+  function stopTimer(quiet) { if (timer) clearInterval(timer.iv); timer = null; if (!quiet) tick(); else tick(); }
+  function fmt(sec) { var m = Math.floor(sec / 60), s = sec % 60; return m ? m + (m === 1 ? ' minute' : ' minutes') + (s ? ' ' + s + ' seconds' : '') : s + ' seconds'; }
+  function instantTimer(raw) {
+    var t = numify(String(raw || '').trim().toLowerCase()).replace(/[.!?]+$/, '');
+    if (/^(cancel|stop|clear|kill) (the )?timer$/.test(t)) { if (!timer) return { say: 'There is no timer running, sir.', show: 'No timer running.' }; stopTimer(); return { say: 'Timer cancelled, sir.', show: 'Timer cancelled.' }; }
+    if (/^(how (long|much time)( is)? left|time left|how long on the timer)$/.test(t)) { if (!timer) return { say: 'There is no timer running, sir.', show: 'No timer running.' }; var l = Math.ceil((timer.end - Date.now()) / 1000); return { say: fmt(l) + ' left, sir.', show: fmt(l) + ' left.' }; }
+    var m = /^(?:(?:set|start) (?:a |an )?)?(?:(rest|timer|rest timer)(?: for)? (\d+(?:\.\d+)?) ?(seconds?|secs?|s|minutes?|mins?|m)|(\d+(?:\.\d+)?) ?(seconds?|secs?|minutes?|mins?)(?: rest)?(?: timer)?)$/.exec(t);
+    if (!m) return null;
+    var n = +(m[2] || m[4]), unit = m[3] || m[5], sec = Math.round(/^m/.test(unit) ? n * 60 : n);
+    if (!(sec >= 1 && sec <= 4 * 3600)) return null;
+    var label = m[1] === 'rest' || /rest/.test(t) ? 'Rest' : 'Timer';
+    startTimer(sec, label); return { say: label + ', ' + fmt(sec) + '. Starting now, sir.', show: label + ': ' + fmt(sec) + '.' };
+  }
+
+  /* ---------------------------------------------------------------- protocols: named routines, instant, from what is on this device */
+  function dated(days) { return Kin.pack && Kin.pack.get() ? Kin.pack.dates(days) : []; }
+  function when(n) { var k = Kin.daysTo(n.d); return k === 0 ? 'today' : k === 1 ? 'tomorrow' : Kin.day(n.d); }
+  var PROTOCOLS = {
+    morning: { name: 'Morning brief', run: function () {
+      var d = dated(7), h = new Date().getHours(), hi = h < 12 ? 'Good morning, sir.' : h < 18 ? 'Good afternoon, sir.' : 'Good evening, sir.';
+      if (!Kin.pack.get()) return { say: hi + ' I hold no pack on this device yet, so I have nothing dated to brief you on.', show: hi + ' No pack on this device yet. In the Atlas: Kin\'s settings > Your data > Export everything. Then here: Settings > Import Kin pack.' };
+      var lines = d.slice(0, 4).map(function (n) { return n.t + ', ' + when(n); });
+      var sets = data.log.filter(function (e) { return Date.now() - e.at < 864e5; }).length;
+      var say = hi + ' ' + (d.length ? d.length + (d.length === 1 ? ' thing is' : ' things are') + ' dated in the next seven days. First: ' + lines.join('. ') + '.' : 'Nothing is dated in the next seven days.') + (sets ? ' You logged ' + sets + (sets === 1 ? ' entry' : ' entries') + ' in the last day.' : '');
+      return { say: say, show: say };
+    } },
+    shutdown: { name: 'Shutdown', run: function () {
+      var day = data.log.filter(function (e) { return new Date(e.at).toDateString() === new Date().toDateString(); }), tom = dated(1).filter(function (n) { return Kin.daysTo(n.d) === 1; });
+      var say = (day.length ? 'Today you logged ' + day.length + (day.length === 1 ? ' entry' : ' entries') + ': ' + day.slice(0, 3).map(function (e) { return e.text; }).join('. ') + '.' : 'Nothing was logged today.') + ' ' + (tom.length ? 'First thing tomorrow: ' + tom[0].t + '.' : 'Nothing is dated for tomorrow.') + ' Rest well, sir.';
+      return { say: say, show: say, sleep: true };
+    } },
+    focus: { name: 'Focus', run: function () {
+      var d = dated(30), one = d[0];
+      var say = one ? 'The one thing, sir: ' + one.t + ', ' + when(one) + '. I will keep quiet until you call.' : 'Nothing dated is pressing, sir. Pick the hardest thing and start. I will keep quiet until you call.';
+      return { say: say, show: say, sleep: true };
+    } }
+  };
+  function instantProtocol(raw) {
+    var t = String(raw || '').toLowerCase().replace(/[.!?]+$/, '').trim();
+    var m = /^(?:run |start |do )?(?:the |my )?(morning(?: brief| protocol| briefing)?|shutdown(?: protocol)?|shut down(?: protocol)?|focus(?: mode| protocol)?)(?: protocol)?(?: please)?$/.exec(t);
+    if (!m) return null;
+    var key = /^morning/.test(m[1]) ? 'morning' : /^shut/.test(m[1]) ? 'shutdown' : 'focus';
+    var r = PROTOCOLS[key].run(); r.protocol = PROTOCOLS[key].name; return r;
+  }
+  function instantHelp(raw) {
+    if (!/^(help|what can (you|i) (do|say)|what do you do|commands)[?.! ]*$/i.test(String(raw || '').trim())) return null;
+    var show = 'Things you can say:\n- "hey Jarvis", "go to sleep", "stop"\n- "What is due this week?", "brief me", "what is the latest on ..."\n- "Design a poster for ...", "Write a plan for ...", "Make a table of ..."\n- "bench, 135 for 8", "log that I changed the brake pads", "rest 90 seconds"\n- "run the morning protocol", "shutdown", "focus"\n- "remember that ...", and the thumbs under each answer teach me what works.';
+    return { say: 'It is on screen now, sir.', show: show };
+  }
+  /** Phrases Kin handles on this device at once, without Claude. Returns { say, show, clip?, sleep?, open? } or null. */
+  function instant(text) {
+    return instantTimer(text) || instantLog(text) || instantProtocol(text) || instantHelp(text);
+  }
+
+  /* ---------------------------------------------------------------- spend: an estimate from the token counts */
+  /* dollars per million tokens: input, output, cache read, cache write (5-minute writes cost 1.25 times input) */
+  var PRICES = {
+    'claude-opus-5-5': [4, 20, 0.2, 5], 'claude-fable-5-2': [8, 40, 0.2, 10], 'claude-haiku-5-5': [0.1, 0.5, 0.01, 0.125],
+    'claude-opus-4-8': [5, 25, 0.5, 6.25], 'claude-opus-5': [5, 25, 0.5, 6.25], 'claude-sonnet-5-5': [2, 10, 0.1, 2.5]
+  };
+  var SEARCH_USD = 0.01;
+  function price(model) { var k = Object.keys(PRICES).filter(function (p) { return String(model || '').indexOf(p) === 0; }).sort(function (a, b) { return b.length - a.length; })[0]; return PRICES[k] || PRICES['claude-opus-5-5']; }
+  function costOf(model, u) {
+    if (!u) return 0; var p = price(model);
+    var c = (u.input_tokens || 0) * p[0] + (u.output_tokens || 0) * p[1] + (u.cache_read_input_tokens || 0) * p[2] + (u.cache_creation_input_tokens || 0) * p[3];
+    var ws = u.server_tool_use && u.server_tool_use.web_search_requests || 0;
+    return c / 1e6 + ws * SEARCH_USD;
+  }
+  function day(key) { var v; try { v = JSON.parse(ls.get(key, '') || '{}'); } catch (e) { v = {}; } if (!v || v.day !== today()) v = { day: today(), n: 0, usd: 0 }; return v; }
+  function addSpend(usd) { var v = day('kin.spend'); v.usd = Math.round((v.usd + (usd || 0)) * 1e5) / 1e5; v.n++; ls.set('kin.spend', JSON.stringify(v)); return v; }
+  function spendToday() { return day('kin.spend'); }
+  function webCap() { var v = parseInt(ls.get('kin.webcap', ''), 10); return v >= 0 && v <= 500 ? v : 30; }
+  function setWebCap(n) { n = Math.round(+n); if (n >= 0 && n <= 500) ls.set('kin.webcap', String(n)); return webCap(); }
+  function webToday() { return day('kin.web').n; }
+  function addWeb(n) { if (!n) return; var v = day('kin.web'); v.n += n; ls.set('kin.web', JSON.stringify(v)); }
+  function webLeft() { return Math.max(0, webCap() - webToday()); }
+
+  Kin.mind = {
+    load: load, loaded: function () { return loaded; },
+    memory: function () { return data.memory.slice(); }, remember: remember, forget: forget, forgetAll: forgetAll, recall: recall, rate: rate, noteCorrection: noteCorrection, refuse: refuse,
+    made: function () { return data.made.slice(); }, addMade: addMade, getMade: getMade, dropMade: dropMade, cleanSvg: cleanSvg, svgUrl: svgUrl, svgToPng: svgToPng, download: download, fileName: fileName,
+    withFonts: withFonts, measure: measure, wordProblems: wordProblems, banned: banned,
+    log: function () { return data.log.slice(); }, addLog: addLog, dropLog: dropLog,
+    instant: instant, numify: numify, onTimer: onTimer, timer: function () { return timer ? { left: Math.ceil((timer.end - Date.now()) / 1000), label: timer.label } : null }, stopTimer: stopTimer, fmt: fmt,
+    md: md,
+    costOf: costOf, addSpend: addSpend, spendToday: spendToday, webCap: webCap, setWebCap: setWebCap, webToday: webToday, addWeb: addWeb, webLeft: webLeft,
+    deep: function () { return ls.get('kin.deep', 'fable') === 'opus' ? 'opus' : 'fable'; }, setDeep: function (v) { ls.set('kin.deep', v === 'fable' ? 'fable' : 'opus'); },
+    wipe: function () { data = { memory: [], made: [], log: [] }; stopTimer(true); var k = kv(); if (k) ['memory', 'made', 'log'].forEach(function (n) { k.del('mind.' + n).catch(function () {}); }); }
+  };
+})();

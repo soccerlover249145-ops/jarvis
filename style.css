@@ -106,3 +106,59 @@ button { background: none; border: 0; padding: 0; cursor: pointer; -webkit-tap-h
 .steps .step p small { display: block; font: var(--data); color: var(--dim); margin-top: 2px; }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } .flare.on { opacity: .75; } }
+
+/* answers: Markdown, sources, a quiet line and thumbs */
+.thread .msg .md { max-width: 640px; }
+.md p { margin: 0 0 10px; }
+.md h3, .md h4 { font: 500 15px/1.35 var(--f-display); margin: 16px 0 6px; color: var(--fg); }
+.md ul, .md ol { margin: 0 0 10px 20px; }
+.md li { margin: 3px 0; }
+.md strong { font-weight: 500; color: var(--fg); }
+.md code, .md pre { font: var(--data); background: rgba(255, 255, 255, .05); border-radius: 4px; }
+.md code { padding: 1px 4px; }
+.md pre { padding: 10px 12px; overflow-x: auto; white-space: pre; margin: 0 0 10px; }
+.md blockquote { border-left: 1px solid var(--line2); padding-left: 12px; color: var(--fg2); margin: 0 0 10px; }
+.md hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
+.md a { color: var(--accent); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+.md .tbl { overflow-x: auto; margin: 0 0 12px; }
+.md table { border-collapse: collapse; font: var(--data); min-width: 100%; }
+.md th, .md td { text-align: left; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.md th { font: var(--label); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
+.src { margin-top: 8px; }
+.src small, .meta { font: var(--label); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+.src ol { margin: 6px 0 0 18px; font: var(--data); color: var(--dim); }
+.src li { margin: 2px 0; overflow-wrap: anywhere; }
+.src a { color: var(--fg2); text-decoration: none; border-bottom: 1px solid var(--line2); }
+.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 10px; }
+.thumb { font: var(--label); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); padding: 6px 0; }
+.thumb:hover, .thumb[aria-pressed="true"] { color: var(--accent); }
+.madeb { display: block; margin-top: 10px; font: var(--label); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); padding: 6px 0; text-align: left; }
+#stT { color: var(--signal); }
+#stT[hidden], .status .tsep:has(+ #stT[hidden]) { display: none; }
+/* the shelf */
+#shelftabs { margin: 14px 0 10px; }
+.mrow { display: grid; gap: 2px; width: 100%; text-align: left; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.mrow small, .logrow small, .memrow small { font: var(--label); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+.mrow span { font: 400 16px/1.35 var(--f-display); }
+.mtitle { font: 400 22px/1.25 var(--f-display); margin: 8px 0 2px; }
+.design { margin: 12px 0; display: flex; justify-content: center; }
+/* the whole piece is seen at once, however tall it is */
+.design img { display: block; max-width: 100%; max-height: 74vh; width: auto; height: auto; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.md.doc { margin-top: 10px; }
+.logrow, .memrow { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: start; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.logrow small { grid-column: 1 / -1; }
+.logrow p, .memrow p { font: var(--data); color: var(--fg2); }
+.memrow small { margin-right: 6px; }
+.empty { color: var(--dim); margin: 30px 0; }
+
+/* no pack yet: one button and the two steps */
+.loadcard { position: absolute; left: 50%; top: calc(64px + var(--safe-t)); transform: translateX(-50%); width: min(420px, calc(100% - 32px)); padding: 14px 16px; border: 1px solid var(--line2); border-radius: 12px; background: rgba(0, 0, 0, .72); z-index: 5; font: var(--data); color: var(--fg2); }
+.loadcard[hidden] { display: none; }
+.loadcard p b { font: 400 16px/1.3 var(--f-display); color: var(--fg); }
+.loadcard ol { margin: 8px 0 12px 18px; }
+.loadcard li { margin: 3px 0; }
+.loadbtn { display: inline-block; font: var(--label); letter-spacing: .16em; text-transform: uppercase; color: #000; background: var(--accent); padding: 10px 16px; border-radius: 999px; }
+.loadcard .note { margin: 8px 0 0; }
+
+/* the line under the face would print over an open conversation */
+body:has(#thread:not([hidden])) .caption { visibility: hidden; }
