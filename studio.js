@@ -358,13 +358,14 @@
               subs.forEach(function (u) { asked += (u.input && Array.isArray(u.input.requests)) ? u.input.requests.length : 0; });
               if (asked > plan.length) notes.push('Higgsfield was asked for ' + asked + ' pictures where ' + plan.length + ' were approved; the extra cost may show on your Higgsfield account.');
               /* which picture is which: the index of each request, the job id it got, the URL the wait returned */
-              var jobOf = {}, urlOf = {};
+              var jobOf = {}, urlOf = {}, gotIdx = {};
               g.results.forEach(function (b) {
                 var j = null; try { j = JSON.parse(resultText(b)); } catch (e) {}
-                walk(j, function (o) { if (o.job_id && typeof o.index === 'number' && plan[o.index]) jobOf[String(o.job_id).toLowerCase()] = plan[o.index].id; });
+                walk(j, function (o) { if (o.job_id && typeof o.index === 'number' && plan[o.index]) { jobOf[String(o.job_id).toLowerCase()] = plan[o.index].id; gotIdx[o.index] = 1; } });
                 if (b.is_error) Kin.hf.noteErr(resultText(b));
               });
-              var gotJobs = Object.keys(jobOf).length;
+              /* a picture counts as sent when its own request came back with a job id; two requests sharing one id are still two pictures */
+              var gotJobs = Object.keys(gotIdx).length;
               giveBack(Math.max(0, plan.length - gotJobs));
               g.results.forEach(function (b) {
                 var j = null; try { j = JSON.parse(resultText(b)); } catch (e) {}

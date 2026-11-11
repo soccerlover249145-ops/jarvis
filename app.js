@@ -21,11 +21,14 @@
     if (text == null) { cap.classList.remove('on', 'you'); return; }
     if (!S.unlocked && S.talk === 'awake' && kind !== 'you') small = 'Tap once so I can speak';
     cap.classList.toggle('you', kind === 'you'); $('capT').textContent = text; $('capS').textContent = small || ''; cap.classList.add('on');
+    /* on a phone the line sits above the bar as a one-line hint and steps aside after six seconds (qc.css) */
+    cap.classList.remove('qfade'); clearTimeout(fadeT); fadeT = setTimeout(function () { cap.classList.add('qfade'); }, 6000);
   }
+  var fadeT = 0;
   function captionFade(ms) { clearTimeout(capT); capT = setTimeout(function () { if (!S.talking && !S.busy) caption(S.talk === 'asleep' ? sayPhrase() : null, S.talk === 'asleep' ? sleepHint() : ''); }, ms); }
   function sayPhrase() { return (ears.supported ? 'Say “hey Jarvis”' : 'Type “hey Jarvis”'); }
   function sleepHint() { return S.hearing ? 'Listening for it. Or tap here' : ears.supported ? 'Tap here so I can hear you' : 'Or tap here to wake Kin'; }
-  function awakeHint() { if (S.talking) return ears.isSafari || !ears.supported ? 'Tap here to interrupt' : 'Just talk to interrupt'; return S.hearing ? 'Listening' : ears.supported ? 'Tap the mic so I can hear you' : coarse ? 'Tap the keyboard mic and talk' : 'Type to Kin'; }
+  function awakeHint() { if (S.talking) return ears.isSafari || !ears.supported ? 'Tap here to interrupt' : 'Just talk to interrupt'; return S.hearing ? 'Listening' : ears.supported ? 'Tap the mic so I can hear you' : coarse ? 'Tap the keyboard mic and talk' : 'Type to Jarvis'; }
   function flare(down) { var f = $('flare'); f.classList.remove('on'); f.classList.toggle('down', !!down); void f.offsetWidth; f.classList.add('on'); clearTimeout(flareT); flareT = setTimeout(function () { f.classList.remove('on'); }, 1700); if (!down) bust.wake(); }
   function paint() {
     var m = S.talking ? 'speaking' : S.busy ? 'thinking' : S.talk === 'asleep' ? 'asleep' : S.talk === 'awake' ? (S.hearing || !ears.supported ? 'listening' : 'idle') : 'off';
@@ -39,7 +42,7 @@
       pl = { paused: 'Paused', speaking: 'Speaking', thinking: 'Thinking', listening: 'Listening', sleeping: 'Sleeping', awake: 'Awake', off: 'Off' }[ps],
       pt = { paused: 'Listening is paused while this tab is in the background. Come back to it and Kin listens again', speaking: S.talking && (ears.isSafari || !ears.supported) ? 'Kin is speaking. Tap to interrupt' : 'Kin is speaking. Just talk to interrupt', thinking: 'Kin is working on it', listening: 'Kin is listening. No wake phrase needed', sleeping: 'Asleep. Say hey Jarvis to wake Kin', awake: 'Awake. Tap the mic so Kin can hear you', off: 'Not listening. Tap to start' }[ps];
     var vp = $('vpill'); if (vp) { vp.dataset.s = ps; $('vpillT').textContent = pl; vp.setAttribute('aria-label', 'Kin: ' + pl + '. ' + pt); vp.title = pt; }
-    inp.placeholder = S.talk === 'awake' ? (S.hearing ? 'Listening. Just talk.' : 'Ask Kin') : ears.supported ? 'Say “hey Jarvis”, or type' : 'Type to Kin';
+    inp.placeholder = S.talk === 'awake' ? (S.hearing ? 'Listening. Just talk.' : 'Ask Jarvis anything…') : ears.supported ? 'Say “hey Jarvis”, or type' : 'Ask Jarvis anything…';
   }
   function addMsg(who, text) {
     var t = $('thread'), e = t.querySelector('.empty'); if (e) e.remove();
@@ -768,7 +771,7 @@
   inp.addEventListener('input', typed);
   $('mic').addEventListener('click', function () {
     gesture();
-    if (!ears.supported) { S.kbMic = true; S.talk = 'awake'; touch(); caption('This browser cannot listen by itself.', coarse ? 'Tap the keyboard mic and talk. I send when you pause' : 'Type to Kin, or use your computer’s dictation key'); inp.focus(); paint(); return; }
+    if (!ears.supported) { S.kbMic = true; S.talk = 'awake'; touch(); caption('This browser cannot listen by itself.', coarse ? 'Tap the keyboard mic and talk. I send when you pause' : 'Type to Jarvis, or use your computer’s dictation key'); inp.focus(); paint(); return; }
     if (ears.wanted()) { ears.stop(); S.talk = 'off'; voice.stop(); caption(null); paint(); return; }
     ears.start(); cue(); caption('I’m listening, sir. Go ahead.', 'Listening');
     /* Safari cannot listen and speak at once, and it wants listening to begin inside the tap, so it stays quiet here */
