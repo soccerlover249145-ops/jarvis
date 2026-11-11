@@ -41,12 +41,14 @@
     C.forecast = function () { var p = orig.apply(C, arguments); p.then(takeForecast, function () {}); return p; };
     C.__homeWatch = true;
   }
-  /* one request when the page opens with a town saved, and again after half an hour on screen */
-  function refreshWeather() {
-    if (Kin.shared || !Kin.chart || !Kin.chart.place || !Kin.chart.place()) return;
-    if (wxAt && Date.now() - wxAt < 30 * 60000) return;
-    wxAt = Date.now(); Kin.chart.forecast().catch(function () { wxAt = 0; });
+  /* the board never asks for the weather on its own: it shows the forecast the brief or a chart fetched, and asks
+     Open-Meteo (coordinates only) only when the founder taps "Get the forecast" */
+  var asking = false;
+  function askWeather() {
+    if (asking || Kin.shared || !Kin.chart || !Kin.chart.place || !Kin.chart.place()) return;
+    asking = true; soon(); Kin.chart.forecast().then(function () { asking = false; soon(); }, function () { asking = false; wxErr = true; sig = ''; soon(); });
   }
+  var wxErr = false;
 
   /* ------------------------------------------------------------ what the page holds right now */
   function gather() {
@@ -117,7 +119,8 @@
     var c = card('qwx', null);
     if (!d.wx) {
       c.appendChild(h('div', 'qlabel', 'Weather'));
-      empty(c, d.place ? 'Fetching the forecast for ' + d.place + '.' : 'Set your town under Settings, Brief, and the forecast shows here. Only its coordinates are sent to Open-Meteo.', d.place ? null : btn('Set your town', 'sm', function () { go('weather'); }));
+      if (!d.place) { empty(c, 'Set your town under Settings, Brief, and the forecast shows here. Only its coordinates are sent to Open-Meteo.', btn('Set your town', 'sm', function () { go('weather'); })); return c; }
+      empty(c, asking ? 'Asking Open-Meteo for ' + d.place + '…' : (wxErr ? 'The forecast did not come through. ' : '') + 'The forecast for ' + d.place + ' shows here once you ask for it or open the brief.', asking ? null : btn('Get the forecast', 'sm', function () { wxErr = false; askWeather(); }));
       return c;
     }
     var w = d.wx, k = wmo(w.code), top = h('div', 'qwx-now'), l = h('div');
@@ -233,7 +236,7 @@
   function render() { try { draw(); } catch (e) {} }
   function draw() {
     if (!cards) return;
-    var d = gather(), key = JSON.stringify([d.pack, d.nok && d.nok.needs, d.nok && d.nok.priorities, d.nok && d.nok.today, d.jobs, d.asks, d.made, Math.round(d.spent * 100), d.away, d.devs, d.devCount, d.gaunt, wxAt, d.place, d.hasKey, d.shared, iso(d.now), d.now.getHours(), Math.floor(d.now.getMinutes() / 5)]);
+    var d = gather(), key = JSON.stringify([d.pack, d.nok && d.nok.needs, d.nok && d.nok.priorities, d.nok && d.nok.today, d.jobs, d.asks, d.made, Math.round(d.spent * 100), d.away, d.devs, d.devCount, d.gaunt, wxAt, d.place, d.hasKey, d.shared, asking, wxErr, iso(d.now), d.now.getHours(), Math.floor(d.now.getMinutes() / 5)]);
     if (when) {
       when.textContent = '';
       when.appendChild(h('b', '', DAYS[d.now.getDay()].slice(0, 3) + ', ' + MON[d.now.getMonth()] + ' ' + d.now.getDate()));
@@ -252,10 +255,9 @@
     watchForecast();
     var t = document.getElementById('thread');
     if (t && window.MutationObserver) new MutationObserver(soon).observe(t, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'disabled'] });
-    document.addEventListener('visibilitychange', function () { if (!document.hidden) { render(); refreshWeather(); } });
-    clearInterval(timer); timer = setInterval(function () { if (!document.hidden) { render(); refreshWeather(); } }, 20000);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) render(); });
+    clearInterval(timer); timer = setInterval(function () { if (!document.hidden) render(); }, 20000);
     render();
-    setTimeout(refreshWeather, 400);
   }
 
   Kin.home = { init: init, render: function () { sig = ''; render(); }, refresh: soon, _take: takeForecast };

@@ -467,3 +467,12 @@ body:has(#sheet:not([hidden])) .wrap, body:has(#shelf:not([hidden])) .wrap, body
 .dock .status:has(#stT:not([hidden])) { display: flex; }
 .dock .status:has(#stT:not([hidden])) #stM, .dock .status:has(#stT:not([hidden])) .led, .dock .status:has(#stT:not([hidden])) .sep { display: none; }
 .dock .prow:not(:has(> :not([hidden]):not(.status))):not(:has(#stT:not([hidden]))) { display: none; }
+.acx .ac .ac-rung, .acx .ac .ac-tile, .acx .ac .ac-stat { background: var(--s3); box-shadow: 0 0 0 1px var(--line) inset; }
+.ac .ac-time, .ac .ac-num, .ac .ac-in { font-family: var(--f-ui); background: var(--s2); box-shadow: 0 0 0 1px var(--line2) inset; }
+@media (max-width: 700px) {
+  .acx .wl-panel { padding-left: 12px; padding-right: 12px; }
+  .acx .ac .ac-time { min-width: 0; padding: 0 10px; font-size: 14px; }
+  .acx .ac .ac-tile { padding: 12px; }
+  .acx .ac .ac-tile .ac-row { gap: 4px; }
+  .acx .ac .ac-tile .ac-num { width: 72px; }
+}
