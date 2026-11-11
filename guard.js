@@ -40,6 +40,9 @@
     retry: 300,        /* wait before listening again after the browser ends a session; doubles each time one dies at once */
     beat: 5000,        /* how often the listening heartbeat looks */
     noStart: 8000,     /* a recognizer that has not confirmed it started by then is given up on */
+    barge: true,       /* talking while Kin speaks stops it */
+    bargeGrace: 600,   /* but not in the first moment of a reply, while its first words may still be heard back */
+    bargeLevel: 0.12,  /* where there is a level meter, how loud the room must be for words to count as talking over Kin */
     perHour: 40, perDay: 200
   };
 })();

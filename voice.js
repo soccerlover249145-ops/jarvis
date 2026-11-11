@@ -244,6 +244,8 @@
       try { var C = window.AudioContext || window.webkitAudioContext; if (C) { if (!AC) AC = new C(); if (AC.state === 'suspended') { var r = AC.resume(); if (r && r.catch) r.catch(noop); } } } catch (e) {}
       try { if (syn && !on) { var u = new SpeechSynthesisUtterance(' '); u.volume = 0; syn.speak(u); } } catch (e) {}
     },
+    /** turn the voice down while someone talks over it (the keyed voice and the recordings; the device voice cannot change mid-sentence) */
+    duck: function (on) { try { if (audio) audio.volume = on ? 0.3 : 1; } catch (e) {} },
     stop: function () { run++; try { if (cur) cur.ctl.abort(); } catch (e) {} try { if (audio) audio.pause(); } catch (e) {} try { if (syn) syn.cancel(); } catch (e) {} state('idle', 'stopped'); },
     /** Speak text. Resolves when the words are done (or could not be spoken). */
     say: function (text) {

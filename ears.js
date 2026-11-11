@@ -10,7 +10,7 @@
   var isSafari = isIOS || (/Safari\//.test(ua) && !/Chrome\/|Chromium\/|Edg\//.test(ua));
   var standalone = !!(window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches));
 
-  var subs = [], rec = null, want = false, live = false, held = false, beganAt = 0, lastEvt = 0, quick = 0, restartT = 0, pending = false, lastErr = '', netStall = false, beatI = 0;
+  var subs = [], rec = null, want = false, live = false, held = false, beganAt = 0, lastEvt = 0, quick = 0, restartT = 0, pending = false, lastErr = '', netStall = false, beatI = 0, paused = '';
   function emit(ev) { subs.forEach(function (f) { try { f(ev); } catch (e) {} }); }
   function blockedErr(x) { return x === 'not-allowed' || x === 'service-not-allowed' || x === 'audio-capture'; }
 
@@ -45,6 +45,9 @@
       clear state, so the page never spins up recognizers for ever. */
   function ended(failed) {
     if (!want || held) { if (!held && !blockedErr(lastErr)) emit({ type: 'state', state: 'off', reason: lastErr || 'stopped' }); return; }
+    /* the tab is in the background: browsers stop listening there (an iPhone always does). Wait for it to come
+       back instead of counting this as a failure, and say so. */
+    if (hidden() && (isIOS || failed || Date.now() - beganAt < 1500)) { pause('hidden'); return; }
     quick = failed || Date.now() - beganAt < 1500 ? quick + 1 : 0;
     if (quick > 5) {
       want = false; netStall = lastErr === 'network' || navigator.onLine === false;
@@ -53,9 +56,19 @@
     emit({ type: 'state', state: 'starting', reason: 'restart' });
     clearTimeout(restartT); pending = true; restartT = setTimeout(begin, quick ? Math.min(8000, Kin.T.retry * Math.pow(2, quick)) : Kin.T.retry);
   }
+  function hidden() { return document.visibilityState === 'hidden'; }
+  function pause(why) { clearTimeout(restartT); pending = false; drop(); if (paused === why) return; paused = why; emit({ type: 'state', state: 'paused', reason: why }); }
+  function resume() { if (!paused) return; paused = ''; quick = 0; if (want && !held) { emit({ type: 'state', state: 'starting', reason: 'resume' }); begin(); } }
+  try {
+    document.addEventListener('visibilitychange', function () {
+      if (!want) return;
+      if (hidden()) { if (isIOS) pause('hidden'); }
+      else resume();
+    });
+  } catch (e) {}
   function begin() {
     pending = false;
-    if (!SR || !want || held || live || rec) return false;
+    if (!SR || !want || held || live || rec || paused) return false;
     try { beganAt = Date.now(); rec = make(); rec.start(); emit({ type: 'state', state: 'starting' }); return true; }
     catch (e) { rec = null; lastErr = 'start-failed'; want = false; emit({ type: 'state', state: 'off', reason: 'start-failed' }); return false; }
   }
@@ -65,13 +78,42 @@
       (dead, on some browsers), and the case where nothing is running although listening is wanted. */
   function beat() {
     beatI = setTimeout(beat, Kin.T.beat);
-    if (!want || held) return;
+    if (!want || held || paused) return;
     var now = Date.now();
     if (!rec) { if (!pending) begin(); return; }
     if (!live && now - beganAt > Kin.T.noStart) { drop(); lastErr = 'no-start'; ended(true); }
     else if (live && now - lastEvt > 180000) { drop(); lastErr = ''; beganAt = 0; ended(false); }
   }
   try { window.addEventListener('online', function () { if (netStall) { netStall = false; Kin.ears.start(); } }); } catch (e) {}
+
+  /* ---- a level meter for interrupting: is someone actually talking, or is it only Kin's own voice? ---- */
+  var meter = null, meterBusy = false;
+  function meterOff() { var m = meter; meter = null; if (m) m.close(); }
+  function meterOn() {
+    if (meter || meterBusy || isSafari || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || Kin.shared) return;
+    var C = window.AudioContext || window.webkitAudioContext; if (!C) return;
+    meterBusy = true;
+    Kin.ears.permission().then(function (st) {
+      if (st !== 'granted' || !want) { meterBusy = false; return; }
+      return navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }).then(function (stream) {
+        meterBusy = false;
+        if (!want) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+        var ac = new C(), src = ac.createMediaStreamSource(stream), an = ac.createAnalyser(); an.fftSize = 512; src.connect(an);
+        var buf = new Float32Array(an.fftSize), peakAt = 0, peak = 0;
+        meter = {
+          level: function () {
+            try { an.getFloatTimeDomainData(buf); } catch (e) { return null; }
+            var sum = 0; for (var i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+            var rms = Math.min(1, Math.sqrt(sum / buf.length) * 4), now = Date.now();
+            /* hold the loudest moment for half a second: speech has gaps between words */
+            if (rms >= peak || now - peakAt > 500) { peak = rms; peakAt = now; }
+            return peak;
+          },
+          close: function () { try { stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {} try { ac.close(); } catch (e) {} }
+        };
+      });
+    }).catch(function () { meterBusy = false; });
+  }
 
   /* ---- wake, sleep and stop phrases ---- */
   function norm(s) { return String(s || '').toLowerCase().replace(/[‘’']/g, '').replace(/[^a-z0-9]+/g, ' ').trim(); }
@@ -86,13 +128,14 @@
     if (ph.length >= 2 && hit >= Math.max(2, Math.ceil(ph.length * 0.75)) && l - f <= ph.length + 1) { first = f; last = l; }
     else {
       var n = tok.join(' '),
-        m = /\b(?:(?:hey|hi|hello|ok|okay|yo) )?(?:jarvis|jarvi|javis)\b/.exec(n) ||
-            /\b(wake up|rise and shine|daddys home|daddy is home|daddies home|honey im home|im home|i am home)\b/.exec(n) ||
+        m = /\b(?:(?:hey|hi|hello|ok|okay|yo|a) )?(?:jarvis|jarvi|javis|jervis|jarvas|jarvus|jarbis|charvis|jarviss|jar vis)\b/.exec(n) ||
+            /\b(?:hey|hi|ok|okay) (?:travis|jarvez)\b/.exec(n) ||
+            /\b(wake up|rise and shine|daddys home|daddy is home|daddies home|daddy home|dads home|dad is home|daddys back|honey im home|im home|i am home)\b/.exec(n) ||
             /\b(hey|hi|hello|ok|okay|yo) (kin|ken|kim|kyn|keen)\b/.exec(n);
       if (!m) return null;
       first = n.slice(0, m.index).split(' ').filter(Boolean).length; last = first + m[0].split(' ').length - 1;
     }
-    while (last + 1 < tok.length && /^(kin|ken|jarvis|please|now)$/.test(tok[last + 1])) last++;
+    while (last + 1 < tok.length && /^(kin|ken|jarvis|please|now|daddys|home)$/.test(tok[last + 1])) last++;
     if (whole && (first > 1 || tok.length - 1 - last > 0)) return null;
     return { rest: raw.slice(at[last] + 1).join(' ') };
   }
@@ -106,9 +149,16 @@
     wanted: function () { return want; },
     lastError: function () { return lastErr; },
     /** Start listening and keep listening. Safe to call again: it does nothing when already listening. */
-    start: function () { if (!SR) return false; want = true; held = false; quick = 0; netStall = false; if (!beatI) beatI = setTimeout(beat, Kin.T.beat); return live || !!rec || pending || begin(); },
+    start: function () { if (!SR) return false; want = true; held = false; quick = 0; netStall = false; if (paused && !hidden()) paused = ''; if (!beatI) beatI = setTimeout(beat, Kin.T.beat); return live || !!rec || pending || begin(); },
     /** Stop on purpose. Reported as "stopped" at once, whatever the browser says or fails to say afterwards. */
-    stop: function () { want = false; held = false; netStall = false; clearTimeout(restartT); pending = false; drop(); lastErr = ''; emit({ type: 'state', state: 'off', reason: 'stopped' }); },
+    stop: function () { want = false; held = false; netStall = false; paused = ''; clearTimeout(restartT); pending = false; drop(); lastErr = ''; meterOff(); emit({ type: 'state', state: 'off', reason: 'stopped' }); },
+    /** why listening is paused ('hidden'), or '' */
+    paused: function () { return paused; },
+    /** How loud the room is right now, 0 to 1, from the microphone with the browser's echo cancelling on,
+        so Kin's own voice from the speakers mostly cancels out. null where there is no meter (it is only
+        opened on a computer, never in Safari, and only once the microphone is already allowed). */
+    level: function () { return meter ? meter.level() : null; },
+    meter: function (on) { if (on) meterOn(); else meterOff(); },
     /** Safari cannot listen and speak at once: let go of the mic while Kin talks, take it back after. */
     hold: function (on) {
       if (!SR || !want) return;
