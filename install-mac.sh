@@ -37,7 +37,7 @@ codesign --verify --deep --strict "$APP" || die "Signing Jarvis.app locally fail
 say "6/6  Installing to /Applications"
 if [ -d /Applications/Jarvis.app ]; then
   read -r -p "Jarvis is already in Applications. Replace it? [y/N] " yn
-  [ "${yn:-n}" = "y" ] || [ "${yn:-n}" = "Y" ] || die "Left the old Jarvis in place. The new one is at $APP."
+  case "${yn:-n}" in [yY]|[yY][eE][sS]) ;; *) die "Left the old Jarvis in place. The new one is at $APP." ;; esac
   if pgrep -xq Jarvis; then osascript -e 'tell application "Jarvis" to quit' >/dev/null 2>&1 || true; sleep 2; fi
   rm -rf /Applications/Jarvis.app
 fi
@@ -46,7 +46,8 @@ ditto "$APP" /Applications/Jarvis.app
 
 if ! defaults read com.apple.dock persistent-apps 2>/dev/null | grep -q '/Applications/Jarvis.app/'; then
   read -r -p "Add Jarvis to your Dock? [y/N] " dk
-  if [ "${dk:-n}" = "y" ] || [ "${dk:-n}" = "Y" ]; then
+  case "${dk:-n}" in [yY]|[yY][eE][sS]) addock=1 ;; *) addock=0 ;; esac
+  if [ "$addock" = 1 ]; then
     defaults write com.apple.dock persistent-apps -array-add '<dict><key>tile-data</key><dict><key>file-data</key><dict><key>_CFURLString</key><string>/Applications/Jarvis.app/</string><key>_CFURLStringType</key><integer>0</integer></dict></dict></dict>'
     killall Dock || true
     echo "Jarvis is in your Dock."
