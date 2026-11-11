@@ -606,6 +606,17 @@
     if (k === 'settings') { settingsAt('start'); return; }
     if (k === 'mac') { $('sheet').hidden = true; var mp = localReply(Kin.mac && Kin.mac.available() ? 'You are in the Mac app, sir. Ask me to open an app, a file or a site, or to do something on your computer. Your Mac asks you before each one.' : Kin.mac.NEED_TEXT, 'Mac app'); if (Kin.mac && !Kin.mac.available()) mp.parentNode.appendChild(Kin.mac.need()); showThread(); return; }
   }
+  /* the home board and the dock's quick chips only open things: every panel waits for its own tap before anything is sent or spent */
+  Kin.go = function (k) {
+    gesture();
+    if (k === 'brief') { if (Kin.briefBoard && Kin.briefBoard.isOpen()) return; brief(); return; }
+    if (k === 'whatsnew') { whatsNew(false); return; }
+    if (k === 'weather') { settingsAt('brief'); return; }
+    if (k === 'awaysummary') { awayAsk({ k: 'summary' }); return; }
+    if (k === 'thread') { showThread(); return; }
+    if (/^made:/.test(k)) { openShelf('made', k.slice(5)); return; }
+    tryIt(k);
+  };
   function whatsNew(said) {
     Kin.whatsNew.open({ onSay: panelSay, onTry: tryIt });
     if (!said) return;
@@ -775,7 +786,11 @@
   /** open the conversation at its newest answer, from the top of that answer */
   function convLabel() { var t = $('thread'), on = t && !t.hidden; $('stS').textContent = on ? 'Hide conversation' : 'Conversation'; $('status').setAttribute('aria-expanded', on ? 'true' : 'false'); }
   if (window.MutationObserver) new MutationObserver(convLabel).observe($('thread'), { attributes: true, attributeFilter: ['hidden'] });
+  Kin.showThread = function () { showThread(); };
   function showThread() { var t = $('thread'); t.hidden = false; var m = t.querySelector('.msg.kin:last-child'); t.scrollTop = m && m.offsetTop > 0 && m.offsetHeight > t.clientHeight * 0.6 ? Math.max(0, (m.previousElementSibling || m).offsetTop - 12) : t.scrollHeight; }
+  /* on a phone the small orb in the bar opens and closes the conversation; the dock's chips open a panel */
+  if ($('miniOrb')) $('miniOrb').addEventListener('click', function () { gesture(); $('status').click(); });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-go]'), function (b) { b.addEventListener('click', function (e) { if (e.isTrusted) Kin.go(b.dataset.go); }); });
   $('status').addEventListener('click', function () { var t = $('thread'); if (!t.hidden) { t.hidden = true; return; } showThread(); if (!t.children.length) { var d = document.createElement('p'); d.className = 'empty'; d.textContent = 'Nothing said yet.'; t.appendChild(d); } });
   document.addEventListener('keydown', function (e) {
     var tag = (e.target.tagName || '').toLowerCase(), typing = tag === 'input';
@@ -1094,7 +1109,7 @@
   $('webCap').addEventListener('change', function () { Kin.mind.setWebCap(parseInt($('webCap').value, 10)); refreshSettings(); });
   $('memAll').addEventListener('click', function () { var b = $('memAll'); if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Tap again to forget everything Kin remembers'; setTimeout(function () { b.dataset.sure = ''; b.textContent = 'Forget all'; }, 5000); return; } Kin.mind.forgetAll(); b.dataset.sure = ''; b.textContent = 'Forget all'; refreshSettings(); });
   /* with no pack, one button on the main screen opens the file picker; the two steps sit beside it */
-  function packCard() { var c = $('loadCard'); if (c) c.hidden = !!Kin.pack.get() || Kin.shared || !$('sheet').hidden; }
+  function packCard() { var c = $('loadCard'); if (c) c.hidden = !!Kin.pack.get() || Kin.shared || !$('sheet').hidden; if (Kin.home) Kin.home.refresh(); }
   Kin.packCard = packCard;
   $('packFile2').addEventListener('change', function (e) {
     var f = e.target.files && e.target.files[0]; if (!f) return; gesture(); $('loadNote').textContent = 'Reading…';
@@ -1162,7 +1177,7 @@
     if (ears.supported && perm === 'granted' && !ears.isSafari) { S.startedByLoad = true; ears.start(); }
     else if (ears.supported) caption(S.autoListen ? 'Tap anywhere and I’ll listen, sir.' : 'Tap the mic and choose Allow.', S.autoListen ? 'This browser wants one tap first' : 'Then say “hey Jarvis”');
     else caption('This browser cannot listen by itself.', 'Type, or use the keyboard’s mic');
-    paint(); Kin.ready = true; packCard();
+    paint(); Kin.ready = true; packCard(); if (Kin.home) Kin.home.init();
     /* a Grok Bot question still waiting from before the page was closed: show it, and keep checking if the token is here */
     if (Kin.bridge) { var gbw = Kin.bridge.restore(); gbw.forEach(gbPaint); if (gbw.length) caption('A Grok Bot question is still waiting, sir.', Kin.bridge.hasToken() && Kin.bridge.enabled() ? 'Checking for the answer' : 'Paste the device token in settings to check'); }
     if (voice.tts.hasKey()) voice.tts.refresh().then(function () { refreshSettings(); });
