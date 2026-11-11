@@ -50,7 +50,8 @@
 
   /* ------------------------------------------------------------ what the page holds right now */
   function gather() {
-    var now = new Date(), pack = Kin.shared ? null : Kin.pack && Kin.pack.get(), B = Kin.briefBoard, nok = null;
+    var now = new Date(), pack = null, B = Kin.briefBoard, nok = null;
+    try { pack = Kin.shared ? null : Kin.pack && Kin.pack.get(); } catch (e) { pack = null; }
     try { nok = pack && B && B._fromPack ? B._fromPack(pack, now, B.settings && B.settings.get ? B.settings.get() : {}) : null; } catch (e) { nok = null; }
     var t = document.getElementById('thread'), jobs = [], asks = [];
     if (t) {
@@ -88,7 +89,7 @@
     var h1 = h('h1', 'qgreet'); h1.appendChild(document.createTextNode('Good ' + part(d.now) + ', ')); h1.appendChild(h('em', '', 'sir.')); c.appendChild(h1);
     var p = h('p', 'qsum'), bits = [];
     if (d.shared) bits.push(['', 'This page is open inside another site, so nothing of yours is shown here. Open Jarvis at its own address.']);
-    else if (!d.pack) bits.push(['Load your data', ' so I know your company. Then I can tell you what is due.']);
+    else if (!d.pack) bits.push(['', 'Once your pack is loaded, this page shows what is due, what I am working on and anything waiting for your OK.']);
     else if (d.nok) {
       var n = d.nok.needs || {}, todayN = (d.nok.priorities || []).concat(d.nok.today || []).filter(function (x) { return x.d === iso(d.now); }).length;
       if (todayN) bits.push([todayN === 1 ? 'One thing is due today.' : todayN + ' things are due today.', '']);
@@ -228,7 +229,9 @@
     if (el && el.scrollIntoView) setTimeout(function () { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('qpulse'); setTimeout(function () { el.classList.remove('qpulse'); }, 1600); }, 60);
   }
 
-  function render() {
+  /* the board is only a view: a fault in any module it reads leaves the last good board on screen and is never thrown */
+  function render() { try { draw(); } catch (e) {} }
+  function draw() {
     if (!cards) return;
     var d = gather(), key = JSON.stringify([d.pack, d.nok && d.nok.needs, d.nok && d.nok.priorities, d.nok && d.nok.today, d.jobs, d.asks, d.made, Math.round(d.spent * 100), d.away, d.devs, d.devCount, d.gaunt, wxAt, d.place, d.hasKey, d.shared, iso(d.now), d.now.getHours(), Math.floor(d.now.getMinutes() / 5)]);
     if (when) {

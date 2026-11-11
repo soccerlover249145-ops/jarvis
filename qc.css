@@ -356,7 +356,7 @@ code, pre, kbd, .md code, .md pre { font-family: var(--f-code) !important; }
 }
 @media (max-width: 1099px) {
   .wrap { display: block; padding: 0 20px; overflow-y: auto; overscroll-behavior: contain; }
-  .board { overflow: visible; padding-bottom: calc(110px + var(--safe-b)); }
+  .board { overflow: visible; padding-bottom: calc(190px + var(--safe-b)); }
   .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .qhero, .qwx, .qtoday, .qjobs, .qok, .qdev, .qaway { grid-column: span 2; }
   /* the dock's parts are placed on the screen one by one: a frosted bar at the bottom, the conversation as a sheet */
@@ -431,3 +431,39 @@ body:has(#sheet:not([hidden])) .wrap, body:has(#shelf:not([hidden])) .wrap, body
 .gx-cat, .gx-meta { font: 500 12px/16px var(--f-ui); color: var(--text-3); }
 .gx-q, .gx-note, .gx-when, .gx-hint, .gx-msg { font-family: var(--f-ui); }
 @media (max-width: 700px) { .gx-v { font-size: 19px; } .gx-stat { padding: 12px 14px; } }
+
+/* the brief, the device lab and away mode inside a sheet: the same tones, type and pills as the board */
+.bb-eyebrow { font: 500 12px/16px var(--f-ui); color: var(--accent); opacity: 1; }
+.bb-title { font: 400 44px/1.02 var(--f-serif); letter-spacing: -.01em; color: var(--text); text-shadow: none; }
+.bb-greet { font: 400 16px/24px var(--f-ui); color: var(--text-2); }
+.bb-pill { height: 40px; padding: 0 16px; border: 1px solid var(--line); background: var(--s3); color: var(--text); font: 500 14px/1 var(--f-ui); letter-spacing: 0; box-shadow: none; }
+.bb-pill:hover { border-color: var(--line2); background: #222735; }
+.bb-pill.bb-go { background: var(--text); color: #07080b; border-color: transparent; box-shadow: none; }
+.bb-pill.bb-go:hover { background: #fff; }
+.bb-pill.bb-stop { color: var(--bad); background: transparent; border-color: rgba(255, 114, 114, .35); }
+.bb-pill.bb-ok { color: var(--ok); background: transparent; border-color: rgba(79, 220, 156, .3); }
+.bb-chip { height: 24px; padding: 0 10px; border: 1px solid var(--line); background: var(--s3); color: var(--text-2); font: 500 12px/1 var(--f-ui); letter-spacing: 0; }
+.bb-chip b { font-weight: 500; color: var(--text); }
+.bb-chip.bb-warn { color: var(--warm); border-color: rgba(255, 181, 71, .22); background: rgba(255, 181, 71, .08); }
+.bb-chip.bb-bad { color: var(--bad); border-color: rgba(255, 114, 114, .22); background: rgba(255, 114, 114, .08); }
+.bb-chip.bb-ok { color: var(--ok); border-color: rgba(79, 220, 156, .2); background: rgba(79, 220, 156, .08); }
+.bb-chip.bb-run { color: var(--accent); border-color: rgba(116, 212, 255, .2); background: rgba(116, 212, 255, .08); }
+.bb-temp { font: 300 80px/.86 var(--f-ui); letter-spacing: -.04em; color: var(--text); text-shadow: none; }
+.bb-temp sup { font: 400 24px/1 var(--f-ui); }
+.bb-track { background: var(--s3); border: 0; border-radius: 8px; }
+.bb-track i { background: linear-gradient(180deg, var(--accent), rgba(58, 166, 232, .35)); box-shadow: none; border-radius: 8px; }
+.bb-bar:first-child .bb-track i { background: linear-gradient(180deg, #e9f7ff, var(--accent)); box-shadow: none; }
+.bb-bar:first-child span { color: var(--text); }
+.bb-bar span, .bb-bar b { font: 500 11px/1 var(--f-ui); }
+.bb-row, .bb-task, .bb-job { border-top-color: var(--line); }
+.dl-acts { grid-template-columns: 1fr; gap: 10px; }
+.dl-grid { grid-template-columns: 1fr; }
+.ac .ac-ladder { grid-template-columns: 1fr 1fr; }
+.wl-sources { grid-template-columns: 1fr 1fr; }
+.acx .ac .ac-tab { height: 40px; font: 500 14px/1 var(--f-ui); letter-spacing: 0; color: var(--text-2); background: var(--s2); box-shadow: 0 0 0 1px var(--line) inset; }
+.acx .ac .ac-tab[aria-selected="true"] { color: #07080b; background: var(--text); box-shadow: none; }
+/* the state is shown once (the chip by the wordmark, and the mic button itself); this pill only appears for a running timer */
+.dock .status { display: none; }
+.dock .status:has(#stT:not([hidden])) { display: flex; }
+.dock .status:has(#stT:not([hidden])) #stM, .dock .status:has(#stT:not([hidden])) .led, .dock .status:has(#stT:not([hidden])) .sep { display: none; }
+.dock .prow:not(:has(> :not([hidden]):not(.status))):not(:has(#stT:not([hidden]))) { display: none; }

@@ -461,7 +461,7 @@
       if (Kin.desk && (job || (r.made && r.made.length))) Kin.desk.notify.done(r.made && r.made.length ? 'Kin finished it' : 'Kin stopped', (/^.*?[.!?](\s|$)/.exec(plain(out)) || [plain(out)])[0].trim());
       if (r.made && r.made.length) openShelf('made', r.made[r.made.length - 1]);
       else if (!aloud && !r.detail && ((r.sources && r.sources.length) || plain(out).length > 620)) showThread();
-      else if (aloud && r.sources && r.sources.length && !S.talking) $('capS').textContent = 'Sources: tap the status line';
+      else if (aloud && r.sources && r.sources.length && !S.talking) $('capS').textContent = 'Sources are in the conversation';
       if (S.queued && S.talk === 'awake') { var q = S.queued; S.queued = ''; setTimeout(function () { ask(q); }, 300); }
     }
     try {
