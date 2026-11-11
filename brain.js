@@ -335,6 +335,8 @@
   function askClaude(text, opts) {
     var c = getClient(), job = offerTaken(text); if (job) text = job;
     return classify(c, text, opts).then(function (k) {
+      /* a question about the shared screen needs the main model, not the small-talk one */
+      if (opts.image && k.route === 'quick') k.route = 'question';
       if (opts.onRoute) opts.onRoute(k.design ? 'design' : k.route, k);
       /* a design job goes to the studio: a brief, three concepts, pictures when Higgsfield is connected, a strict art director */
       if (k.design && Kin.studio) return Kin.studio.run(text, opts, KIT).then(function (res) { res.sources = []; res.searches = 0; res.cost = (res.cost || 0) + k.cost; res.routed = k.how; return res; },
@@ -344,17 +346,26 @@
   }
   function answer(text, opts, c, k) {
     var r = k.route, deepModel = MAIN;
-    var prev = turns.slice(-10), messages = prev.map(function (t) { return { role: t.role, content: t.content }; });
+    /* a board job does not carry the conversation; it stands on its own */
+    var prev = opts.job ? [] : turns.slice(-10), messages = prev.map(function (t) { return { role: t.role, content: t.content }; });
     var notes = '\n\n[Today is ' + today() + '.]';
     var mem = Kin.mind.recall(text, 3500); if (mem) notes += '\n\n[' + mem + ']';
     var ctx = { route: r, skills: 0, loaded: {}, made: [], reviewCost: 0, client: c, question: text, signal: opts.signal, onMade: opts.onMade, onStatus: status, onRemember: opts.onRemember, evidence: [] };
-    if (r === 'make') {
+    if (opts.job) {
+      notes += opts.job.noTools ? '\n\n[Answer in one or two lines from what the search finds. Do not make anything.]'
+        : '\n\n[A small job started from the brief board, with a spending limit. Do it in one pass: write the result directly and save it with the make tool (kind "document", or "plan" for a plan), short and useful. Do not send, post, buy, book or contact anyone.]';
+    } else if (r === 'make') {
       var books = k.design ? designPlaybooks(ctx, text) : '';
       notes += '\n\n[This is a job of making something, held to the standard of the best in the field. ' + (books ? 'The design playbooks are below; load any other playbook that applies with use_skill, ' : 'Load every playbook that applies with use_skill first, ') + 'then make it with the make tool.' + (books ? '\n\n' + books : '') + ']';
     }
-    var webLeft = Kin.mind.webLeft(), web = !noWeb && webLeft > 0 && (r === 'question' || r === 'make');
+    /* a job from the brief board: a fixed size, a spending limit, the web only when the job is research */
+    var job = opts.job || null;
+    var webLeft = Kin.mind.webLeft(), web = !noWeb && webLeft > 0 && (job ? !!job.web : (r === 'question' || r === 'make'));
     if (!noWeb && webLeft <= 0 && r !== 'quick') notes += '\n\n[Web search is off for today: the founder\'s daily limit is reached. Say so if the answer needs it.]';
-    messages.push({ role: 'user', content: text + notes + (opts.aloud ? SPOKEN : '') });
+    /* a snapshot of the shared screen rides with this one question only; it is never kept in the turns */
+    if (opts.image && opts.image.data) messages.push({ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: opts.image.media_type || 'image/jpeg', data: opts.image.data } },
+      { type: 'text', text: text + notes + '\n\n[The picture is a snapshot of the founder\'s screen, taken just now because they are sharing it with you. Use it for this question only.]' + (opts.aloud ? SPOKEN : '') }] });
+    else messages.push({ role: 'user', content: text + notes + (opts.aloud ? SPOKEN : '') });
     var reqOpts = opts.signal ? { signal: opts.signal } : undefined;
     var acc = { parts: [], sources: [], cites: [], seen: {}, src: function (u, t) { if (!/^https?:\/\//i.test(u) || acc.seen[u] || acc.sources.length >= 8) return; acc.seen[u] = 1; acc.sources.push({ url: u, title: String(t || '').slice(0, 140) }); } };
     var total = { cost: k.cost || 0, searches: 0, model: '' };
@@ -385,7 +396,7 @@
       }, function (e) { total.cost += qpm.start ? Kin.mind.partialCost(qpm.model, qpm.start, qpm.chars) : 0; if (e && typeof e === 'object') e.spent = spentSoFar(); throw e; });
     }
 
-    var local = makeTools(ctx);
+    var local = job && job.noTools ? [] : makeTools(ctx);
     function toolList() {
       var t = local.map(function (x) { return x.def; });
       if (r === 'compute') t.push({ type: 'code_execution_20260521', name: 'code_execution' });
@@ -397,9 +408,9 @@
       }
       return t;
     }
-    var deep = r === 'make', model = deep ? deepModel : MAIN; ctx.model = model;
-    var room = deep ? 32000 : opts.aloud ? 4000 : 16000, maxSteps = deep ? 10 : opts.aloud ? 3 : 5;
-    var effort = deep ? 'high' : opts.aloud ? 'low' : 'medium';
+    var deep = r === 'make' && !job, model = deep ? deepModel : MAIN; ctx.model = model;
+    var room = job ? 5000 : deep ? 32000 : opts.aloud ? 4000 : 16000, maxSteps = job ? 3 : deep ? 10 : opts.aloud ? 3 : 5;
+    var effort = job ? 'low' : deep ? 'high' : opts.aloud ? 'low' : 'medium';
     var step = 0, pauses = 0, jsonRetries = 0, live = '', kept = '';
     function show() { if (opts.onText) opts.onText((kept ? kept + '\n\n' : '') + live); }
     /* a breakpoint on the newest message, so each step of a long job reads the earlier steps from the cache */
@@ -436,6 +447,8 @@
         digest(m.content, acc);
         /* the API paused a long server-side turn: send it back unchanged and it carries on where it stopped */
         if (m.stop_reason === 'pause_turn' && ++pauses <= 3) { kept = acc.parts.join('\n\n'); live = ''; messages.push({ role: 'assistant', content: m.content }); return turn(); }
+        /* a board job stops at its spending limit: what it made so far is kept, nothing more is asked */
+        if (job && spentSoFar() >= job.budget && uses.length) return { text: acc.parts.join('\n\n').trim() || 'Stopped at the spending limit for this job.', model: m.model, capped: true };
         if (!uses.length || m.stop_reason === 'max_tokens' || m.stop_reason === 'pause_turn' || ++step > maxSteps) return { text: acc.parts.join('\n\n').trim() || (kept + '\n\n' + live).trim(), model: m.model, cut: m.stop_reason === 'max_tokens' };
         kept = acc.parts.join('\n\n'); live = ''; show();
         messages.push({ role: 'assistant', content: m.content });
@@ -466,7 +479,7 @@
     return turn().then(function (res) {
       res.routed = k.how; res.route = r; res.sources = acc.sources; res.made = ctx.made; res.searches = total.searches;
       res.cost = spentSoFar(); if (!res.model) res.model = total.model || model;
-      if (r === 'make' || opts.aloud || res.refused || res.cut || !res.text || res.text.length < 160 || (opts.signal && opts.signal.aborted)) return res;
+      if (job || r === 'make' || opts.aloud || res.refused || res.cut || !res.text || res.text.length < 160 || (opts.signal && opts.signal.aborted)) return res;
       status('Checking the answer');
       /* the check sees what the answer could rest on: tool results, web quotes, the pack's rules, brief and numbers, and what Kin remembers */
       var packText = String(system()[0].text || '').slice(PERSONA.length).trim();
@@ -560,6 +573,20 @@
     limits: usage,
     setLimits: function (o) { o = o || {}; if (o.perHour >= 1 && o.perHour <= 500) ls.set(LIMH, String(Math.round(o.perHour))); if (o.perDay >= 1 && o.perDay <= 5000) ls.set(LIMD, String(Math.round(o.perDay))); return usage(); },
     smallTalk: smallTalk, route: route, keywordRoute: keywordRoute, local: localAnswer,
+    /** A job from the brief board, outside the conversation: Opus 5.5 at low effort, a few steps at most, a spending
+        limit (budget, in dollars), the web only when web is true. It is not added to the conversation turns, and
+        its cost is counted like any other request. Always resolves: { text, code?, made?, sources?, cost?, capped? } */
+    job: function (text, opts) {
+      opts = opts || {};
+      try {
+        var c = getClient(); if (!c) return Promise.resolve({ text: 'Add your Claude key in settings first.', code: 'nokey', made: [], sources: [] });
+        var o = over(); if (o) return Promise.resolve({ text: o === 'hour' ? 'I have reached the hourly limit you set, sir.' : 'I have reached the daily limit you set, sir.', code: 'limit', made: [], sources: [] });
+        count();
+        var jopts = { signal: opts.signal, onMade: opts.onMade, onStatus: opts.onStatus, job: { budget: opts.budget > 0 ? opts.budget : 0.25, web: !!opts.web, noTools: !!opts.noTools } };
+        return answer(text, jopts, c, { route: 'make', how: 'job', cost: 0 }).then(function (r) { r.code = 'ok'; if (r.cost) Kin.mind.addSpend(r.cost); return r; },
+          function (err) { var spent = err && err.spent || 0; if (spent) Kin.mind.addSpend(spent); var e = explain(err, MAIN); return { text: e.text, detail: e.detail || '', source: 'claude', code: e.code || 'error', cost: spent, made: [], sources: [] }; });
+      } catch (err) { var x = explain(err); return Promise.resolve({ text: x.text, code: x.code || 'error', made: [], sources: [] }); }
+    },
     /** Always resolves, never throws: { text, source: "claude" | "local" | "limit", code?, detail?, model?, route?, sources?, made?, cost? } */
     ask: function (text, opts) {
       opts = opts || {};

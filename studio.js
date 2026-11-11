@@ -16,7 +16,14 @@
    Stop ends the job there and nothing is sent. After Go the card is a live panel: the step, the time, the money spent
    from real usage, and Stop, which aborts every request in flight; no further request is made for that job.
    Each step has a time limit, and every failure is reported in plain words. If the pictures would cost more credits
-   than were approved, Kin stops and asks again. */
+   than were approved, Kin stops and asks again.
+
+   Marketing pieces (posters, invites, flyers, social graphics) with Higgsfield connected take the full-poster route by
+   default: Opus 5.5 art-directs one idea with the exact copy, Higgsfield's image model renders the WHOLE piece (type,
+   product, light and colour as one object) in three variants, the art director reads every word in every render and
+   picks, and one refinement render follows when it falls short. The card shows the credits this will take. The composed
+   SVG route above is the fallback: when Higgsfield is not connected, when there is too much exact copy for a picture,
+   when the founder picks "Compose it instead", or when no poster could be made. */
 (function () {
   'use strict';
   var Kin = window.Kin = window.Kin || {};
@@ -41,6 +48,52 @@
     if (pictures) usd += 2 * cost(m, { input_tokens: 9000, output_tokens: 2500 }); /* price check and making the pictures */
     return Math.round(usd * 100) / 100;
   }
+
+  /* ---------------------------------------------------------------- the full-poster route */
+  var POSTER_CREDITS = 4.5, POSTER_VARIANTS = 3;      /* about 4.5 credits a render at xhigh, 2k (priced for real before anything is made) */
+  var POSTER_PARAMS = ', quality: "xhigh", resolution: "2k"';
+  var MARKETING = /\b(poster|invite|invitation|flyer|flier|social (?:post|graphic|tile)|instagram|story graphic|banner|announcement|advert|ad creative|billboard)\b/i;
+  var TOO_FACTUAL = /\b(schedule|menu|table|ledger|price ?list|timetable|agenda|itinerary|spreadsheet|chart)\b/i;
+  function posterEstimate(kit) {
+    var cost = Kin.mind.costOf, m = kit.MAIN;
+    var usd = cost(m, { input_tokens: 14000, output_tokens: 7000 }) +       /* the art direction and three prompts */
+      cost(m, { input_tokens: 9000, output_tokens: 2500 }) * 2 +             /* price check and making the posters */
+      cost(m, { input_tokens: 16000, output_tokens: 3000 }) +                /* the art director reads every word in three renders */
+      cost(m, { input_tokens: 8000, output_tokens: 2500 }) +                 /* the refinement prompt */
+      cost(m, { input_tokens: 9000, output_tokens: 2500 }) * 2 +             /* pricing and making the refinement */
+      cost(m, { input_tokens: 7000, output_tokens: 1500 });                  /* reading the refinement */
+    return Math.round(usd * 100) / 100;
+  }
+  var POSTER_TOOL = { name: 'submit_poster', description: 'Hand over the idea, the exact copy and three full-poster prompts. Call it once, with everything.', eager_input_streaming: true,
+    input_schema: { type: 'object', additionalProperties: false, required: ['title', 'idea', 'aspect', 'copy', 'too_much_copy', 'variants'], properties: {
+      title: { type: 'string', description: 'A short title for the piece.' },
+      idea: { type: 'string', description: 'The one idea, from the facts of this event or product, in one sentence.' },
+      aspect: { type: 'string', enum: ['4:5', '2:3', '1:1', '9:16'], description: '4:5 for phones and social, 2:3 for print, 9:16 for stories.' },
+      copy: { type: 'array', maxItems: 8, items: { type: 'string' }, description: 'Every line of text the piece carries, exactly as it must be spelled, in reading order.' },
+      too_much_copy: { type: 'boolean', description: 'True when the piece needs more exact facts than a picture can carry reliably (a schedule, a menu, a table, or more than about 40 words).' },
+      variants: { type: 'array', minItems: 3, maxItems: 3, items: { type: 'object', additionalProperties: false, required: ['name', 'prompt'], properties: {
+        name: { type: 'string', description: 'Two or three words.' }, prompt: { type: 'string', description: 'The complete art direction prompt for the image model.' } } } } } } };
+  var REPROMPT_TOOL = { name: 'submit_refined', description: 'Hand over the refined prompt.', eager_input_streaming: true,
+    input_schema: { type: 'object', additionalProperties: false, required: ['prompt'], properties: { prompt: { type: 'string' } } } };
+  var POSTER_RULES = [
+    'You are art-directing a finished marketing piece (a poster, an invite or a social graphic) that an image model will render WHOLE: type, the hero object, light and colour come out as one designed object. Work in this order.',
+    '1. The idea comes first, and it must come from the facts of this event or product. Test: if the headline would work for any other brand, it is not the idea yet. One hero object, one headline, one accent line, one details line. No icon badges and no bullet lists unless the piece is a schedule.',
+    '2. Style: follow the founder\'s brand rules and any marketing direction in their pack. Where the pack sets none, pick a direction that fits the audience; the quiet thin-line look of this app is for the app, not for marketing.',
+    '3. Write each prompt as an art direction brief, in this order: what it is ("a finished, award-level event poster for ..."); the style and the restraint rule ("executed with modern restraint: few elements, huge scale contrast, exact alignment, generous even margins"); the ground and colour; then each element top to bottom with its type style, colour and EXACT copy in quotes; then the hero object (photoreal, glossy rim light, fine detail, a soft contact shadow on a real surface); then a closing list of what must not appear.',
+    '4. Copy: every word in quotes, "spelled exactly as written", short lines (under 8 words), a separate quoted string per line. For a wordmark of several words ask for "clearly separated words with normal word spaces". Type with contrast reads as designed: a chunky display face against a refined serif or a condensed sans, with at most one hand-lettered accent used once.',
+    '5. End every prompt with: "No icons, no bullet lists, no social handles, no website, no phone number, no people, no other text."',
+    '6. Never put private facts in a prompt: no personal names, no street address, no phone number, no email. A brand name, an event name, a date and a time are fine for a public piece. Follow the brand\'s copy rules exactly.',
+    '7. At most about 40 words of copy in all. If the piece needs more exact facts (a schedule, a menu, a table), set too_much_copy to true: the page then composes it in SVG instead.',
+    '8. Three variants: the same idea and the same exact copy, three different executions (layout, type pairing, light). Aspect: 4:5 for phones and social, 2:3 for print.',
+    'Then call submit_poster once. Do not write anything else.'
+  ].join('\n');
+  var POSTER_CRITIC = [
+    'You are a demanding senior art director. You see finished poster renders from an image model, with the exact copy each was meant to carry. Read every word in every picture, letter by letter, before you judge.',
+    'Score each from 0 to 100: 70 is competent, 80 good, 90 excellent (it could appear in a design annual).',
+    'It FAILS (under 70) for: any misspelled, missing or extra word; any invented handle, address, phone number or website; a wordmark with missing word spaces; generic copy that would fit any brand; icon-and-bullet clutter; text closer than about 5% of the width to an edge; a hero object smaller than about 40% of the height; anything that breaks the brand rules you were given.',
+    'For each render give: the score, whether every word is exactly right (words_ok), the words that are wrong or invented, at most three notes, and at most four fixes written as instructions for the next render (bigger hero, word spacing, where a line sits). Then pick the winner and say why in one sentence.',
+    'Reply with JSON only: {"posters":[{"score":number,"words_ok":boolean,"wrong_words":[string],"notes":[string],"fixes":[string]}],"winner":number (0-based),"why":string}'
+  ].join('\n');
 
   /* ---------------------------------------------------------------- the concepts request */
   var CONCEPTS_TOOL = { name: 'submit_concepts', description: 'Hand over the creative brief and exactly three design concepts. Call it once, with everything.', eager_input_streaming: true,
@@ -255,12 +308,13 @@
         throw e;
       });
     }
-    function pictures(plan) {
+    function pictures(plan, po) {
+      po = po || {}; var extra = po.params || '';
       if (!plan.length) return Promise.resolve({});
       var list = plan.map(function (p) { return '- ' + p.id + ': aspect ' + p.aspect + '; prompt: ' + p.prompt; }).join('\n');
       beat('Pricing the pictures');
       return mcpAsk({ generate_image: { enabled: true } },
-        'PRICE CHECK ONLY. For each picture below call generate_image exactly once with params { model: "' + IMAGE_MODEL + '", prompt: the prompt exactly as written, aspect_ratio: the aspect given, get_cost: true, use_unlim: false }, so nothing is generated. Do not call anything else. Then reply with one line per picture: the id and its credit cost.\n' + list, 6000)
+        'PRICE CHECK ONLY. For each picture below call generate_image exactly once with params { model: "' + IMAGE_MODEL + '", prompt: the prompt exactly as written, aspect_ratio: the aspect given' + extra + ', get_cost: true, use_unlim: false }, so nothing is generated. Do not call anything else. Then reply with one line per picture: the id and its credit cost.\n' + list, 6000)
         .then(function (q) {
           var bad = q.uses.filter(function (u) { return u.name !== 'generate_image' || !deepSearch(u.input, 'get_cost', true); });
           if (bad.length) { notes.push('A price check asked Higgsfield to make a picture instead of pricing it, so I stopped there. Check your Higgsfield account for a charge.'); throw Object.assign(new Error('price check breach'), { hf: 'breach', credits: bad.length }); }
@@ -269,6 +323,7 @@
           if (priced < plan.length) { notes.push('Higgsfield did not price every picture, so none were made.'); return null; }
           credits = Math.round(credits * 100) / 100;
           var used = Kin.hf.used(), cap = Kin.hf.cap();
+          if (po.quiet && !(credits <= budget && used + credits <= cap)) { notes.push('The refinement render would have cost ' + credits + ' credits, more than is left of what you approved, so I kept the best of the first renders.'); return null; }
           /* approved on the card: at most what was left of today's limit. More than that: stop and ask again */
           if (credits <= budget && used + credits <= cap) return credits;
           var over = { kind: 'credits', label: 'Kin stopped to ask', title: 'The pictures cost more than you approved', price: credits + ' credits',
@@ -285,10 +340,10 @@
           beat('Making the pictures');
           /* counted against today's limit now, before the batch goes out: a stop, a time-out or an error after this point
              can still leave pictures being made (and charged) on Higgsfield, and the next card must not offer those credits again */
-          Kin.hf.addUsed(credits); hfCredits = credits; if (opts.onSent) opts.onSent();
+          Kin.hf.addUsed(credits); hfCredits = Math.round((hfCredits + credits) * 100) / 100; budget = Math.max(0, Math.round((budget - credits) * 100) / 100); if (opts.onSent) opts.onSent();
           var reqs = plan.map(function (p, i) { return '- index ' + i + ' (' + p.id + '): aspect ' + p.aspect + '; prompt: ' + p.prompt; }).join('\n');
           return mcpAsk({ generate_image_batch: { enabled: true }, jobs_wait: { enabled: true } },
-            'Make these pictures on Higgsfield now. Call generate_image_batch ONCE with one request per picture: { index: the index given, params: { model: "' + IMAGE_MODEL + '", prompt: the prompt exactly as written, aspect_ratio: the aspect given, use_unlim: false } }. Then call jobs_wait with every returned { index, job_id } until all are finished (call it again while any is still running). Never submit a picture twice. Then reply with one line per picture: the id (img…), a space, and its result URL.\n' + reqs, 12000)
+            'Make these pictures on Higgsfield now. Call generate_image_batch ONCE with one request per picture: { index: the index given, params: { model: "' + IMAGE_MODEL + '", prompt: the prompt exactly as written, aspect_ratio: the aspect given' + extra + ', use_unlim: false } }. Then call jobs_wait with every returned { index, job_id } until all are finished (call it again while any is still running). Never submit a picture twice. Then reply with one line per picture: the id (img…), a space, and its result URL.\n' + reqs, 12000)
             .then(function (g) {
               var subs = g.uses.filter(function (u) { return u.name === 'generate_image_batch'; }), asked = 0;
               subs.forEach(function (u) { asked += (u.input && Array.isArray(u.input.requests)) ? u.input.requests.length : 0; });
@@ -312,7 +367,7 @@
               return Promise.all(plan.map(function (p) {
                 var u = urlOf[p.id]; if (!u) { notes.push('Picture ' + p.id + ' did not come back from Higgsfield.'); return null; }
                 if (!Kin.hf.okHost(u)) { notes.push('Picture ' + p.id + ' came from a host this page does not load (' + u.slice(0, 60) + ').'); return null; }
-                return Kin.hf.toData(u, 1600).then(function (d) { pics[p.id] = { data: d.data, url: u, prompt: p.prompt }; }, function () { notes.push('Picture ' + p.id + ' could not be fetched into the design; its link: ' + u); });
+                return Kin.hf.toData(u, po.max || 1600).then(function (d) { pics[p.id] = { data: d.data, url: u, prompt: p.prompt }; }, function () { notes.push('Picture ' + p.id + ' could not be fetched into the design; its link: ' + u); });
               })).then(function () { return pics; });
             });
         })
@@ -330,7 +385,18 @@
     /* ONE card before anything is spent: the price, then Go, Go without pictures (when Higgsfield is connected), or Stop */
     var hfLeft = hfOn ? Math.max(0, Math.round((Kin.hf.cap() - Kin.hf.used()) * 100) / 100) : 0;
     var withPics = hfOn && hfLeft > 0, usdDraw = estimate(kit, false), usdPics = estimate(kit, true);
-    var card = { kind: 'job', label: 'Before anything is spent', title: 'Design job', price: '$' + (withPics ? usdPics : usdDraw).toFixed(2), priceNote: 'estimated Claude usage · Opus 5.5',
+    var posterCredits = POSTER_CREDITS * (POSTER_VARIANTS + 1), usdPoster = posterEstimate(kit);
+    var poster = withPics && MARKETING.test(text) && !TOO_FACTUAL.test(text) && hfLeft >= POSTER_CREDITS * POSTER_VARIANTS;
+    var card = poster ? { kind: 'job', label: 'Before anything is spent', title: 'Poster job', price: '$' + usdPoster.toFixed(2), priceNote: 'estimated Claude usage · Opus 5.5', pics: true, route: 'poster',
+      lines: ['One idea with the exact copy, rendered whole by Higgsfield\'s image model in ' + POSTER_VARIANTS + ' variants; the art director reads every word in each, picks one, and asks for one refinement render if it falls short.',
+        'Credits: about ' + posterCredits + ' (' + POSTER_VARIANTS + ' posters and 1 refinement, about ' + POSTER_CREDITS + ' each), priced before anything is made; at most ' + hfLeft + ' (what is left of today\'s ' + Kin.hf.cap() + ').',
+        'The product and artwork in the picture are the image model\'s invention, not your real packaging. It stays a draft until you say go.'],
+      say: 'A poster job costs about ' + usdPoster.toFixed(2) + ' dollars and about ' + posterCredits + ' Higgsfield credits, sir. Go, or stop?',
+      choices: [{ k: 'poster', label: 'Go', kind: 'go', note: 'The full poster on Higgsfield, priced first.' },
+        { k: 'compose', label: 'Compose it instead', kind: 'alt', note: 'About $' + usdPics.toFixed(2) + ': three composed concepts, pictures only where they help.' },
+        { k: 'draw', label: 'Go without pictures', kind: 'alt', note: 'About $' + usdDraw.toFixed(2) + ', no Higgsfield credits.' },
+        { k: 'stop', label: 'Stop', kind: 'stop', note: 'Nothing is sent and nothing is spent.' }] } : { kind: 'job', label: 'Before anything is spent', title: 'Design job', price: '$' + (withPics ? usdPics : usdDraw).toFixed(2), priceNote: 'estimated Claude usage · Opus 5.5',
+      pics: withPics, route: 'compose',
       lines: [withPics ? 'A brief, three concepts, real pictures where they help, a strict art director, and up to three rounds of refinement.' : 'A brief, three drawn concepts, a strict art director, and up to three rounds of refinement.',
         withPics ? 'Pictures: up to 4 on Higgsfield, priced first, at most ' + hfLeft + ' credits (what is left of today\'s ' + Kin.hf.cap() + ').' : hfOn ? 'Pictures: today\'s Higgsfield limit is used up, so the concepts are drawn.' : 'Higgsfield is not connected, so the concepts are drawn.'],
       say: 'A design job costs about ' + (withPics ? usdPics : usdDraw).toFixed(2) + ' dollars, sir. Go, or stop?',
@@ -338,10 +404,10 @@
         .concat(withPics ? [{ k: 'draw', label: 'Go without pictures', kind: 'alt', note: 'About $' + usdDraw.toFixed(2) + ', no Higgsfield credits.' }] : [])
         .concat([{ k: 'stop', label: 'Stop', kind: 'stop', note: 'Nothing is sent and nothing is spent.' }]) };
     var gate = opts.plan ? opts.plan(card) : Promise.resolve('stop'); /* no one to ask: nothing is spent */
-    return gate.then(function (k) {
-      if (k !== 'go' && k !== 'draw') return { text: 'Stopped, sir. Nothing was spent.', declined: true };
+    /* the composed route: a brief, three SVG concepts (pictures where they help), the art director, refinement */
+    function composeRoute(k) {
       alive();
-      hfOn = withPics && k === 'go'; budget = hfOn ? hfLeft : 0;
+      hfOn = withPics && (k === 'go' || k === 'compose'); budget = hfOn ? Math.max(0, Math.round(Math.min(hfLeft - hfCredits, Kin.hf.cap() - Kin.hf.used()) * 100) / 100) : 0;
       onStep('brief'); beat('Writing the brief');
       var books = kit.designPlaybooks(text);
       var user = [{ type: 'text', text: text + '\n\n[Today is ' + kit.today() + '.]' + (books ? '\n\n' + books : '') }];
@@ -408,9 +474,100 @@
           onStep('done');
           return { text: line, model: deep, made: madeIds, studio: true };
         });
+    }
+
+    /* the full-poster route: resolves null when no poster could be made, and the composed route takes over */
+    function posterRoute() {
+      hfOn = true; budget = hfLeft;
+      onStep('brief'); beat('Writing the art direction');
+      var books = kit.designPlaybooks(text), pb = null, renders = [];
+      var user = [{ type: 'text', text: text + '\n\n[Today is ' + kit.today() + '.]' + (books ? '\n\n' + books : '') }];
+      function wrap(r, w, h) { return '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '"><image href="' + r.data + '" x="0" y="0" width="' + w + '" height="' + h + '" preserveAspectRatio="xMidYMid slice"/></svg>'; }
+      function size(aspect) { return aspect === '2:3' ? [1400, 2100] : aspect === '1:1' ? [1080, 1080] : aspect === '9:16' ? [1080, 1920] : [1080, 1350]; }
+      /* the art director reads every word in each render against the exact copy */
+      function read(list) {
+        var content = [];
+        list.forEach(function (r, k) {
+          content.push({ type: 'text', text: 'Render ' + String.fromCharCode(65 + k) + ' (index ' + k + '): ' + r.name });
+          var m = /^data:(image\/(?:jpeg|png|webp));base64,(.*)$/.exec(r.data || '');
+          if (m) content.push({ type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } });
+        });
+        content.push({ type: 'text', text: 'The exact copy, line by line:\n' + pb.copy.map(function (l) { return '"' + l + '"'; }).join('\n') + '\n\nThe idea: ' + pb.idea });
+        var g = guard('director');
+        var st = c.beta.messages.stream({ model: deep, max_tokens: 12000, betas: [kit.FALLBACK_BETA], fallbacks: 'default', thinking: { type: 'adaptive', display: 'summarized' }, output_config: { effort: 'high' },
+          system: kit.system().concat([{ type: 'text', text: POSTER_CRITIC }]), messages: [{ role: 'user', content: content }] }, g.opts), n = 0, jm = meter(st, deep, g);
+        st.on('streamEvent', function () { if (++n % 40 === 0) beat('The art director is reading every word'); });
+        return st.finalMessage().then(function (m) {
+          g.done(); add(m); var j = jsonIn(textOf(m)) || {}, ps = Array.isArray(j.posters) ? j.posters : [];
+          list.forEach(function (r, k) {
+            var v = ps[k] || {}, sc = typeof v.score === 'number' ? Math.max(0, Math.min(100, Math.round(v.score))) : null;
+            r.wrong = (Array.isArray(v.wrong_words) ? v.wrong_words : []).map(String).slice(0, 6); r.wordsOk = v.words_ok === true && !r.wrong.length;
+            r.notes = (Array.isArray(v.notes) ? v.notes : []).map(String).slice(0, 3); r.fixes = (Array.isArray(v.fixes) ? v.fixes : []).map(String).slice(0, 4);
+            /* a misspelled or invented word fails the piece, whatever else it does well */
+            r.score = sc == null ? null : r.wordsOk ? sc : Math.min(sc, 60);
+          });
+          return String(j.why || '').slice(0, 300);
+        }, function (e) { jm.lost(); e = g.fail(e); if (isAbort(e)) throw e; notes.push('The art director could not read the posters (' + String((e && e.message) || e).slice(0, 100) + ').'); list.forEach(function (r) { r.score = null; r.notes = []; r.fixes = []; r.wrong = []; }); return ''; });
+      }
+      return toolCall(deep, 'high', kit.system().concat([{ type: 'text', text: POSTER_RULES }]), user, POSTER_TOOL, 16000, 'Writing the art direction', 'concepts')
+        .then(function (input) {
+          pb = { title: String(input.title || 'Poster').slice(0, 120), idea: String(input.idea || '').slice(0, 300), aspect: ['4:5', '2:3', '1:1', '9:16'].indexOf(input.aspect) >= 0 ? input.aspect : '4:5',
+            copy: (Array.isArray(input.copy) ? input.copy : []).map(String).filter(Boolean).slice(0, 8), variants: (Array.isArray(input.variants) ? input.variants : []).slice(0, POSTER_VARIANTS) };
+          title = pb.title;
+          if (input.too_much_copy || !pb.variants.length || !pb.copy.length) { notes.push('This piece carries more exact copy than a picture can hold reliably, so it is composed instead.'); return null; }
+          onStep('pictures');
+          var plan = pb.variants.map(function (v, k) { return { id: 'img' + (k + 1), name: String(v.name || 'Variant ' + (k + 1)).slice(0, 60), prompt: String(v.prompt || '').slice(0, 3000), aspect: pb.aspect }; });
+          return pictures(plan, { params: POSTER_PARAMS, max: 2240 }).then(function (got) {
+            renders = plan.filter(function (p) { return got && got[p.id]; }).map(function (p) { return { id: p.id, name: p.name, prompt: p.prompt, data: got[p.id].data, url: got[p.id].url }; });
+            if (!renders.length) return null;
+            onStep('director'); beat('The art director is reading every word');
+            return read(renders).then(function (why) {
+              var best = renders.slice().sort(function (a, b) { return (b.score == null ? -1 : b.score) - (a.score == null ? -1 : a.score); })[0]; best.round = 1; best.why = why;
+              if (best.score == null || best.score >= PASS || !best.fixes.length) return best;
+              /* one refinement render, with the fixes written as instructions */
+              onStep('refine'); beat('Writing the refinement');
+              var u = [{ type: 'text', text: 'Rewrite this full-poster prompt so the next render fixes what the art director found. Keep the idea, the exact copy and everything that works; change only what the fixes ask.\n\nThe prompt:\n' + best.prompt +
+                '\n\nThe art director scored it ' + best.score + ' of 100.' + (best.wrong.length ? '\nWords that came out wrong: ' + best.wrong.join(', ') + '.' : '') + '\nFixes:\n- ' + best.fixes.join('\n- ') + '\n\nThe exact copy:\n' + pb.copy.map(function (l) { return '"' + l + '"'; }).join('\n') }];
+              return toolCall(kit.MAIN, 'medium', kit.system().concat([{ type: 'text', text: POSTER_RULES }]), u, REPROMPT_TOOL, 8000, 'Writing the refinement', 'refine')
+                .then(function (r) {
+                  var p2 = { id: 'img' + (renders.length + 1), name: best.name + ' (refined)', prompt: String(r.prompt || '').slice(0, 3000), aspect: pb.aspect };
+                  if (!p2.prompt) return best;
+                  return pictures([p2], { params: POSTER_PARAMS, max: 2240, quiet: true }).then(function (got) {
+                    if (!got || !got[p2.id]) return best;
+                    var nr = { id: p2.id, name: p2.name, prompt: p2.prompt, data: got[p2.id].data, url: got[p2.id].url };
+                    beat('The art director is reading the refinement');
+                    return read([nr]).then(function () { renders.push(nr); nr.round = 2; nr.why = best.why; return nr.score != null && nr.score >= (best.score || 0) ? nr : best; });
+                  });
+                }, function (e) { if (isAbort(e)) throw e; notes.push('The refinement could not be written (' + String((e && e.message) || e).slice(0, 100) + ').'); return best; });
+            });
+          });
+        })
+        .then(function (win) {
+          if (!win) { onStep('brief'); return null; }
+          var wh = size(pb.aspect), others = renders.filter(function (r) { return r !== win; }).map(function (r) { return { name: r.name, idea: pb.idea, svg: wrap(r, wh[0], wh[1]), score: r.score, caps: r.wordsOk ? [] : ['words'], notes: r.notes }; });
+          var honest = 'The product and artwork in the picture are the image model\'s invention, not your real packaging.';
+          var item = Kin.mind.addMade({ kind: 'design', title: pb.title, note: ['Full poster, ' + pb.aspect + ', ' + wh[0] + ' by ' + wh[1], 'Higgsfield ' + IMAGE_MODEL + ' at xhigh, 2k'].join(' · '),
+            content: wrap(win, wh[0], wh[1]), src: win.prompt, brief: { idea: pb.idea, format: pb.aspect + ' full poster', copy: pb.copy.join(' / ') }, concept: { name: win.name, idea: pb.idea }, notes: win.notes, why: win.why || '', caps: win.wordsOk ? [] : ['words'],
+            others: others, pictures: renders.map(function (r) { return { id: r.id, prompt: r.prompt, url: r.url }; }), credits: hfCredits, usd: Math.round(spent * 1e4) / 1e4, issues: [honest].concat(notes).slice(0, 6) });
+          item = Kin.mind.addMade({ id: item.id, score: win.score, round: win.round, fixes: (win.score != null && win.score < PASS ? win.fixes : []).slice(0, 6) });
+          madeIds.push(item.id); if (opts.onMade) opts.onMade(item);
+          var s2 = win.score;
+          var line = 'The ' + win.name + ' poster won, sir. ' + (s2 == null ? 'The art director could not read it, so check every word yourself.' : 'The art director gave it ' + s2 + ' of 100' + (win.wordsOk ? ', every word checked' : ', but some words came out wrong (' + win.wrong.join(', ') + '); do not use it as it is') + '.') +
+            ' It is a draft on your Made shelf with the other renders. ' + honest + ' Nothing is posted until you say so.' + (notes.length ? '\n\n' + notes.join(' ') : '');
+          onStep('done');
+          return { text: line, model: deep, made: madeIds, studio: true, poster: true };
+        });
+    }
+
+    return gate.then(function (k) {
+      if (k !== 'go' && k !== 'draw' && k !== 'compose' && k !== 'poster') return { text: 'Stopped, sir. Nothing was spent.', declined: true };
+      alive();
+      if (k !== 'poster') return composeRoute(k);
+      /* no poster came of it (too much copy, over the credits, Higgsfield refused): compose it instead, with whatever credits are left */
+      return posterRoute().then(function (r) { if (r) return r; alive(); if (opts.onReroute) opts.onReroute('compose'); return composeRoute(hfCredits > 0 || budget <= 0 ? 'draw' : 'compose'); });
     }).then(function (r) { r.cost = spent; r.route = 'make'; r.credits = hfCredits; return r; },
       function (e) { if (e && typeof e === 'object') e.spent = spent; throw e; });
   }
 
-  Kin.studio = { run: run, estimate: estimate, compose: compose, typeOnly: typeOnly, PASS: PASS, TYPE_CAP: TYPE_CAP };
+  Kin.studio = { run: run, estimate: estimate, posterEstimate: posterEstimate, compose: compose, typeOnly: typeOnly, PASS: PASS, TYPE_CAP: TYPE_CAP, MARKETING: MARKETING, POSTER_CREDITS: POSTER_CREDITS };
 })();

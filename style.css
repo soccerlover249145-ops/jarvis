@@ -297,3 +297,19 @@ body:has(#thread:not([hidden])) .loadcard { display: none; }
 .mrow:hover { background: linear-gradient(180deg, #1C1C20, #141417); }
 .sheet h3 { color: #C9CED8; }
 @media (prefers-reduced-motion: reduce) { .lnk, .seg button, .row input, .row select, .mrow { transition: none; } }
+
+/* ---- at the desk: the screen being shared, and links Kin could not open ---- */
+.prow { gap: 10px; }
+.sharepill { display: inline-flex; align-items: center; gap: 10px; height: 28px; padding: 0 4px 0 12px; border-radius: 999px; border: 1px solid rgba(255, 122, 147, .45); background: rgba(40, 6, 14, .78); color: #FFD9E1; font: var(--label); letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; box-shadow: 0 0 22px -6px rgba(255, 92, 122, .6); }
+.sharepill[hidden] { display: none; }
+.sharepill .rec { width: 7px; height: 7px; border-radius: 50%; background: #FF5C7A; box-shadow: 0 0 8px #FF5C7A; animation: recpulse 1.6s ease-in-out infinite; }
+.sharepill b { font-weight: 500; height: 20px; line-height: 20px; padding: 0 10px; border-radius: 999px; background: #FFD9E1; color: #2A0610; letter-spacing: .12em; }
+.sharepill:hover b, .sharepill:focus-visible b { background: #fff; }
+@keyframes recpulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .sharepill .rec { animation: none; } }
+.bar #scr[hidden] { display: none; }
+.bar #scr[aria-pressed="true"] svg { stroke: #FF8FA5; }
+.thread .msg .tablink { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; height: 36px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--line2); color: var(--fg); text-decoration: none; font: 400 15px/1 var(--f-display); }
+.thread .msg .tablink:hover { border-color: var(--accent); }
+.thread .msg .tabhint { margin-top: 8px; color: var(--dim); font: var(--data); }
+@media (max-width: 520px) { .sharepill span { display: none; } }

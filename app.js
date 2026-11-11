@@ -254,6 +254,7 @@
       pendingConfirm = { d: d, done: done, answer: function (q) {
         var x = ears.norm(q), has = function (k) { return choices.some(function (c) { return c.k === k; }); };
         if (DRAW.test(x) && has('draw')) { done('draw'); return true; }
+        if (/\bcompose\b/.test(x) && has('compose')) { done('compose'); return true; }
         if (YES.test(x)) { done(choices[0].k); return true; }
         if (NO.test(x)) { done(stopK); return true; }
         return false; } };
@@ -272,30 +273,33 @@
 
   /* ---- a design job, live: the card becomes this panel the moment the founder says Go ---- */
   var JOB_STEPS = [['brief', 'Brief'], ['concepts', 'Three concepts'], ['pictures', 'Pictures'], ['director', 'Art director'], ['refine', 'Refining'], ['done', 'Done']];
+  var POSTER_STEPS = [['brief', 'Art direction'], ['pictures', 'Three posters'], ['director', 'Every word read'], ['refine', 'Refinement'], ['done', 'Done']];
   function money(v) { v = v || 0; return v > 0 && v < 0.005 ? '<$0.01' : '$' + v.toFixed(2); }
   function clock(ms) { var s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
   function jobPanel(d, card, k, question) {
-    var t0 = Date.now(), cur = '', spentV = 0, ended = false, picsSent = false, pics = k === 'go' && /Pictures: up to/.test((card.lines || []).join(' '));
+    var t0 = Date.now(), cur = '', spentV = 0, ended = false, picsSent = false, pics = !!card.pics && k !== 'draw', steps = k === 'poster' ? POSTER_STEPS : JOB_STEPS;
     d.className = 'msg kin ask card job live'; d.innerHTML = '';
-    var head = el('div', 'chead'), chip = el('span', 'chip live', 'Working'); head.appendChild(chip); head.appendChild(el('span', 'chip ghost', pics ? 'With pictures' : 'Drawn')); d.appendChild(head);
+    var head = el('div', 'chead'), chip = el('span', 'chip live', 'Working'); head.appendChild(chip); head.appendChild(el('span', 'chip ghost', k === 'poster' ? 'Full poster' : pics ? 'With pictures' : 'Drawn')); d.appendChild(head);
     d.appendChild(el('p', 'asktitle', card.title));
     var stats = el('div', 'jstats'), tm = el('b', 'jtime', '0:00'), sp = el('b', 'jspent', '$0.00');
     [['Time', tm], ['Spent so far', sp]].forEach(function (x) { var c = el('div', 'jstat'); c.appendChild(el('span', 'lab', x[0])); c.appendChild(x[1]); stats.appendChild(c); });
     d.appendChild(stats);
     var ol = el('ol', 'jsteps'), lis = {};
-    JOB_STEPS.forEach(function (st) { if (st[0] === 'pictures' && !pics) return; var li = el('li', 'step', st[1]); li.dataset.k = st[0]; ol.appendChild(li); lis[st[0]] = li; });
-    d.appendChild(ol);
+    function drawSteps() { ol.innerHTML = ''; lis = {}; steps.forEach(function (st) { if (st[0] === 'pictures' && !pics) return; var li = el('li', 'step', st[1]); li.dataset.k = st[0]; ol.appendChild(li); lis[st[0]] = li; }); }
+    drawSteps(); d.appendChild(ol);
     var now = el('p', 'jnow', 'Starting…'); d.appendChild(now);
     var bt = el('div', 'cbtns'), stop = el('button', 'pill stop jstop'); stop.type = 'button'; stop.appendChild(el('span', 'pl', 'Stop the job')); var stopNote = el('span', 'pn', 'Stops every request now. Nothing more is spent.'); stop.appendChild(stopNote);
     stop.addEventListener('click', function () { gesture(); if (S.ctl) S.ctl.abort(); }); bt.appendChild(stop); d.appendChild(bt);
     var tick = setInterval(function () { if (ended) return clearInterval(tick); tm.textContent = clock(Date.now() - t0); }, 1000);
     function step(key) {
       if (ended || !lis[key]) return; cur = key; var seen = true;
-      JOB_STEPS.forEach(function (st) { var li = lis[st[0]]; if (!li) return; if (st[0] === key) { seen = false; li.className = 'step on'; } else li.className = seen ? 'step ok' : 'step'; });
+      steps.forEach(function (st) { var li = lis[st[0]]; if (!li) return; if (st[0] === key) { seen = false; li.className = 'step on'; } else li.className = seen ? 'step ok' : 'step'; });
       if (key === 'done') lis.done.className = 'step ok';
     }
     var api = {
       step: step,
+      /* the poster could not be made: the job carries on as a composed design, and the steps say so */
+      reroute: function () { if (ended) return; steps = JOB_STEPS; pics = pics && !picsSent; drawSteps(); var gh = head.querySelector('.chip.ghost'); if (gh) gh.textContent = pics ? 'Composed, with pictures' : 'Composed'; var tt = d.querySelector('.asktitle'); if (tt) tt.textContent = 'Design job (composed)'; },
       /* the picture batch has gone to Higgsfield: a stop can no longer take it back */
       sent: function () { if (ended) return; picsSent = true; stopNote.textContent = 'Stops every request now. Pictures already sent to Higgsfield may still be charged.'; },
       status: function (s) { if (!ended && s) now.textContent = s; },
@@ -333,7 +337,10 @@
     var gi = Kin.bridge && Kin.bridge.intent(text);
     if (gi) { bridgeAsk(text, gi.q); return; }
     if (!Kin.bridge && Kin.features && Kin.features.grokAsked(text)) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); gbReply('The Grok Bot bridge isn\u2019t switched on yet, sir.', 'Nothing was sent'); return; }
+    /* at the desk: the screen, and tabs, only from the founder's own words; handled here, nothing goes to Claude */
+    if (Kin.desk && deskAsk(text)) return;
     if (S.busy) return;
+    if (Kin.briefBoard && Kin.briefBoard.isBriefRequest(text)) { inp.value = ''; lastLen = 0; touch(); brief(text); return; }
     var now = Kin.mind.instant(text);
     if (now) { instantly(text, now); return; }
     var aloud = S.talk === 'awake', p = null, got = false, t0 = Date.now(), momT = 0, watchI = 0, sess = null, lastSign = Date.now(), stalled = false, pr, making = false, job = null;
@@ -362,13 +369,14 @@
       else if (speakIt && voice.canSpeak()) { var one = r.studio || job ? (/^.*?[.!?](\s|$)/.exec(plain(out)) || [plain(out)])[0].trim() : out; caption(spoken(one).slice(0, 190), r.detail || job ? 'The details are on screen' : ''); say(one, !!(r.studio || job)); }
       else { caption(spoken(out).slice(0, 260), r.source === 'local' ? 'From this device only' : !S.unlocked && aloud ? 'Tap once so I can speak' : ''); captionFade(9000); touch(); }
       /* what was made opens on the shelf; a typed answer with sources, or longer than what is read out, opens the conversation */
+      if (Kin.desk && (job || (r.made && r.made.length))) Kin.desk.notify.done(r.made && r.made.length ? 'Kin finished it' : 'Kin stopped', (/^.*?[.!?](\s|$)/.exec(plain(out)) || [plain(out)])[0].trim());
       if (r.made && r.made.length) openShelf('made', r.made[r.made.length - 1]);
       else if (!aloud && !r.detail && ((r.sources && r.sources.length) || plain(out).length > 620)) showThread();
       else if (aloud && r.sources && r.sources.length && !S.talking) $('capS').textContent = 'Sources: tap the status line';
       if (S.queued && S.talk === 'awake') { var q = S.queued; S.queued = ''; setTimeout(function () { ask(q); }, 300); }
     }
     try {
-      pr = brain.ask(text, { aloud: aloud, signal: S.ctl.signal,
+      var aopts = { aloud: aloud, signal: S.ctl.signal,
         onText: function (t) { got = true; lastSign = Date.now(); p.textContent = t; var m = /^(.{30,190}?[.!?])(\s|$)/.exec(spoken(t)); if (m && !S.talking) caption(m[1], 'Kin');
           /* with a voice key, the first whole sentence is spoken while the rest is still arriving */
           /* only a spoken conversation is spoken while it streams: a typed answer is checked first, then its opening is read out */
@@ -382,12 +390,16 @@
         onRemember: function () { refreshSettings(); },
         confirm: confirmCard,
         /* a design job: one card before anything is spent, then the same card shows the job live */
-        plan: function (card) { return choiceCard(card).then(function (c) { if (c.k === 'go' || c.k === 'draw') { lastSign = Date.now(); job = jobPanel(c.d, card, c.k, text); } return c.k; }); },
+        plan: function (card) { return choiceCard(card).then(function (c) { if (/^(go|draw|poster|compose)$/.test(c.k)) { lastSign = Date.now(); job = jobPanel(c.d, card, c.k, text); } return c.k; }); },
         choose: function (card) { return choiceCard(card).then(function (c) { lastSign = Date.now(); if (c.k === 'stop' && S.ctl) S.ctl.abort(); return c.k; }); },
         onStep: function (k) { lastSign = Date.now(); if (job) job.step(k); },
         onSent: function () { if (job) job.sent(); },
+        onReroute: function () { lastSign = Date.now(); if (job) job.reroute(); },
         onSpend: function (v) { if (job) job.spend(v); }
-      });
+      };
+      /* while the screen is shared, this question carries one downscaled snapshot of it, taken now and kept nowhere */
+      var shot = Kin.desk && Kin.desk.screen.on() ? Kin.desk.screen.snap().catch(function () { return null; }) : Promise.resolve(null);
+      pr = shot.then(function (img) { if (img) { aopts.image = img; aopts.onStatus('Looking at your screen'); } return brain.ask(text, aopts); });
     } catch (e) { pr = Promise.resolve({ text: 'Something went wrong on this page, sir. The reason is on screen.', detail: String((e && e.message) || e).slice(0, 200), source: 'local', code: 'error' }); }
     /* whatever happens, Kin must never be left "thinking" */
     function end() { clearTimeout(momT); clearInterval(watchI); S.busy = false; }
@@ -395,6 +407,86 @@
       function () { end(); caption('Something went wrong on this page, sir.', ''); captionFade(9000); paint(); });
   }
   Kin.ask = ask;
+
+  /* ------------------------------------------------------------ at the desk: look at my screen, open a tab */
+  function localReply(text, small) { var p = addMsg('kin', text); caption(text, small || ''); if (S.unlocked && (S.talk === 'awake' || S.speakTyped)) say(text, true); else captionFade(9000); return p; }
+  function deskAsk(text) {
+    var D = Kin.desk, done = function () { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); };
+    if (D.screen.stopAsked(text)) { done(); if (D.screen.on()) { D.screen.stop(); localReply('I have stopped looking at your screen, sir. Nothing was kept.'); } else localReply('I am not looking at your screen, sir.'); return true; }
+    if (D.screen.asked(text)) {
+      done();
+      if (!D.screen.supported()) { localReply('I can look at your screen on a Mac, in Chrome or Safari, sir. Not on this device.'); return true; }
+      if (D.screen.on()) { localReply('I can see your screen, sir. Ask away.', 'Sharing'); return true; }
+      shareScreen(); return true;
+    }
+    var a = D.tab.asked(text); if (!a) return false;
+    done(); var c = D.tab.check(a);
+    if (!c.ok) { localReply(c.why, 'Nothing was opened'); return true; }
+    var r = D.tab.open(c.url);
+    if (r.opened) { localReply('Opened ' + c.host + ' in a new tab, sir.'); return true; }
+    var p = localReply('The browser would not let me open ' + c.host + ' on my own, sir. Tap the link.', 'The link is in the conversation'), box = p.parentNode;
+    var l = el('a', 'tablink', 'Open ' + c.host); l.href = c.url; l.target = '_blank'; l.rel = 'noopener noreferrer'; box.appendChild(l);
+    if (r.hint) box.appendChild(el('p', 'tabhint', D.tab.hintText()));
+    showThread(); return true;
+  }
+  function shareScreen() {
+    var D = Kin.desk;
+    caption('Choose the screen or window to share', 'Your browser asks', 'kin');
+    D.screen.start().then(function () { localReply('I can see your screen now, sir. Each question you ask carries one snapshot of it; nothing is kept. Tap Stop on the pill to end it.', 'Sharing'); },
+      function (e) { var n = e && e.name; localReply(n === 'NotAllowedError' || n === 'AbortError' ? 'Not shared, sir. Nothing was sent.' : 'The browser could not share the screen, sir (' + String((e && e.message) || e).slice(0, 80) + ').'); });
+  }
+  function screenUI(on) {
+    var b = $('scr'), pill = $('sharePill'), D = Kin.desk; if (!b || !D) return;
+    b.hidden = !D.screen.supported(); b.setAttribute('aria-pressed', on ? 'true' : 'false'); b.setAttribute('aria-label', on ? 'Stop sharing your screen' : 'Look at my screen');
+    pill.hidden = !on;
+  }
+  if (Kin.desk) {
+    Kin.desk.screen.onChange(screenUI); screenUI(false);
+    $('scr').addEventListener('click', function () { gesture(); if (Kin.desk.screen.on()) { Kin.desk.screen.stop(); localReply('I have stopped looking at your screen, sir. Nothing was kept.'); } else shareScreen(); });
+    $('sharePill').addEventListener('click', function () { gesture(); Kin.desk.screen.stop(); localReply('I have stopped looking at your screen, sir. Nothing was kept.'); });
+  }
+
+  /* ------------------------------------------------------------ the morning brief board */
+  var MARKET = 'kin.bb.market';
+  function marketWatch() {
+    var c = null; try { c = JSON.parse(localStorage.getItem(MARKET) || 'null'); } catch (e) {}
+    if (c && Date.now() - c.at < 3 * 3600000 && Array.isArray(c.items)) return Promise.resolve(c.items);
+    return brain.job('Search the web for news from the last three days about the founder\'s competitors and product category, as named in the pack. Answer in one line.', { web: true, noTools: true, budget: 0.2 }).then(function (r) {
+      var items = (r.sources || []).filter(function (x) { return /^https:\/\//.test(x.url); }).slice(0, 4).map(function (x) { return { title: x.title || x.url, url: x.url, source: (x.url.match(/^https?:\/\/(?:www\.)?([^\/]+)/) || [])[1] || '' }; });
+      if (items.length && !Kin.shared) { try { localStorage.setItem(MARKET, JSON.stringify({ at: Date.now(), items: items })); } catch (e) {} }
+      return items;
+    });
+  }
+  /* a job from the board: drafts, plans and research run as one bounded request with its own spending limit;
+     a design goes through the normal design card (one card before anything is spent) */
+  function boardJob(offer, o) {
+    var B = Kin.briefBoard;
+    if (offer.kind === 'design') { B.hide(); setTimeout(function () { if (!S.busy) ask('Design: ' + offer.task); }, 360); return Promise.resolve({ handedOver: true }); }
+    var cap = B.settings.get().autoCap, budget = offer.auto ? cap : Math.max(0.3, offer.est * 2);
+    return brain.job(offer.prompt, { signal: o.signal, web: offer.kind === 'research', budget: budget, onMade: function () { refreshMade(); } }).then(function (r) {
+      if (r.code === 'stopped' || (o.signal && o.signal.aborted)) throw Object.assign(new Error('Stopped'), { name: 'AbortError' });
+      if (r.code !== 'ok') throw new Error(r.text || 'It did not finish.');
+      if (!r.made || !r.made.length) throw new Error(r.capped ? 'It reached its spending limit' : 'Nothing was made');
+      refreshMade(); if (Kin.desk) Kin.desk.notify.done('Kin finished a job', offer.label); return r;
+    });
+  }
+  function brief(text) {
+    var B = Kin.briefBoard;
+    if (text) addMsg('you', text);
+    caption('Pulling your brief together', 'One moment', 'kin');
+    B.gather({ pack: Kin.pack.get(), timeoutMs: 7000, market: brain.hasKey() && !Kin.shared ? marketWatch : null }).then(function (data) {
+      B.show(data, {
+        brand: 'Jarvis',
+        onRefresh: function () { B.hide(true); brief(); },
+        onSettings: function () { B.hide(); $('sheet').hidden = false; refreshSettings(); var bs = $('briefSettings'); if (bs && bs.scrollIntoView) bs.scrollIntoView({ block: 'center' }); },
+        onStart: brain.hasKey() ? boardJob : null,
+        onOpenMade: function () { B.hide(); openShelf('made'); }
+      });
+      var line = B.summary(data); addMsg('kin', line); caption(line.slice(0, 190), '');
+      if (S.unlocked && (S.talk === 'awake' || S.speakTyped)) say(line); else captionFade(9000);
+    }, function (e) { localReply('The brief could not be put together, sir (' + String((e && e.message) || e).slice(0, 80) + ').'); });
+  }
+  Kin.brief = brief;
 
   /* ------------------------------------------------------------ the Grok Bot bridge
      Asked only by name ("ask Grok Bot ..."). The reply is Grok Bot's words: shown with its own label, spoken
@@ -639,6 +731,18 @@
     var pl = Kin.chart.place();
     $('wxNote').textContent = Kin.shared ? 'Not available at this address.' : pl ? 'Weather for ' + [pl.name, pl.region, pl.country].filter(Boolean).join(', ') + '.' : 'No place set. Type your town and tap Find it.';
     $('wxDrop').hidden = !pl; $('wxTown').disabled = $('wxFind').disabled = !!Kin.shared;
+    var u = Kin.chart.units(); [].forEach.call($('wxUnits').children, function (b) { b.setAttribute('aria-pressed', b.dataset.u === u ? 'true' : 'false'); b.disabled = !!Kin.shared; });
+    if (Kin.briefBoard && $('briefSettings') && !$('briefSettings').firstChild) Kin.briefBoard.settingsUI($('briefSettings'));
+    deskSettings();
+  }
+  function deskSettings() {
+    var D = Kin.desk; if (!D || !$('notifyNote')) return;
+    $('deskScreenNote').textContent = D.screen.supported()
+      ? 'Look at my screen: tap the screen button by the mic, or say "look at my screen". Your browser asks which screen or window to share. While it is shared, each question you ask sends one downscaled snapshot of it to Anthropic with the question; nothing is recorded or kept. Tap Stop on the red pill to end it.'
+      : 'Look at my screen works on a Mac in Chrome or Safari; it is not offered on this device.';
+    var perm = D.notify.permission(), b = $('notifyOn');
+    b.hidden = perm === 'granted' || perm === 'unsupported' || perm === 'denied';
+    $('notifyNote').textContent = perm === 'unsupported' ? 'This browser cannot show notifications.' : perm === 'granted' ? 'On. When a design or a job from the brief finishes while this page is in the background, Kin tells you, and the app icon counts what is waiting.' : perm === 'denied' ? 'Blocked for this site. Allow notifications in the browser\'s site settings to turn them on.' : 'Off. Kin only asks when you tap the button; it then tells you when a long job finishes while the page is in the background.';
   }
   function wxFind() {
     var name = $('wxTown').value.trim(), box = $('wxPick'); box.textContent = ''; if (name.length < 2) return;
@@ -741,6 +845,8 @@
   $('wxFind').addEventListener('click', wxFind);
   $('wxTown').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); wxFind(); } });
   $('wxDrop').addEventListener('click', function () { Kin.chart.dropPlace(); wxSettings(); });
+  [].forEach.call($('wxUnits').children, function (b) { b.addEventListener('click', function () { Kin.chart.setUnits(b.dataset.u); wxSettings(); }); });
+  $('notifyOn').addEventListener('click', function () { gesture(); if (Kin.desk) Kin.desk.notify.ask().then(function () { deskSettings(); }); });
   $('hfConnect').addEventListener('click', function () { gesture(); Kin.hf.connect().catch(function (e) { $('hfNote').textContent = (e && e.message) || 'Could not start the sign-in.'; }); });
   $('hfDrop').addEventListener('click', function () { Kin.hf.disconnect(); refreshSettings(); });
   $('hfCap').addEventListener('change', function () { Kin.hf.setCap($('hfCap').value); refreshSettings(); });

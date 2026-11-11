@@ -285,20 +285,33 @@
       return (j && Array.isArray(j.results) ? j.results : []).slice(0, 5).map(function (r) { return { name: r.name, region: r.admin1 || '', country: r.country || '', lat: r.latitude, lon: r.longitude, tz: r.timezone || '' }; }).filter(function (r) { return isFinite(r.lat) && isFinite(r.lon); });
     });
   }
-  /** today, hour by hour, for the saved place: only its coordinates are sent */
+  /* one units setting for the whole page: the brief board and the chart tool read the same one */
+  var UNITS = 'kin.units';
+  function units() { return ls.get(UNITS) === 'F' ? 'F' : 'C'; }
+  function setUnits(u) { return ls.set(UNITS, u === 'F' ? 'F' : 'C'); }
+  /** the forecast for the saved place, today and tomorrow: only its coordinates are sent. Resolves the raw Open-Meteo answer. */
+  function forecast() {
+    var p = place(); if (!p) return Promise.reject(Object.assign(new Error('No place is set.'), { noplace: true }));
+    var f = units() === 'F' ? '&temperature_unit=fahrenheit&wind_speed_unit=mph' : '';
+    return getJSON(FC + '?latitude=' + p.lat + '&longitude=' + p.lon +
+      '&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,is_day' +
+      '&hourly=temperature_2m,precipitation_probability,weather_code' +
+      '&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset&timezone=auto&forecast_days=2' + f)
+      .then(function (j) { if (!j || !j.hourly || !Array.isArray(j.hourly.time)) throw new Error('Open-Meteo sent no hourly forecast.'); return { place: p, units: units(), raw: j }; });
+  }
+  /** today, hour by hour, for the saved place (the chart tool) */
   function weatherToday() {
     var p = place(); if (!p) return Promise.resolve({ ok: false, why: 'No place is set. The founder sets their town once in Settings, under Weather.' });
-    var url = FC + '?latitude=' + p.lat + '&longitude=' + p.lon + '&hourly=temperature_2m,precipitation_probability&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&current=temperature_2m&timezone=auto&forecast_days=1';
-    return getJSON(url).then(function (j) {
-      var h = j && j.hourly, d = j && j.daily; if (!h || !Array.isArray(h.time)) return { ok: false, why: 'Open-Meteo sent no hourly forecast.' };
+    return forecast().then(function (f) {
+      var j = f.raw, h = j.hourly, d = j.daily, day = String(h.time[0]).slice(0, 10), n = h.time.filter(function (t) { return String(t).slice(0, 10) === day; }).length || 24;
       var cur = j.current && j.current.time ? String(j.current.time).slice(0, 13) + ':00' : null;
-      return { ok: true, place: [p.name, p.region, p.country].filter(Boolean).join(', '), timezone: j.timezone || p.tz, units: { temperature: (j.hourly_units && j.hourly_units.temperature_2m) || '°C', precipitation_probability: '%' },
-        hourly: { time: h.time.slice(0, 24), temperature: (h.temperature_2m || []).slice(0, 24), precipitation_probability: (h.precipitation_probability || []).slice(0, 24) },
+      return { ok: true, place: [p.name, p.region, p.country].filter(Boolean).join(', '), timezone: j.timezone || p.tz, units: { temperature: (j.hourly_units && j.hourly_units.temperature_2m) || (f.units === 'F' ? '°F' : '°C'), precipitation_probability: '%' },
+        hourly: { time: h.time.slice(0, n), temperature: (h.temperature_2m || []).slice(0, n), precipitation_probability: (h.precipitation_probability || []).slice(0, n) },
         high: d && d.temperature_2m_max ? d.temperature_2m_max[0] : null, low: d && d.temperature_2m_min ? d.temperature_2m_min[0] : null, rain_chance_max: d && d.precipitation_probability_max ? d.precipitation_probability_max[0] : null,
         now: cur, current_temperature: j.current ? j.current.temperature_2m : null, source: 'Open-Meteo forecast (open-meteo.com) for ' + p.name };
     }, function (e) { return { ok: false, why: 'Open-Meteo could not be reached (' + String(e && e.message || e).slice(0, 80) + ').' }; });
   }
 
   Kin.chart = { check: check, svg: svg, ticks: ticks, mount: mount, tsv: tsv, colors: C, KINDS: KINDS,
-    place: place, setPlace: setPlace, dropPlace: function () { ls.del(PLACE); }, findPlace: findPlace, weatherToday: weatherToday };
+    place: place, setPlace: setPlace, dropPlace: function () { ls.del(PLACE); }, findPlace: findPlace, weatherToday: weatherToday, forecast: forecast, units: units, setUnits: setUnits };
 })();
