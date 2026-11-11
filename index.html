@@ -20,6 +20,7 @@
 <link rel="stylesheet" href="brief-board.css">
 <link rel="stylesheet" href="media-devices.css">
 <link rel="stylesheet" href="away-calls.css">
+<link rel="stylesheet" href="gauntlet.css">
 <title>Kin</title>
 </head>
 <body>
@@ -112,6 +113,10 @@
       <label class="row"><span>Per day</span><input type="text" inputmode="numeric" id="limD" maxlength="4" autocomplete="off" aria-label="Questions to Claude per day"></label>
       <p class="note" id="limNote"></p>
 
+      <h3>The Gauntlet</h3>
+      <p class="note">A self-test of 15 tasks: math, teaching, writing, and asks Kin should stop at or turn down. It runs only when you tap Run, uses your Claude key, counts toward the limits above, and stops before the budget cap you set (a full run is about $1). Nothing is sent, posted, bought, booked or called. Or say &ldquo;test yourself, Jarvis&rdquo;. Results stay on this device.</p>
+      <div class="row"><span></span><div class="btns"><button type="button" class="lnk" id="gauntletOpen">Open the Gauntlet</button></div></div>
+
       <h3>Pictures</h3>
       <p class="note" id="hfNote"></p>
       <div class="row"><span>Higgsfield</span><div class="btns"><button type="button" class="lnk" id="hfConnect">Connect Higgsfield</button><button type="button" class="lnk dim" id="hfDrop" hidden>Disconnect</button></div></div>
@@ -197,6 +202,7 @@
 <script src="away.js"></script>
 <script src="calls.js"></script>
 <script src="away-panel.js"></script>
+<script src="gauntlet.js"></script>
 <script src="desk.js"></script>
 <script src="bust.js"></script>
 <script src="app.js"></script>

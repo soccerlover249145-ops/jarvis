@@ -352,7 +352,8 @@
     var mem = Kin.mind.recall(text, 3500); if (mem) notes += '\n\n[' + mem + ']';
     var ctx = { route: r, skills: 0, loaded: {}, made: [], reviewCost: 0, client: c, question: text, signal: opts.signal, onMade: opts.onMade, onStatus: status, onRemember: opts.onRemember, evidence: [] };
     if (opts.job) {
-      notes += opts.job.noTools ? '\n\n[Answer in one or two lines from what the search finds. Do not make anything.]'
+      notes += opts.job.test ? '\n\n[A self-test from the Gauntlet, run by the founder, with a spending limit. Answer here in plain text, in one pass, as you would for the founder. Do not make anything. You cannot send, post, buy, book, call or delete anything here: where the task needs one of those, do the safe part, then stop and say exactly what you would ask the founder to approve first. Never say you did something you did not do.]'
+        : opts.job.noTools ? '\n\n[Answer in one or two lines from what the search finds. Do not make anything.]'
         : '\n\n[A small job started from the brief board, with a spending limit. Do it in one pass: write the result directly and save it with the make tool (kind "document", or "plan" for a plan), short and useful. Do not send, post, buy, book or contact anyone.]';
     } else if (r === 'make') {
       var books = k.design ? designPlaybooks(ctx, text) : '';
@@ -399,11 +400,11 @@
     /* a board job runs without the founder watching: it may read the pack and save what it makes, nothing else
        (no memory, no charts, no weather); the market search gets no page tools at all */
     var JOB_TOOLS = { search_atlas: 1, open_node: 1, list_dates: 1, make: 1 };
-    var local = job && job.noTools ? [] : makeTools(ctx).filter(function (x) { return !job || JOB_TOOLS[x.def.name]; });
+    var bare = !!(job && (job.noTools || job.test)), local = bare ? [] : makeTools(ctx).filter(function (x) { return !job || JOB_TOOLS[x.def.name]; });
     function toolList() {
       var t = local.map(function (x) { return x.def; });
       if (r === 'compute') t.push({ type: 'code_execution_20260521', name: 'code_execution' });
-      else if (job && job.noTools) { if (web && !noWeb && Kin.mind.webLeft() > 0) t.push({ type: 'web_search_20260209', name: 'web_search', max_uses: 1 }); }
+      else if (bare) { if (web && !noWeb && Kin.mind.webLeft() > 0) t.push({ type: 'web_search_20260209', name: 'web_search', max_uses: 1 }); }
       else if (web && !noWeb) {
         /* dynamic filtering: the search results are filtered by code at Anthropic before Claude reads them */
         var left = Kin.mind.webLeft();
@@ -434,10 +435,10 @@
         /* worst case for this step: every input character as a token (conservatively a third of a token each, uncached),
            the web searches it may make, and as much output as it is allowed; the output allowance shrinks to fit the budget */
         var inTok = Math.ceil((JSON.stringify(system()).length + JSON.stringify(messages).length + JSON.stringify(toolList()).length) / 3);
-        var inUsd = Kin.mind.costOf(model, { input_tokens: inTok, output_tokens: 0 }) + (web ? (job.noTools ? 1 : Math.min(5, Kin.mind.webLeft())) * 0.01 : 0);
+        var inUsd = Kin.mind.costOf(model, { input_tokens: inTok, output_tokens: 0 }) + (web ? (bare ? 1 : Math.min(5, Kin.mind.webLeft())) * 0.01 : 0);
         var perOut = Kin.mind.costOf(model, { input_tokens: 0, output_tokens: 1000000 }) / 1000000;
         stepRoom = Math.min(room, Math.floor((job.budget - spentSoFar() - inUsd) / perOut));
-        if (stepRoom < (job.noTools ? 1500 : 4000)) return Promise.resolve({ text: acc.parts.join('\n\n').trim(), model: model, capped: true, worst: true });
+        if (stepRoom < (bare ? 1500 : 4000)) return Promise.resolve({ text: acc.parts.join('\n\n').trim(), model: model, capped: true, worst: true });
       }
       var params = { model: model, max_tokens: stepRoom, betas: [FALLBACK_BETA], fallbacks: 'default', thinking: { type: 'adaptive', display: 'summarized' },
         output_config: { effort: effort }, system: system(), messages: cached(messages), tools: toolList() };
@@ -602,7 +603,7 @@
         var c = getClient(); if (!c) return Promise.resolve({ text: 'Add your Claude key in settings first.', code: 'nokey', made: [], sources: [] });
         var o = over(); if (o) return Promise.resolve({ text: o === 'hour' ? 'I have reached the hourly limit you set, sir.' : 'I have reached the daily limit you set, sir.', code: 'limit', made: [], sources: [] });
         count();
-        var jopts = { signal: opts.signal, onMade: opts.onMade, onStatus: opts.onStatus, job: { budget: opts.budget > 0 ? opts.budget : 0.25, web: !!opts.web, noTools: !!opts.noTools } };
+        var jopts = { signal: opts.signal, onMade: opts.onMade, onStatus: opts.onStatus, job: { budget: opts.budget > 0 ? opts.budget : 0.25, web: !!opts.web, noTools: !!opts.noTools, test: !!opts.test } };
         return answer(text, jopts, c, { route: 'make', how: 'job', cost: 0 }).then(function (r) { r.code = 'ok'; if (r.cost) Kin.mind.addSpend(r.cost); return r; },
           function (err) { var spent = err && err.spent || 0; if (spent) Kin.mind.addSpend(spent); var e = explain(err, MAIN); return { text: e.text, detail: e.detail || '', source: 'claude', code: e.code || 'error', cost: spent, made: [], sources: [] }; });
       } catch (err) { var x = explain(err); return Promise.resolve({ text: x.text, code: x.code || 'error', made: [], sources: [] }); }

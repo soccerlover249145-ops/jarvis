@@ -420,6 +420,8 @@
     /* away mode and practice calls: handled on this device; nothing goes to Claude, and no real call is made */
     var ai = Kin.awayPanel && Kin.awayPanel.intent(text);
     if (ai) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); awayAsk(ai); return; }
+    /* the Gauntlet: "test yourself" only opens the panel; nothing runs until the founder taps Run */
+    if (Kin.gauntlet && Kin.gauntlet.isRequest(text)) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); gauntlet(true); return; }
     var now = Kin.mind.instant(text);
     if (now) { instantly(text, now); return; }
     var me = ++S.askN, hushed = function () { return S.hushed === me; };
@@ -560,6 +562,14 @@
       b.addEventListener('click', function (e) { if (!e.isTrusted) return; gesture(); b.disabled = true; awayYes = 0; awayAsk({ k: 'on' }); });
       m.parentNode.appendChild(b); showThread();
     }
+  }
+
+  function gauntlet(said) {
+    if (Kin.shared) { if (said) addMsg('kin', Kin.SHARED_TEXT); panelSay(Kin.SHARED_TEXT); return; }
+    Kin.gauntlet.open({ onSay: panelSay });
+    if (!said) return;
+    var line = brain.hasKey() ? 'Here is the Gauntlet, sir. Nothing runs until you tap Run, and it stops at the budget cap.' : 'Here is the Gauntlet, sir. It needs your Claude key in Settings before it can run.';
+    addMsg('kin', line); panelSay(line);
   }
 
   /* ------------------------------------------------------------ the morning brief board */
@@ -990,6 +1000,7 @@
   $('wxTown').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); wxFind(); } });
   $('wxDrop').addEventListener('click', function () { Kin.chart.dropPlace(); wxSettings(); });
   [].forEach.call($('wxUnits').children, function (b) { b.addEventListener('click', function () { Kin.chart.setUnits(b.dataset.u); wxSettings(); }); });
+  if ($('gauntletOpen')) $('gauntletOpen').addEventListener('click', function () { gesture(); if (Kin.gauntlet) gauntlet(false); });
   if ($('awayOpen')) $('awayOpen').addEventListener('click', function () { gesture(); if (Kin.shared) { localReply(Kin.SHARED_TEXT); return; } if (Kin.awayPanel) Kin.awayPanel.open('settings', { onSay: panelSay }); });
   $('notifyOn').addEventListener('click', function () { gesture(); if (Kin.desk) Kin.desk.notify.ask().then(function () { deskSettings(); }); });
   $('hfConnect').addEventListener('click', function () { gesture(); Kin.hf.connect().catch(function (e) { $('hfNote').textContent = (e && e.message) || 'Could not start the sign-in.'; }); });
