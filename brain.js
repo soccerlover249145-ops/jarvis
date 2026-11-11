@@ -88,6 +88,8 @@
       if (p.skills.length) parts.push('PLAYBOOKS (load with use_skill before a job they cover)\n' + p.skills.map(function (s) { return '- ' + s.id + ': ' + s.name + (s.when ? ' (' + s.when.slice(0, 120) + ')' : ''); }).join('\n'));
       parts.push('The pack "' + p.name + '" holds ' + p.nodes.length + ' entries. Use search_atlas and open_node to ground answers; one search is usually enough for a simple question.');
     } else parts.push(NOPACK);
+    /* inside the Jarvis Mac app: the computer tools and how to use them */
+    if (Kin.mac && Kin.mac.note()) parts.push(Kin.mac.note());
     /* stable text first and cached; anything that changes per question goes in the user turn */
     var all = parts.join('\n\n'); if (all.length > MAXSYS) all = all.slice(0, MAXSYS) + '\n\n[The rest of the pack summary was cut for length. Use the tools to look things up.]';
     return [{ type: 'text', text: all, cache_control: { type: 'ephemeral' } }];
@@ -169,6 +171,8 @@
       ok: function (i) { return str(i.subject) && str(i.body); }, status: 'Writing the email',
       run: function (i) {
         var d = { to: String(i.to || '').slice(0, 600), cc: String(i.cc || '').slice(0, 600), subject: String(i.subject).slice(0, 300), body: String(i.body).slice(0, 20000) };
+        /* inside the Jarvis Mac app the draft opens in Mail (never sent); the Mac asks first */
+        if (Kin.mac && Kin.mac.available()) return Kin.mac.draft(ctx, d);
         ctx.emails.push(d); if (ctx.onEmail) ctx.onEmail(d);
         return 'Shown to the founder as an email card. It has NOT been sent; the founder sends it with a tap. In one short line, say it is ready to check and send' + (d.to ? '' : ', and ask for the address') + '.';
       } });
@@ -195,6 +199,8 @@
           return 'Drawn and saved on the Made shelf as id ' + item.id + '. Reply with the takeaway in one sentence, naming the key number; do not list the data.';
         } });
     }
+    /* the computer tools: only inside the Jarvis Mac app (mac.js); in a browser this adds nothing */
+    if (Kin.mac) Kin.mac.tools(ctx).forEach(function (x) { T.push(x); });
     T.push({ def: { name: 'make', description: 'Put something you made on the founder\'s Made shelf, where it can be read, copied and downloaded. kind: document, plan or table (Markdown), or design (a complete SVG). To revise a piece, call again with its id and the full new content.', eager_input_streaming: true,
         input_schema: { type: 'object', properties: {
           kind: { type: 'string', enum: ['document', 'plan', 'table', 'design'] },
@@ -361,7 +367,7 @@
     var prev = opts.job ? [] : turns.slice(-10), messages = prev.map(function (t) { return { role: t.role, content: t.content }; });
     var notes = '\n\n[Today is ' + today() + '.]';
     var mem = Kin.mind.recall(text, 3500); if (mem) notes += '\n\n[' + mem + ']';
-    var ctx = { route: r, skills: 0, loaded: {}, made: [], emails: [], onEmail: opts.onEmail, reviewCost: 0, client: c, question: text, signal: opts.signal, onMade: opts.onMade, onStatus: status, onRemember: opts.onRemember, evidence: [] };
+    var ctx = { route: r, skills: 0, loaded: {}, made: [], emails: [], onEmail: opts.onEmail, onMac: opts.onMac, reviewCost: 0, client: c, question: text, signal: opts.signal, onMade: opts.onMade, onStatus: status, onRemember: opts.onRemember, evidence: [] };
     if (opts.job) {
       notes += opts.job.test ? '\n\n[A self-test from the Gauntlet, run by the founder, with a spending limit. Answer here in plain text, in one pass, as you would for the founder. Do not make anything. You cannot send, post, buy, book, call or delete anything here: where the task needs one of those, do the safe part, then stop and say exactly what you would ask the founder to approve first. Never say you did something you did not do.]'
         : opts.job.noTools ? '\n\n[Answer in one or two lines from what the search finds. Do not make anything.]'

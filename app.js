@@ -211,7 +211,7 @@
     if (!silent) say(voice.CLIPS.standby, true);
     caption(S.talk === 'asleep' ? sayPhrase() : 'Standing by, sir.', S.talk === 'asleep' ? sleepHint() : 'Tap here to wake Kin'); paint();
   }
-  function stopAll() { voice.stop(); S.queued = ''; if (S.busy && S.ctl) S.ctl.abort(); if (Kin.bridge) Kin.bridge.stopAll(); if (Kin.gauntlet) Kin.gauntlet.stop(); caption(null); }
+  function stopAll() { voice.stop(); S.queued = ''; if (S.busy && S.ctl) S.ctl.abort(); if (Kin.bridge) Kin.bridge.stopAll(); if (Kin.gauntlet) Kin.gauntlet.stop(); if (Kin.mac && Kin.mac.busy()) Kin.mac.stop(); caption(null); }
   /** typed or spoken words that are orders to Kin itself, not questions */
   function command(text) {
     if (ears.wakeIn(text, S.wake, true)) { if (S.talk !== 'awake') cue(); else { flare(); voice.chime('wake'); touch(); } greetNow(''); return true; }
@@ -412,6 +412,8 @@
     if (!Kin.bridge && Kin.features && Kin.features.grokAsked(text)) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); gbReply('The Grok Bot bridge isn\u2019t switched on yet, sir.', 'Nothing was sent'); return; }
     /* at the desk: the screen, and tabs, only from the founder's own words; handled here, nothing goes to Claude */
     if (Kin.desk && deskAsk(text)) return;
+    /* apps, files and "do it on my computer" need the Jarvis Mac app; in a browser, say so plainly instead of asking Claude */
+    if (Kin.mac && !Kin.mac.available() && Kin.mac.needsMac(text)) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); var mq = localReply(Kin.mac.NEED_TEXT, 'Mac app only'); mq.parentNode.appendChild(Kin.mac.need()); showThread(); return; }
     if (S.busy) return;
     if (Kin.briefBoard && Kin.briefBoard.isBriefRequest(text)) { inp.value = ''; lastLen = 0; touch(); brief(text); return; }
     /* a video or a recording, and Bluetooth or USB devices: their own panels; nothing is sent until the founder picks */
@@ -477,6 +479,8 @@
         onRemember: function () { refreshSettings(); },
         /* an email Kin wrote: a card under the answer; only the founder's tap sends it */
         onEmail: function (d) { lastSign = Date.now(); if (!Kin.email) return; var box = p && p.parentNode; if (box) box.appendChild(Kin.email.card(d, { onSay: function (t) { if (S.unlocked && voice.canSpeak()) say(t, true); } })); showThread(); },
+        /* a computer action inside the Mac app: a small card under the answer saying what was asked and what the Mac answered */
+        onMac: function (node) { lastSign = Date.now(); var box = p && p.parentNode; if (box) box.appendChild(node); showThread(); },
         confirm: confirmCard,
         /* a design job: one card before anything is spent, then the same card shows the job live */
         plan: function (card) { return choiceCard(card).then(function (c) { if (/^(go|draw|poster|compose)$/.test(c.k)) { lastSign = Date.now(); job = jobPanel(c.d, card, c.k, text); } return c.k; }); },
@@ -517,6 +521,8 @@
     var a = D.tab.asked(text); if (!a) return false;
     done(); var c = D.tab.check(a);
     if (!c.ok) { localReply(c.why, 'Nothing was opened'); return true; }
+    /* inside the Jarvis Mac app the site opens in the default browser, after the Mac asks */
+    if (Kin.mac && Kin.mac.available()) { var mp = localReply('Asking your Mac to open ' + c.host + ', sir.'); Kin.mac.openOwn(c.url, function (n) { mp.parentNode.appendChild(n); showThread(); }); return true; }
     var r = D.tab.open(c.url);
     if (r.opened) { localReply('Opened ' + c.host + ' in a new tab, sir.'); return true; }
     var p = localReply('The browser would not let me open ' + c.host + ' on my own, sir. Tap the link.', 'The link is in the conversation'), box = p.parentNode;
@@ -598,6 +604,7 @@
     if (k === 'email') { settingsAt('email'); return; }
     if (k === 'smart') { settingsAt('brain'); return; }
     if (k === 'settings') { settingsAt('start'); return; }
+    if (k === 'mac') { $('sheet').hidden = true; var mp = localReply(Kin.mac && Kin.mac.available() ? 'You are in the Mac app, sir. Ask me to open an app, a file or a site, or to do something on your computer. Your Mac asks you before each one.' : Kin.mac.NEED_TEXT, 'Mac app'); if (Kin.mac && !Kin.mac.available()) mp.parentNode.appendChild(Kin.mac.need()); showThread(); return; }
   }
   function whatsNew(said) {
     Kin.whatsNew.open({ onSay: panelSay, onTry: tryIt });
@@ -959,7 +966,7 @@
     voice.VOICES.concat(['device']).forEach(function (v) { var b = document.createElement('button'); b.type = 'button'; b.textContent = v; b.setAttribute('aria-pressed', (v === 'device' ? cur.mode === 'device' : cur.mode === 'jarvis' && cur.who === v)); b.dataset.v = v; seg.appendChild(b); });
     var sysName = voice.systemVoiceName(), remote = voice.systemVoiceRemote() ? ' That voice is spoken by the browser maker’s servers, so the sentences are sent there.' : '';
     $('voiceNote').textContent = voice.live() ? 'Used only if the voice key fails.' + remote : cur.mode === 'device' ? 'Everything is spoken by the browser’s own voice' + (sysName ? ' (' + sysName + ').' : '.') + remote : 'The recorded voice says the fixed lines (welcome, one moment, standing by). Answers use the browser’s own voice' + (sysName ? ' (' + sysName + ')' : '') + '. Tap a name to hear it.' + remote;
-    $('keyNote').textContent = Kin.shared ? Kin.SHARED_TEXT : brain.hasKey() ? 'A key is saved on this device: ' + brain.keyHint() + '. Small talk uses ' + brain.QUICK + ', real questions use ' + brain.MAIN + '.' : 'No key on this device. Kin answers from the pack only.';
+    $('keyNote').textContent = Kin.shared ? Kin.SHARED_TEXT : brain.hasKey() ? 'A key is saved on this device: ' + brain.keyHint() + '. Small talk uses ' + brain.QUICK + ', real questions use ' + brain.MAIN + '.' + (Kin.mac && Kin.mac.keptOnMac('claude') ? ' Kept in your Mac\u2019s Keychain.' : '') : 'No key on this device. Kin answers from the pack only.';
     $('webCap').value = Kin.mind.webCap();
     hfSettings(); gbSettings(); wxSettings(); mailSettings();
     var sp = Kin.mind.spendToday();
@@ -1002,7 +1009,7 @@
   function ttsBusy(msg) { S.ttsBusy = msg || ''; voiceSettings(); }
   $('ttsSave').addEventListener('click', function () {
     gesture(); var k = $('ttsKey').value; ttsBusy('Checking the key with ElevenLabs…');
-    voice.tts.setKey(k).then(function () { S.ttsWhy = ''; ttsBusy(''); refreshSettings(); }, function (e) { ttsBusy(''); $('ttsNote').textContent = (e && e.text) || 'That key could not be checked.'; });
+    voice.tts.setKey(k).then(function () { S.ttsWhy = ''; ttsBusy(''); refreshSettings(); if (Kin.mac) Kin.mac.saveKey('elevenlabs', k, function () { refreshSettings(); }); }, function (e) { ttsBusy(''); $('ttsNote').textContent = (e && e.text) || 'That key could not be checked.'; });
   });
   $('ttsDrop').addEventListener('click', function () { voice.stop(); voice.tts.dropKey(); S.ttsWhy = ''; refreshSettings(); });
   $('ttsVoice').addEventListener('change', function (e) { voice.tts.setVoice(e.target.value); S.ttsWhy = ''; voiceSettings(); });
@@ -1014,7 +1021,8 @@
   });
   function clearTalk() { brain.forget(); var t = $('thread'); t.textContent = ''; }
   $('keySave').addEventListener('click', function () {
-    var r = brain.setKey($('apiKey').value); $('apiKey').value = ''; refreshSettings();
+    var kv = $('apiKey').value, r = brain.setKey(kv); $('apiKey').value = ''; refreshSettings();
+    if (r.ok && Kin.mac) Kin.mac.saveKey('claude', kv, function () { refreshSettings(); }); kv = '';
     if (!r.ok) $('keyNote').textContent = r.why === 'shared' ? Kin.SHARED_TEXT : r.why === 'storage' ? 'This browser would not save the key. Its storage is blocked or full (private browsing does this).' : 'That does not look like an Anthropic API key. It should start with sk-ant-.';
   });
   /* the conversation holds pieces of the pack and is sent again as history, so it goes when the key or the pack goes */
@@ -1162,5 +1170,10 @@
     /* said last, so the start-up lines do not cover it */
     return hfBack.then(function (ok) { if (ok === true) { caption('Higgsfield is connected, sir.', 'Designs can use real pictures now'); captionFade(9000); } else if (ok === false) { $('sheet').hidden = false; refreshSettings(); } });
   });
+  /* inside the Jarvis Mac app: a key this page lacks comes from the Mac's Keychain (never shown), and a finished task is reported */
+  if (Kin.mac) {
+    Kin.mac.prefill(function () { refreshSettings(); });
+    Kin.mac.onDone(function (o) { localReply(o.title + (o.body ? ' ' + o.body : ''), 'Your Mac'); showThread(); });
+  }
   paint();
 })();
