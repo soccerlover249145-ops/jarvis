@@ -72,21 +72,24 @@
     return v.length <= 400;
   }
   function num(v, d) { v = +v; return isFinite(v) ? v : d; }
+  /* maps with no inherited names, so an id like "__proto__" or "constructor" is just an id */
+  function D() { return Object.create(null); }
+  function own(o, k) { return !!o && Object.prototype.hasOwnProperty.call(o, k); }
   function str(v, n) { return typeof v === 'string' ? v.slice(0, n) : ''; }
   /** Drop anything that is not on the list or not the right shape. Applied to every payload read from Drive. */
   function clean(p) {
     if (!p || typeof p !== 'object' || p.kind !== 'kin-sync-data') throw fail('The sync file holds something other than Jarvis data.', 'damaged');
-    var out = { kind: 'kin-sync-data', version: VERSION, at: num(p.at, 0), device: str(p.device, 40), local: {}, mind: { memory: [], made: [], log: [] }, tomb: { memory: {}, made: {}, log: {} } };
-    var L = p.local && typeof p.local === 'object' ? p.local : {};
+    var out = { kind: 'kin-sync-data', version: VERSION, at: num(p.at, 0), device: str(p.device, 40), local: D(), mind: { memory: [], made: [], log: [] }, tomb: { memory: D(), made: D(), log: D() } };
+    var L = p.local && typeof p.local === 'object' ? p.local : D();
     Object.keys(L).forEach(function (k) {
-      var e = L[k]; if (!allowed(k) || !e || typeof e !== 'object') return;
+      var e = own(L, k) ? L[k] : null; if (!allowed(k) || !e || typeof e !== 'object') return;
       if (e.v === null) { out.local[k] = { v: null, at: num(e.at, 0) }; return; }
       if (okValue(k, e.v)) out.local[k] = { v: e.v, at: num(e.at, 0) };
     });
     var M = p.mind && typeof p.mind === 'object' ? p.mind : {};
     ['memory', 'made', 'log'].forEach(function (n) { if (Array.isArray(M[n])) out.mind[n] = M[n].filter(function (x) { return x && typeof x === 'object' && typeof x.id === 'string' && x.id; }).slice(0, n === 'made' ? 400 : 5000); });
-    var T = p.tomb && typeof p.tomb === 'object' ? p.tomb : {};
-    ['memory', 'made', 'log'].forEach(function (n) { var t = T[n] && typeof T[n] === 'object' ? T[n] : {}; Object.keys(t).slice(0, 20000).forEach(function (id) { out.tomb[n][String(id).slice(0, 80)] = num(t[id], 0); }); });
+    var T = p.tomb && typeof p.tomb === 'object' ? p.tomb : D();
+    ['memory', 'made', 'log'].forEach(function (n) { var t = own(T, n) && T[n] && typeof T[n] === 'object' ? T[n] : D(); Object.keys(t).slice(0, 20000).forEach(function (id) { out.tomb[n][String(id).slice(0, 80)] = num(t[id], 0); }); });
     return out;
   }
 
@@ -98,31 +101,31 @@
   /** What this computer holds now, in payload form, stamping each setting with when it last changed here. */
   function snapshot(state, base, now, device) {
     base = base || emptyBase();
-    var local = {};
+    var local = D();
     Object.keys(cfg.allow).forEach(function (k) {
       var v = Object.prototype.hasOwnProperty.call(state.local, k) ? state.local[k] : null;
       if (v != null && !okValue(k, v)) v = null;
-      var b = base.local[k], dig = v == null ? 'null' : h(v);
+      var b = own(base.local, k) ? base.local[k] : null, dig = v == null ? 'null' : h(v);
       if (b && b.h === dig) { local[k] = { v: v, at: b.at }; return; }      /* unchanged since the last sync */
       if (!b && v == null) return;                                          /* never set anywhere */
       local[k] = { v: v, at: now };                                         /* changed (or cleared) here */
     });
-    var tomb = { memory: Object.assign({}, base.tomb.memory), made: Object.assign({}, base.tomb.made), log: Object.assign({}, base.tomb.log) };
+    var tomb = { memory: Object.assign(D(), base.tomb.memory), made: Object.assign(D(), base.tomb.made), log: Object.assign(D(), base.tomb.log) };
     var mind = { memory: [], made: [], log: [] };
     ['memory', 'made', 'log'].forEach(function (n) {
-      var have = {};
+      var have = D();
       (state.mind[n] || []).forEach(function (x) { if (x && typeof x.id === 'string') { have[x.id] = 1; mind[n].push(x); } });
       /* something this computer synced before and no longer has was deleted here */
       Object.keys(base.mind[n]).forEach(function (id) { if (!have[id]) tomb[n][id] = Math.max(tomb[n][id] || 0, now); });
     });
     return { kind: 'kin-sync-data', version: VERSION, at: now, device: device || '', local: local, mind: mind, tomb: tomb };
   }
-  function emptyBase() { return { at: 0, local: {}, mind: { memory: {}, made: {}, log: {} }, tomb: { memory: {}, made: {}, log: {} } }; }
+  function emptyBase() { return { at: 0, local: D(), mind: { memory: D(), made: D(), log: D() }, tomb: { memory: D(), made: D(), log: D() } }; }
   /** What gets remembered after a sync, to tell later which side changed what. */
   function baseOf(payload) {
     var b = emptyBase(); b.at = payload.at;
     Object.keys(payload.local).forEach(function (k) { var e = payload.local[k]; b.local[k] = { h: e.v == null ? 'null' : h(e.v), at: e.at }; });
-    ['memory', 'made', 'log'].forEach(function (n) { payload.mind[n].forEach(function (x) { b.mind[n][x.id] = itemDigest(x); }); b.tomb[n] = Object.assign({}, payload.tomb[n]); });
+    ['memory', 'made', 'log'].forEach(function (n) { payload.mind[n].forEach(function (x) { b.mind[n][x.id] = itemDigest(x); }); b.tomb[n] = Object.assign(D(), payload.tomb[n]); });
     return b;
   }
 
@@ -135,10 +138,10 @@
   function merge(mine, theirs, base, now) {
     base = base || emptyBase(); now = now || Date.now();
     if (!theirs) return { merged: mine, conflicts: [] };
-    var conflicts = [], local = {};
-    var keys = {}; Object.keys(mine.local).concat(Object.keys(theirs.local)).forEach(function (k) { if (allowed(k)) keys[k] = 1; });
+    var conflicts = [], local = D();
+    var keys = D(); Object.keys(mine.local).concat(Object.keys(theirs.local)).forEach(function (k) { if (allowed(k)) keys[k] = 1; });
     Object.keys(keys).forEach(function (k) {
-      var a = mine.local[k], b = theirs.local[k], bb = base.local[k];
+      var a = own(mine.local, k) ? mine.local[k] : null, b = own(theirs.local, k) ? theirs.local[k] : null, bb = own(base.local, k) ? base.local[k] : null;
       var aDig = a ? (a.v == null ? 'null' : h(a.v)) : (bb ? bb.h : 'null'), bDig = b ? (b.v == null ? 'null' : h(b.v)) : (bb ? bb.h : 'null');
       var aChanged = !bb ? !!a : aDig !== bb.h, bChanged = !bb ? !!b : bDig !== bb.h;
       if (!a) { local[k] = b; return; }
@@ -152,7 +155,7 @@
       conflicts.push({ type: 'setting', key: k, label: cfg.allow[k] || k, kept: win.v, other: lose.v, otherFrom: win === a ? 'your other computer' : 'this computer', at: now });
     });
 
-    var tomb = { memory: {}, made: {}, log: {} };
+    var tomb = { memory: D(), made: D(), log: D() };
     ['memory', 'made', 'log'].forEach(function (n) {
       [base.tomb[n], mine.tomb[n], theirs.tomb[n]].forEach(function (t) { Object.keys(t || {}).forEach(function (id) { tomb[n][id] = Math.max(tomb[n][id] || 0, t[id]); }); });
       /* tombstones older than 90 days are forgotten */
@@ -162,9 +165,9 @@
 
     var mind = { memory: [], made: [], log: [] };
     /* memory: by id, newer wins; then by wording */
-    var byId = {};
+    var byId = D();
     mine.mind.memory.concat(theirs.mind.memory).forEach(function (x) { var o = byId[x.id]; if (!o || num(x.at, 0) > num(o.at, 0)) byId[x.id] = x; });
-    var byText = {};
+    var byText = D();
     Object.keys(byId).map(function (id) { return byId[id]; }).filter(function (x) { return alive('memory', x); }).forEach(function (x) {
       var t = normText(x.text); if (!t) return; var o = byText[t];
       if (!o) { byText[t] = x; return; }
@@ -174,10 +177,10 @@
     mind.memory = Object.keys(byText).map(function (t) { return byText[t]; });
 
     /* made: by id; an edit on both sides keeps both */
-    var mm = {}, tm = {}; mine.mind.made.forEach(function (x) { mm[x.id] = x; }); theirs.mind.made.forEach(function (x) { tm[x.id] = x; });
-    var ids = {}; Object.keys(mm).concat(Object.keys(tm)).forEach(function (id) { ids[id] = 1; });
+    var mm = D(), tm = D(); mine.mind.made.forEach(function (x) { mm[x.id] = x; }); theirs.mind.made.forEach(function (x) { tm[x.id] = x; });
+    var ids = D(); Object.keys(mm).concat(Object.keys(tm)).forEach(function (id) { ids[id] = 1; });
     Object.keys(ids).forEach(function (id) {
-      var a = mm[id], b = tm[id], bd = base.mind.made[id];
+      var a = mm[id], b = tm[id], bd = own(base.mind.made, id) ? base.mind.made[id] : null;
       if (a && b && itemDigest(a) !== itemDigest(b) && bd && itemDigest(a) !== bd && itemDigest(b) !== bd) {
         var win = num(a.at, 0) >= num(b.at, 0) ? a : b, lose = win === a ? b : a;
         if (alive('made', win)) mind.made.push(win);
@@ -192,7 +195,7 @@
     mind.made.sort(function (x, y) { return num(y.at, 0) - num(x.at, 0); });
 
     /* log: union by id */
-    var lg = {}; mine.mind.log.concat(theirs.mind.log).forEach(function (x) { var o = lg[x.id]; if (!o || num(x.at, 0) > num(o.at, 0)) lg[x.id] = x; });
+    var lg = D(); mine.mind.log.concat(theirs.mind.log).forEach(function (x) { var o = lg[x.id]; if (!o || num(x.at, 0) > num(o.at, 0)) lg[x.id] = x; });
     mind.log = Object.keys(lg).map(function (id) { return lg[id]; }).filter(function (x) { return alive('log', x); }).sort(function (x, y) { return num(y.at, 0) - num(x.at, 0); });
 
     /* a tombstone for something that is alive again (edited after the deletion) is dropped */
@@ -202,6 +205,7 @@
   }
 
   /* ------------------------------------------------------------ secrets */
+  var HF_SECRET_FIELDS = { access_token: 1, refresh_token: 1, id_token: 1, client_secret: 1, code_verifier: 1, verifier: 1, token: 1, refresh: 1 };
   var SECRET_KEYS = /^kin\.(key|tts\.key|hf\..*|gb\.tok|gb\.jobs|mail\.cid|sync\..*)$/;
   var KEYISH = /sk-ant-[A-Za-z0-9_-]{10,}|\bsk_[A-Za-z0-9]{24,}|\bxi-[A-Za-z0-9]{16,}|\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}|\bya29\.[A-Za-z0-9_-]{20,}|\b1\/\/[A-Za-z0-9_-]{30,}/;
   /** Secret values saved on this computer (keys, tokens, receipts, the Google Client ID), to make sure none leave. */
@@ -214,8 +218,10 @@
           var v = st.getItem(k); if (!v) continue;
           if (k === 'kin.gb.jobs') { try { (JSON.parse(v) || []).forEach(function (j) { if (j && typeof j.h === 'string' && j.h.length >= 8) out.push(j.h); }); } catch (e) {} continue; }
           if (/^kin\.sync\./.test(k)) continue; /* sync's own bookkeeping is not secret and never in the payload */
-          if (v.length >= 8) out.push(v);
-          try { var o = JSON.parse(v); if (o && typeof o === 'object') Object.keys(o).forEach(function (x) { if (typeof o[x] === 'string' && o[x].length >= 12) out.push(o[x]); }); } catch (e) {}
+          /* the Higgsfield client record holds public values (its redirect address, client id): only its secret fields count */
+          var pub = k === 'kin.hf.client';
+          if (!pub && v.length >= 8) out.push(v);
+          try { var o = JSON.parse(v); if (o && typeof o === 'object') Object.keys(o).forEach(function (x) { if (typeof o[x] !== 'string' || o[x].length < 12) return; if (pub && !Object.prototype.hasOwnProperty.call(HF_SECRET_FIELDS, x)) return; out.push(o[x]); }); } catch (e) {}
         }
       } catch (e) {}
     });

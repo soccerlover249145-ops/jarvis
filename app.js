@@ -1156,12 +1156,16 @@
     li(pv.log + ' ', pv.log === 1 ? 'logbook entry' : 'logbook entries');
     if (pv.replaced.length) li('Replaced: ', pv.replaced.join(', '));
     if (pv.added.length) li('Added: ', pv.added.join(', '));
-    if (pv.turns) li('Conversation: ', 'the recent conversation from that device replaces this one');
+    var cl = $('moveChangeList'); cl.textContent = '';
+    (pv.changes || []).forEach(function (c) { var x = document.createElement('li'), s = document.createElement('b'); s.textContent = c.what + ': '; x.appendChild(s); x.appendChild(document.createTextNode(c.from + ' → ' + c.to)); cl.appendChild(x); });
+    $('moveChanges').hidden = !(pv.changes && pv.changes.length);
+    /* the conversation stays out unless the founder ticks it here, after reading the warning */
+    $('moveInTurns').checked = false; $('moveInTurnsRow').hidden = !pv.turns; $('moveInTurnsWarn').hidden = !pv.turns;
     if (plan.rejected) li(plan.rejected + ' ', 'other items were left out, because this page does not move them');
     $('moveWhen').textContent = plan.exported ? ' · exported ' + plan.exported.slice(0, 10) : '';
     $('movePreview').hidden = false; $('moveNote').textContent = 'Nothing has changed yet. Tap Bring it in to apply it, or Cancel.';
   }
-  function moveHide() { movePlan = null; $('movePreview').hidden = true; $('moveList').textContent = ''; }
+  function moveHide() { movePlan = null; $('movePreview').hidden = true; $('moveList').textContent = ''; $('moveChangeList').textContent = ''; $('moveInTurns').checked = false; }
   $('moveExport').addEventListener('click', function (e) {
     if (!e.isTrusted) return; gesture();
     if (Kin.shared) { $('moveNote').textContent = Kin.SHARED_TEXT; return; }
@@ -1179,8 +1183,8 @@
   $('moveCancel').addEventListener('click', function () { moveHide(); $('moveNote').textContent = 'Cancelled. Nothing changed.'; });
   $('moveApply').addEventListener('click', function (e) {
     if (!e.isTrusted || !movePlan) return; gesture();
-    var plan = movePlan; moveHide(); $('moveNote').textContent = 'Bringing it in…';
-    Kin.move.apply(plan).then(function (r) {
+    var plan = movePlan, withTurns = $('moveInTurns').checked === true; moveHide(); $('moveNote').textContent = 'Bringing it in…';
+    Kin.move.apply(plan, { turns: withTurns }).then(function (r) {
       $('moveNote').textContent = 'Done: ' + r.memory + ' remembered, ' + r.made + ' made, ' + r.log + ' logbook, ' + r.settings + ' settings' + (r.refused ? '; ' + r.refused + ' left out by the never-keep rules' : '') + '. Reloading…';
       setTimeout(function () { location.reload(); }, 1600);
     }, function (err) { $('moveNote').textContent = (err && err.message) || 'It could not be applied.'; });

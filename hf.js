@@ -17,6 +17,8 @@
   /* Higgsfield's sign-in can also accept a client named by a public document (a client ID metadata document) instead of a
      registered one. This page publishes one; it is used only when the founder picks "Try the other sign-in". */
   var CIMD_URL = location.origin + '/oauth-client.json';
+  /* what one picture at the test's settings costs (a real price check returned 4.5 credits), counted if a test ever makes one */
+  var BREACH_CREDITS = 5;
   /* the image hosts Higgsfield returns finished pictures from; the page fetches them (they allow it) and
      keeps each picture inside the design as data, so nothing is fetched again when it is drawn */
   var IMG_HOSTS = ['d8j0ntlcm91z4.cloudfront.net', 'cdn.higgsfield.ai'];
@@ -107,11 +109,16 @@
       .then(function (v) { refreshing = null; return v; });
     return refreshing;
   }
-  function disconnect() {
+  /* revoke this page's tokens at Higgsfield (its sign-in publishes a revocation endpoint), with the client that was issued them */
+  function revokeAll() {
     var t = json(K.tok), c = json(K.client);
+    var cid = ls.get(K.cimd) === '1' ? CIMD_URL : (c && c.client_id);
+    if (t && cid) { [t.refresh, t.access].filter(Boolean).forEach(function (v) { fetch(EP.revoke, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: form({ token: v, client_id: cid }) }).catch(function () {}); }); }
+  }
+  function disconnect() {
+    revokeAll();
     ls.del(K.tok);
     note('Higgsfield is disconnected on this device.');
-    if (t && c) { [t.refresh, t.access].filter(Boolean).forEach(function (v) { fetch(EP.revoke, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: form({ token: v, client_id: c.client_id }) }).catch(function () {}); }); }
   }
   /** the server has turned the token down: forget it so the founder is asked to connect again */
   function rejected(why) { ls.del(K.tok); note('', 'Higgsfield did not accept the sign-in from this page' + (why ? ' (' + why + ')' : '') + '. Connect again; if it keeps failing, Higgsfield may only accept sign-ins from Claude\'s own apps.'); }
@@ -162,7 +169,7 @@
     noteErr: noteErr, lastErr: lastErr, refund: refund,
     usingCimd: function () { return ls.get(K.cimd) === '1'; },
     /** switch the sign-in to the published client document (or back), then sign in again */
-    useCimd: function (on) { if (on) ls.set(K.cimd, '1'); else ls.del(K.cimd); ls.del(K.tok); },
+    useCimd: function (on) { revokeAll(); if (on) ls.set(K.cimd, '1'); else ls.del(K.cimd); ls.del(K.tok); },
     /** One check that makes nothing: Claude asks Higgsfield for the price of one picture (get_cost). Shows Higgsfield's exact reply. */
     test: function () {
       if (Kin.shared) return Promise.resolve({ ok: false, text: Kin.SHARED_TEXT });
@@ -175,6 +182,16 @@
           tools: [{ type: 'mcp_toolset', mcp_server_name: 'higgsfield', default_config: { enabled: false }, configs: { generate_image: { enabled: true } } }],
           messages: [{ role: 'user', content: 'PRICE CHECK ONLY. Call generate_image once with params { model: "gpt_image_2_6", prompt: "a plain grey square", aspect_ratio: "1:1", get_cost: true, use_unlim: false }. Do not call anything else. Reply with the result exactly.' }] })
           .then(function (m) {
+            /* the same guard as the studio's price check: any call that was not a pure price check may have made a picture,
+               so it is counted against today's Higgsfield credits and said plainly */
+            var deep = function (o, key) { if (!o || typeof o !== 'object') return false; if (o[key] === true || o[key] === 'true') return true; return Object.keys(o).some(function (k) { return deep(o[k], key); }); };
+            var bad = (m.content || []).filter(function (b) { if (b.type !== 'mcp_tool_use') return false; var inp = b.input; if (inp && typeof inp.params === 'string') { try { inp = Object.assign({}, inp, { params: JSON.parse(inp.params) }); } catch (e) {} } return b.name !== 'generate_image' || !deep(inp, 'get_cost'); });
+            if (bad.length) {
+              addUsed(BREACH_CREDITS * bad.length);
+              var bcost = 0; try { bcost = Kin.mind.costOf(m.model, m.usage); Kin.mind.addSpend(bcost); } catch (e) {}
+              noteErr('Test Higgsfield: a call was not a price check');
+              return { ok: false, text: 'The test asked Higgsfield to do more than price a picture, so it may have made one. About ' + (BREACH_CREDITS * bad.length) + ' credits are counted against today, to be safe. Check your Higgsfield account.', cost: bcost };
+            }
             var res = (m.content || []).filter(function (b) { return b.type === 'mcp_tool_result'; })[0];
             var txt = res ? (Array.isArray(res.content) ? res.content.map(function (x) { return x.text || ''; }).join(' ') : String(res.content || '')) : (m.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join(' ');
             var cost = 0; try { cost = Kin.mind.costOf(m.model, m.usage); Kin.mind.addSpend(cost); } catch (e) {}

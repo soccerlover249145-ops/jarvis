@@ -62,7 +62,9 @@
   /* asks Google; must run inside a tap because Google's window is a popup */
   function askToken() {
     if (haveToken()) return Promise.resolve(token.v);
-    if (!(window.google && google.accounts && google.accounts.oauth2)) return Promise.reject(fail('Google sign-in has not loaded yet. Tap again in a moment.', 'gis'));
+    /* Google's window only opens straight from a tap, so its script is loaded ahead (when the card is drawn); if it is
+       still missing, start loading it now and ask for one more tap */
+    if (!(window.google && google.accounts && google.accounts.oauth2)) { loadGis(); return Promise.reject(fail('Google sign-in is still loading. Tap again in a moment.', 'gis')); }
     return new Promise(function (res, rej) {
       var tc = google.accounts.oauth2.initTokenClient({ client_id: clientId(), scope: SCOPE, prompt: '',
         callback: function (r) {
@@ -214,7 +216,9 @@
           return C.deriveKey(pass, env.salt).then(function (key) { return C.open(key, txt).then(function () { return { key: key, salt: env.salt }; }); });
         });
       }
-      if (confirm !== undefined && confirm !== pass) throw fail('The two passphrases do not match.', 'mismatch');
+      /* a new setup is made only from a passphrase typed twice: one typo here would lock every other computer out */
+      if (confirm === undefined || confirm === '') throw fail('No synced copy is in Drive yet, so this sets sync up for the first time. Type the passphrase in both boxes to confirm it.', 'confirm');
+      if (confirm !== pass) throw fail('The two passphrases do not match.', 'mismatch');
       var salt = C.newSalt();
       return C.deriveKey(pass, salt).then(function (key) { return { key: key, salt: salt }; });
     }).then(function (k) {
@@ -227,7 +231,8 @@
     if (Kin.shared) return sharedFail();
     if (!trusted(ev)) return Promise.reject(fail('Sync now runs only from a tap.', 'tap'));
     if (!enabled()) return Promise.reject(fail('Sync is off on this computer.', 'off'));
-    return loadGis().then(function () { return askToken(); }).then(run);
+    /* asked for inside the tap itself, so the browser lets Google's window open (Safari is strict about this) */
+    return askToken().then(run);
   }
   /** Turn sync off here. The copy in Drive and this computer's data stay. */
   function turnOff(ev) {
@@ -304,6 +309,8 @@
   /** Build the "Sync across computers" card into a container. Returns a function that removes the listener. */
   function render(box) {
     box.textContent = ''; box.classList.add('sy');
+    /* load Google sign-in ahead of the tap that needs it */
+    if (!Kin.shared && clientId()) loadGis();
     var head = el('div', 'sy-head'), title = el('h3', 'sy-title', 'Sync across computers'), chip = el('span', 'sy-chip');
     head.appendChild(title); head.appendChild(chip); box.appendChild(head);
     var sub = el('p', 'sy-sub'); box.appendChild(sub);

@@ -42,7 +42,8 @@
 
   /* one call to the Mac, shown as a card; a "no" in this turn stops every later call in the same turn */
   var LABEL = { openUrl: 'Open a site', openApp: 'Open an app', openFile: 'Open a file', revealFile: 'Show a file in Finder', newEmailDraft: 'Start a Mail draft', runTask: 'Use your computer' };
-  function call(ctx, method, arg, what) {
+  function hostOf(u) { try { return new URL(u).hostname; } catch (e) { return ''; } }
+  function call(ctx, method, arg, what, host) {
     var d = D();
     if (!d || Kin.shared) return Promise.resolve('Not done: this only works inside the Jarvis Mac app. Say so in one line.');
     ctx.mac = ctx.mac || { n: 0, task: 0, no: false };
@@ -50,7 +51,7 @@
     if (method === 'runTask' && ++ctx.mac.task > 1) return Promise.resolve('Not asked: one take-control task per message. Say what is left.');
     if (++ctx.mac.n > 5) return Promise.resolve('Not asked: five computer actions is the limit for one message. Stop here and say what is left.');
     if (typeof d[method] !== 'function') return Promise.resolve('Not done: this Mac app does not offer that yet.');
-    var info = { kind: method, label: LABEL[method] || 'Computer action', what: String(what).slice(0, 300), state: 'asking' };
+    var info = { kind: method, label: LABEL[method] || 'Computer action', what: String(what).slice(0, 300), host: host || '', state: 'asking' };
     var c = card(info); if (ctx.onMac) ctx.onMac(c.el);
     var beat = setInterval(function () { if (ctx.onBeat) ctx.onBeat(); }, 4000);
     var pr; try { pr = Promise.resolve(d[method](arg)); } catch (e) { pr = Promise.reject(e); }
@@ -74,14 +75,19 @@
 
   /* ------------------------------------------------------------ the Claude tools, only inside the Mac app */
   var str = function (v) { return typeof v === 'string' && v.trim().length > 0; };
+  /* the computer tools are offered only when the founder's own words in this message ask for something on the computer:
+     a web page or a tool result saying "open this" is not the founder */
+  var ASKED = /^\s*(?:(?:hey|ok|okay)\s+)?(?:jarvis[,!.:]?\s+)?(?:(?:please|can you|could you|would you|go and|go)\s+)*(?:open|launch|start up|quit|close|show me|reveal|pull up|bring up|go to|visit)\b|\b(?:on|in) my (?:computer|mac|laptop|desktop|browser)\b|\bin finder\b|\btake control\b|\buse my (?:computer|mac|laptop)\b/i;
+  function asked(text) { return ASKED.test(String(text || '')); }
   function tools(ctx) {
     if (!available()) return [];
+    if (!asked(ctx && ctx.question)) return [];
     hook();
     return [
       { def: { name: 'open_url', description: 'Open a web address in the founder\'s default browser on their Mac. The Mac asks the founder first.', eager_input_streaming: true,
           input_schema: { type: 'object', properties: { url: { type: 'string', description: 'An http or https address.' } }, required: ['url'] } },
         ok: function (i) { return str(i.url); }, status: 'Asking your Mac',
-        run: function (i) { var u = urlOk(i.url); if (!u) return 'Not opened: that is not an http or https address. Ask for the right one.'; return call(ctx, 'openUrl', u, u); } },
+        run: function (i) { var u = urlOk(i.url); if (!u) return 'Not opened: that is not an http or https address. Ask for the right one.'; return call(ctx, 'openUrl', u, u, hostOf(u)); } },
       { def: { name: 'open_app', description: 'Open an app on the founder\'s Mac by its name (e.g. "Notes", "Calendar"). Only apps on the founder\'s list open; the Mac says how to add one otherwise. The Mac asks first.', eager_input_streaming: true,
           input_schema: { type: 'object', properties: { name: { type: 'string', description: 'The app\'s name as it appears in Applications.' } }, required: ['name'] } },
         ok: function (i) { return str(i.name); }, status: 'Asking your Mac',
@@ -108,7 +114,7 @@
   }
 
   /* the founder's own words "open example.com" inside the Mac app: the default browser, after the Mac asks */
-  function openOwn(url, onNode) { var u = urlOk(url); if (!u) return Promise.resolve('Not opened.'); return call({ onMac: onNode }, 'openUrl', u, u); }
+  function openOwn(url, onNode) { var u = urlOk(url); if (!u) return Promise.resolve('Not opened.'); return call({ onMac: onNode }, 'openUrl', u, u, hostOf(u)); }
 
   function busy() { return running && available(); }
   function stop() { var d = D(); if (!running || !d || typeof d.stop !== 'function') return Promise.resolve({ ok: false }); running = false; try { return Promise.resolve(d.stop()); } catch (e) { return Promise.resolve({ ok: false }); } }
@@ -137,6 +143,8 @@
     var el = h('div', 'maccard is-' + info.state), top = h('div', 'mc-top');
     var chip = h('span', 'mc-chip', STATE[info.state] || ''), lab = h('span', 'mc-lab', info.label);
     top.appendChild(chip); top.appendChild(lab); el.appendChild(top);
+    /* for a web address the site's name is what matters: shown large, the full address under it */
+    if (info.host) el.appendChild(h('p', 'mc-host', info.host));
     el.appendChild(h('p', 'mc-what', info.what));
     var note = h('p', 'mc-note', info.state === 'asking' ? 'Answer the dialog on your Mac. Nothing happens until you do.' : ''); el.appendChild(note);
     el.setAttribute('role', 'status');
@@ -190,5 +198,5 @@
   }
   function keptOnMac(kind) { return !!fromMac[kind] && !!K(); }
 
-  Kin.mac = { available: available, tools: tools, draft: draft, busy: busy, stop: stop, onDone: onDone, needsMac: needsMac, NEED_TEXT: NEED_TEXT, need: need, card: card, note: note, STEPS: STEPS, prefill: prefill, saveKey: saveKey, keptOnMac: keptOnMac, openOwn: openOwn };
+  Kin.mac = { asked: asked, available: available, tools: tools, draft: draft, busy: busy, stop: stop, onDone: onDone, needsMac: needsMac, NEED_TEXT: NEED_TEXT, need: need, card: card, note: note, STEPS: STEPS, prefill: prefill, saveKey: saveKey, keptOnMac: keptOnMac, openOwn: openOwn };
 })();

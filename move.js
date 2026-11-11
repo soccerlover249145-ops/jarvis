@@ -28,6 +28,10 @@
   function ls(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function today() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
   function fail(msg) { var e = new Error(msg); e.plain = true; return e; }
+  /* own names only: a file's "constructor" or "toString" is never on a list */
+  function has(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
+  /* the Higgsfield client record holds public values (its redirect address, client id); only these fields are secret */
+  var HF_SECRET_FIELDS = { access_token: 1, refresh_token: 1, id_token: 1, client_secret: 1, code_verifier: 1, verifier: 1, token: 1, refresh: 1 };
 
   /** every secret value saved in this browser, and the bridge's receipt handles inside its job list */
   function secrets() {
@@ -38,8 +42,17 @@
           var k = st.key(i); if (!SECRET_KEYS.test(k)) continue;
           var v = st.getItem(k); if (!v) continue;
           if (k === 'kin.gb.jobs') { try { (JSON.parse(v) || []).forEach(function (j) { if (j && typeof j.h === 'string' && j.h.length >= 8) out.push(j.h); }); } catch (e) {} }
+          else if (k === 'kin.hf.client') { /* only its secret fields count, below */ }
           else if (v.length >= 8) out.push(v);
-          try { var o = JSON.parse(v); if (o && typeof o === 'object') Object.keys(o).forEach(function (x) { if (typeof o[x] === 'string' && o[x].length >= 12) out.push(o[x]); }); } catch (e) {}
+          try {
+            var o = JSON.parse(v);
+            if (o && typeof o === 'object') Object.keys(o).forEach(function (x) {
+              if (typeof o[x] !== 'string' || o[x].length < 12) return;
+              /* public fields of a client record (like its redirect address) are not secrets */
+              if (k === 'kin.hf.client' && !has(HF_SECRET_FIELDS, x)) return;
+              out.push(o[x]);
+            });
+          } catch (e) {}
         }
       } catch (e) {}
     });
@@ -70,6 +83,31 @@
     });
   }
 
+  function parse(v) { try { var o = JSON.parse(v); return o && typeof o === 'object' ? o : null; } catch (e) { return null; } }
+  function listOf(x) { return Array.isArray(x) ? x.filter(function (v) { return typeof v === 'string'; }).map(function (v) { return v.slice(0, 80); }) : []; }
+  function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+  /** The values a crafted file could use against the founder, shown before anything changes:
+      the phone number Jarvis would call, both contact lists, and whether Jarvis may call. */
+  function sensitiveChanges(local) {
+    var out = [];
+    if (has(local, 'kin.calls')) {
+      var nc = parse(local['kin.calls']), oc = parse(ls('kin.calls'));
+      var nn = String(nc && nc.settings && nc.settings.ownerNumber || '').replace(/[^\d+]/g, '').slice(0, 16), on = String(oc && oc.settings && oc.settings.ownerNumber || '').replace(/[^\d+]/g, '').slice(0, 16);
+      if (nn !== on) out.push({ what: 'Your phone number for calls', from: on || '(none)', to: nn || '(none)' });
+      var nr = String(nc && nc.settings && nc.settings.reservationName || '').slice(0, 60), or = String(oc && oc.settings && oc.settings.reservationName || '').slice(0, 60);
+      if (nr !== or) out.push({ what: 'Name to book under', from: or || '(none)', to: nr || '(none)' });
+    }
+    if (has(local, 'kin.away')) {
+      var na = parse(local['kin.away']), oa = parse(ls('kin.away'));
+      var ns = (na && na.settings) || {}, os = (oa && oa.settings) || {};
+      var ncm = listOf(ns.callMe), ocm = listOf(os.callMe), nnv = listOf(ns.never), onv = listOf(os.never);
+      if (!same(ncm, ocm)) out.push({ what: 'Call me now if…', from: ocm.join(', ') || '(empty)', to: ncm.join(', ') || '(empty)' });
+      if (!same(nnv, onv)) out.push({ what: 'Never contact', from: onv.join(', ') || '(empty)', to: nnv.join(', ') || '(empty)' });
+      if (!!ns.allowCallMe !== !!os.allowCallMe) out.push({ what: 'Jarvis may call me', from: os.allowCallMe ? 'On' : 'Off', to: ns.allowCallMe ? 'On' : 'Off' });
+    }
+    return out;
+  }
+
   /** Read and check a file from another device; returns a plan to preview. Changes nothing. */
   function read(file) {
     if (Kin.shared) return Promise.reject(fail(Kin.SHARED_TEXT));
@@ -79,13 +117,15 @@
       var raw; try { raw = JSON.parse(txt); } catch (e) { throw fail('That file is not valid JSON.'); }
       if (!raw || typeof raw !== 'object' || raw.kind !== KIND) throw fail(raw && raw.kind === 'kin-pack' ? 'That is a Kin pack. Import it under Brain & keys, Kin pack.' : 'That file is not a Jarvis device file.');
       if (raw.version !== VERSION) throw fail('This device file is version ' + String(raw.version).slice(0, 10) + '. This page reads version ' + VERSION + '.');
-      var local = {}, rejected = 0, src = raw.local && typeof raw.local === 'object' && !Array.isArray(raw.local) ? raw.local : {};
+      var local = {}, turns = null, rejected = 0, src = raw.local && typeof raw.local === 'object' && !Array.isArray(raw.local) ? raw.local : {};
       Object.keys(src).forEach(function (k) {
         var v = src[k];
-        if (!ALLOW[k] && !OPTIONAL[k]) { rejected++; return; }
+        if (!has(ALLOW, k) && !has(OPTIONAL, k)) { rejected++; return; }
         if (typeof v !== 'string' || v.length > MAX_VALUE) { rejected++; return; }
-        if (JSONISH[k]) { try { var o = JSON.parse(v); if (!o || typeof o !== 'object') throw 0; } catch (e) { rejected++; return; } }
+        if (has(JSONISH, k)) { try { var o = JSON.parse(v); if (!o || typeof o !== 'object') throw 0; } catch (e) { rejected++; return; } }
         else if (v.length > 400) { rejected++; return; }
+        /* a conversation in a file is words someone else could have written as the founder's: held aside, brought in only on an explicit opt-in */
+        if (k === 'kin.turns') { turns = v; return; }
         local[k] = v;
       });
       var m = raw.mind && typeof raw.mind === 'object' ? raw.mind : {};
@@ -99,19 +139,21 @@
         var newMade = inc.made.filter(function (x) { if (!x || !/^(document|plan|table|design|chart)$/.test(x.kind)) return false; return typeof x.id === 'string' && madeHave[x.id] ? (madeHave[x.id].at || 0) < (x.at || 0) : true; }).length;
         var newLog = inc.log.filter(function (x) { return x && !logHave[x.id]; }).length;
         var replaced = [], added = [];
-        Object.keys(local).forEach(function (k) { var label = ALLOW[k] || OPTIONAL[k]; var list = ls(k) != null ? replaced : added; if (list.indexOf(label) < 0) list.push(label); });
-        return { local: local, mind: inc, exported: typeof raw.exported === 'string' ? raw.exported.slice(0, 40) : '', rejected: rejected,
-          preview: { replaced: replaced, added: added, memory: newMem, made: newMade, log: newLog, turns: !!local['kin.turns'] } };
+        Object.keys(local).forEach(function (k) { var label = ALLOW[k]; var list = ls(k) != null ? replaced : added; if (list.indexOf(label) < 0) list.push(label); });
+        return { local: local, turns: turns, mind: inc, exported: typeof raw.exported === 'string' ? raw.exported.slice(0, 40) : '', rejected: rejected,
+          preview: { replaced: replaced, added: added, memory: newMem, made: newMade, log: newLog, turns: !!turns, changes: sensitiveChanges(local) } };
       });
     });
   }
 
   /** Apply a checked plan: replace the named settings, merge the rest. Only from a tap. */
-  function apply(plan) {
+  function apply(plan, opts) {
     if (Kin.shared) return Promise.reject(fail(Kin.SHARED_TEXT));
     if (!plan || !plan.local) return Promise.reject(fail('Nothing to apply.'));
     var wrote = 0;
-    Object.keys(plan.local).forEach(function (k) { if (!ALLOW[k] && !OPTIONAL[k]) return; try { localStorage.setItem(k, plan.local[k]); wrote++; } catch (e) {} });
+    Object.keys(plan.local).forEach(function (k) { if (!has(ALLOW, k)) return; try { localStorage.setItem(k, plan.local[k]); wrote++; } catch (e) {} });
+    /* the conversation only with the founder's explicit opt-in on the preview */
+    if (opts && opts.turns === true && typeof plan.turns === 'string') { try { localStorage.setItem('kin.turns', plan.turns); wrote++; } catch (e) {} }
     var got = Kin.mind ? Kin.mind.mergeIn(plan.mind) : { memory: 0, made: 0, log: 0, refused: 0 };
     return (Kin.mind ? Kin.mind.flush() : Promise.resolve()).then(function () { return { settings: wrote, memory: got.memory, made: got.made, log: got.log, refused: got.refused }; });
   }

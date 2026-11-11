@@ -488,7 +488,7 @@
         var said = acc.parts.join('\n\n').trim() || (kept + '\n\n' + live).trim();
         /* thinking used the whole allowance and nothing was written: once, ask again with more room and a lighter effort */
         if (m.stop_reason === 'max_tokens' && !said && !job && !roomRetry) {
-          roomRetry = true; room = Math.min(64000, room * 2); effort = effort === 'high' ? 'medium' : 'low'; live = ''; kept = '';
+          roomRetry = true; room = Math.min(48000, Math.max(room, Math.min(room * 2, 48000))); effort = effort === 'high' ? 'medium' : 'low'; live = ''; kept = '';
           status('Thinking took the whole allowance; asking again with more room'); return turn();
         }
         if (!uses.length || m.stop_reason === 'max_tokens' || m.stop_reason === 'pause_turn' || ++step > maxSteps) return { text: said, model: m.model, cut: m.stop_reason === 'max_tokens', stepped: !!uses.length && m.stop_reason !== 'max_tokens' && m.stop_reason !== 'pause_turn' };
