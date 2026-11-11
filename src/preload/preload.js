@@ -6,6 +6,21 @@ const { contextBridge, ipcRenderer } = require('electron');
 function inv(ch) { return function (arg) { return ipcRenderer.invoke(ch, arg || {}); }; }
 function on(ch) { return function (cb) { if (typeof cb !== 'function') return; ipcRenderer.on(ch, function (_e, data) { cb(data); }); }; }
 
+/* window.jarvisDesk: the same small, versioned API the live page gets (see desk-preload.js and WEB-SHIM.md) */
+contextBridge.exposeInMainWorld('jarvisDesk', Object.freeze({
+  version: 1,
+  capabilities: inv('desk:capabilities'),
+  openUrl: function (url) { return ipcRenderer.invoke('desk:openUrl', { url: String(url || '') }); },
+  openApp: function (name) { return ipcRenderer.invoke('desk:openApp', { name: String(name || '') }); },
+  revealFile: function (p) { return ipcRenderer.invoke('desk:revealFile', { path: String(p || '') }); },
+  openFile: function (p) { return ipcRenderer.invoke('desk:openFile', { path: String(p || '') }); },
+  newEmailDraft: function (d) { d = d || {}; return ipcRenderer.invoke('desk:emailDraft', { to: d.to, cc: d.cc, subject: String(d.subject || ''), body: String(d.body || '') }); },
+  runTask: function (text) { return ipcRenderer.invoke('desk:runTask', { text: String(text || '') }); },
+  stop: inv('desk:stop'),
+  onTaskDone: on('control:done'),
+  onHeard: on('desk:heard')
+}));
+
 contextBridge.exposeInMainWorld('jarvisDesktop', {
   version: 1,
   platform: process.platform,

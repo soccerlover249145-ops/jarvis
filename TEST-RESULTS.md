@@ -4,7 +4,7 @@ Run on 2026-11-11 in a Linux container (Node v22.23.4). The container has no mac
 
 ## Unit tests: `npm test`
 
-46 of 46 passed.
+55 of 55 passed (the 9 new ones cover window.jarvisDesk: every action asks first, always-allow per kind, the app allow-list, folder scoping, email drafts that never send, take control never always-allowed, Stop, who may call it, and the settings checks).
 
 ```
 PASS only http and https addresses open, without passwords

@@ -49,7 +49,7 @@ You can see and change all of these in Jarvis's **Settings, Mac** section, which
 
 ## How it's built
 
-- **Electron** runs the Jarvis web UI unchanged, served from inside the app (`app://jarvis/`). The main process handles the Mac: menu bar, shortcut, windows, Keychain, actions and take control.
+- **Electron** shows the live Jarvis site (https://jarvis.unwebbed.app) in the full window with only `window.jarvisDesk` exposed (see WEB-SHIM.md), or the copy served from inside the app (`app://jarvis/`) when offline or when you choose it. The main process handles the Mac: menu bar, shortcut, windows, Keychain, actions and take control.
 - **JarvisEars** is a small Swift program that uses Apple's `SFSpeechRecognizer`, set to on-device recognition, and sends text over a pipe. The browser's own speech recognition doesn't work inside Electron, so this replaces it.
 - **JarvisHands** is a small Swift program that moves the mouse and presses keys with Apple's `CGEvent` API. It runs only while Jarvis has control. Swift was chosen over an npm input library because both helpers then build with the same Apple tools, it needs no native Node modules that break on Electron updates, and it has no third-party code.
 - **Take control** uses Claude's computer use toolset (`computer_toolset_20260801`) on Opus 5.5. Every action is checked against the app and window in front before it runs.

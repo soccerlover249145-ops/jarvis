@@ -6,7 +6,9 @@
    - Always-on listening through JarvisEars (Swift, Apple's speech recognizer, on the Mac).
    - Allowlisted open actions over IPC, a screen snapshot on request, and "take control".
    - Keys in the macOS Keychain; the web UI only ever sees placeholders (see secrets.js).
-   The web UI is served from inside the app at app://jarvis/, never from the internet. */
+   The full window shows the live Jarvis page (https://jarvis.unwebbed.app) with only window.jarvisDesk exposed
+   (see desk.js), or the copy bundled inside the app at app://jarvis/ (Settings, or when offline). The pill, the
+   red border and every other window are always served from inside the app. */
 
 const path = require('path');
 const fs = require('fs');
@@ -23,8 +25,10 @@ const { makeConfig } = require('./config');
 const { makeEars } = require('./ears');
 const { makeHands } = require('./control/hands');
 const { makeSession } = require('./control/session');
+const { makeDesk, senderAllowed } = require('./desk');
 
 const ORIGIN = 'app://jarvis';
+const LIVE = 'https://jarvis.unwebbed.app';
 const ROOT = path.join(__dirname, '..');                       /* src/ */
 const SERVE = { '': path.join(ROOT, 'renderer'), compact: path.join(ROOT, 'compact'), overlay: path.join(ROOT, 'overlay') };
 const BIN = app.isPackaged ? path.join(process.resourcesPath, 'bin') : path.join(ROOT, '..', 'native', 'bin');
@@ -33,7 +37,8 @@ protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: t
 
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 
-let cfg, keychain, actions, screenCap, ears, hands, control;
+let cfg, keychain, actions, screenCap, ears, hands, control, desk;
+let mainLive = false, settingsWin = null;
 let mainWin = null, compactWin = null, overlayWin = null, tray = null;
 let unseen = 0, quitting = false, earsState = 'off';
 
@@ -82,16 +87,30 @@ function webPrefs(preload) {
   return { preload: path.join(ROOT, 'preload', preload), contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true,
     spellcheck: false, devTools: !app.isPackaged, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' };
 }
-function lockDown(win) {
+function lockDown(win, live) {
   win.webContents.setWindowOpenHandler(function (d) { actions.openUrl({ url: d.url }).catch(function () {}); return { action: 'deny' }; });
-  win.webContents.on('will-navigate', function (e, url) { if (!url.startsWith(ORIGIN + '/')) e.preventDefault(); });
+  win.webContents.on('will-navigate', function (e, url) {
+    if (url.startsWith(ORIGIN + '/') || (live && url.startsWith(LIVE + '/'))) return;
+    e.preventDefault();
+    if (/^https?:/i.test(url)) actions.openUrl({ url: url }).catch(function () {});   /* other sites open in the browser */
+  });
   win.webContents.on('will-attach-webview', function (e) { e.preventDefault(); });
 }
-function createMain() {
+function createMain(forceBundled) {
+  mainLive = !forceBundled && cfg.get().source === 'live';
   mainWin = new BrowserWindow({ width: 1180, height: 820, minWidth: 420, minHeight: 600, show: false, title: 'Jarvis', backgroundColor: '#000000',
-    titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 18, y: 18 }, webPreferences: webPrefs('preload.js') });
-  lockDown(mainWin);
-  mainWin.loadURL(ORIGIN + '/index.html');
+    titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 18, y: 18 }, webPreferences: webPrefs(mainLive ? 'desk-preload.js' : 'preload.js') });
+  lockDown(mainWin, mainLive);
+  if (mainLive) {
+    mainWin.loadURL(LIVE + '/');
+    /* offline, or the site is down: fall back to the copy inside the app (it has jarvisDesk too) */
+    mainWin.webContents.once('did-fail-load', function (_e, code, _desc, _url, isMain) {
+      if (!isMain || code === -3) return;
+      const wasVisible = mainWin.isVisible();
+      mainWin.removeAllListeners('close'); mainWin.destroy(); mainWin = null;
+      createMain(true); if (wasVisible) mainWin.once('ready-to-show', showMain);
+    });
+  } else mainWin.loadURL(ORIGIN + '/index.html');
   mainWin.on('close', function (e) { if (!quitting) { e.preventDefault(); mainWin.hide(); } });
   mainWin.on('focus', function () { unseen = 0; badge(); });
 }
@@ -106,6 +125,22 @@ function createCompact() {
   compactWin.loadURL(ORIGIN + '/compact/compact.html');
   compactWin.on('moved', function () { const p = compactWin.getBounds(); cfg.set({ compactBounds: { x: p.x, y: p.y } }); });
   compactWin.on('close', function (e) { if (!quitting) { e.preventDefault(); compactWin.hide(); } });
+}
+/* Mac settings (apps, folders, always-allow, permissions, keys in the Keychain) live in the copy inside the app.
+   When the full window shows the live site, they open in their own small window. */
+function openMacSettings() {
+  if (!mainLive) { showMain(); send(mainWin, 'desktop:settings', {}); return; }
+  if (settingsWin && !settingsWin.isDestroyed()) { settingsWin.show(); settingsWin.focus(); return; }
+  settingsWin = new BrowserWindow({ width: 560, height: 760, title: 'Jarvis: Mac settings', backgroundColor: '#000000', show: false, webPreferences: webPrefs('preload.js') });
+  lockDown(settingsWin, false);
+  settingsWin.loadURL(ORIGIN + '/index.html');
+  settingsWin.once('ready-to-show', function () { settingsWin.show(); setTimeout(function () { send(settingsWin, 'desktop:settings', {}); }, 400); });
+  settingsWin.on('closed', function () { settingsWin = null; });
+}
+function setSource(src) {
+  cfg.set({ source: src });
+  if (mainWin) { const vis = mainWin.isVisible(); mainWin.removeAllListeners('close'); mainWin.destroy(); mainWin = null; createMain(); if (vis) mainWin.once('ready-to-show', showMain); }
+  rebuildTray();
 }
 function showMain() { if (!mainWin) return; mainWin.show(); mainWin.focus(); unseen = 0; badge(); }
 function toggleCompact(summon) {
@@ -160,7 +195,8 @@ function rebuildTray() {
     busy ? { label: 'Stop control (Esc)', click: function () { control.stop('You chose Stop.'); } }
       : { label: 'Take control…', click: function () { toggleCompact(true); send(compactWin, 'compact:control', {}); } },
     { type: 'separator' },
-    { label: 'Settings…', click: function () { showMain(); send(mainWin, 'desktop:settings', {}); } },
+    { label: 'Settings…', click: openMacSettings },
+    { label: 'Show the live Jarvis site', type: 'checkbox', checked: c.source === 'live', click: function (i) { setSource(i.checked ? 'live' : 'bundled'); } },
     { label: 'Open at login', type: 'checkbox', checked: c.launchAtLogin, click: function (i) { cfg.set({ launchAtLogin: i.checked }); loginItem(); } },
     { type: 'separator' },
     { label: 'Quit Jarvis', accelerator: 'Cmd+Q', click: function () { quitting = true; app.quit(); } }
@@ -177,6 +213,17 @@ function registerSummon() {
 function ours(e) {
   const url = e.senderFrame && e.senderFrame.url || '';
   return url.startsWith(ORIGIN + '/');
+}
+/* the window.jarvisDesk channels also accept the live Jarvis page, and only in the full window */
+function oursOrLive(e) {
+  return senderAllowed({ url: e.senderFrame && e.senderFrame.url, origin: ORIGIN, liveOrigin: LIVE, live: mainLive,
+    isMainWindow: !!mainWin && e.sender === mainWin.webContents, isTopFrame: !!mainWin && e.senderFrame === mainWin.webContents.mainFrame });
+}
+function deskHandle(ch, fn) {
+  ipcMain.handle(ch, async function (e, arg) {
+    if (!oursOrLive(e)) throw new Error('refused');
+    return fn(arg && typeof arg === 'object' ? arg : {}, e);
+  });
 }
 function handle(ch, fn) {
   ipcMain.handle(ch, async function (e, arg) {
@@ -221,6 +268,16 @@ function wireIpc() {
   handle('act:openFile', function (a) { return actions.openFile(a); });
   handle('act:listFiles', function (a) { return actions.listFiles(a); });
 
+  /* window.jarvisDesk (desk.js): every one of these asks first in a native dialog unless always allowed */
+  deskHandle('desk:capabilities', async function () { return desk.capabilities(); });
+  deskHandle('desk:openUrl', function (a) { return desk.openUrl(a); });
+  deskHandle('desk:openApp', function (a) { return desk.openApp(a); });
+  deskHandle('desk:revealFile', function (a) { return desk.revealFile(a); });
+  deskHandle('desk:openFile', function (a) { return desk.openFile(a); });
+  deskHandle('desk:emailDraft', function (a) { return desk.newEmailDraft(a); });
+  deskHandle('desk:runTask', function (a) { return desk.runTask(a); });
+  deskHandle('desk:stop', function () { return desk.stop(); });
+
   handle('screen:look', async function () {
     const p = screenCap.permission();
     if (p !== 'granted' && p !== 'unknown') return { ok: false, permission: 'screen', why: 'Allow Screen Recording for Jarvis in System Settings, Privacy & Security, then quit and reopen Jarvis.' };
@@ -240,15 +297,16 @@ function wireIpc() {
   handle('config:get', async function () {
     const c = cfg.get();
     return { hotkey: c.hotkey, launchAtLogin: c.launchAtLogin, alwaysListen: c.alwaysListen, onDeviceOnly: c.onDeviceOnly, searchEngine: c.searchEngine,
-      apps: c.apps, folders: c.folders, caps: c.caps, perms: perms() };
+      apps: c.apps, folders: c.folders, caps: c.caps, source: c.source, alwaysAllow: c.alwaysAllow, perms: perms() };
   });
   handle('config:set', async function (a) {
     const allowed = {};
-    ['launchAtLogin', 'alwaysListen', 'onDeviceOnly', 'searchEngine', 'caps', 'hotkey'].forEach(function (k) { if (a[k] !== undefined) allowed[k] = a[k]; });
+    ['launchAtLogin', 'alwaysListen', 'onDeviceOnly', 'searchEngine', 'caps', 'hotkey', 'source', 'alwaysAllow'].forEach(function (k) { if (a[k] !== undefined) allowed[k] = a[k]; });
     if (Array.isArray(a.removeApps)) allowed.apps = cfg.get().apps.filter(function (x) { return a.removeApps.indexOf(x.path) < 0; });
     if (Array.isArray(a.removeFolders)) allowed.folders = cfg.get().folders.filter(function (f) { return a.removeFolders.indexOf(f) < 0; });
-    const before = cfg.get().hotkey;
+    const before = cfg.get().hotkey, srcBefore = cfg.get().source;
     cfg.set(allowed);
+    if (cfg.get().source !== srcBefore) setTimeout(function () { setSource(cfg.get().source); }, 0);
     if (allowed.hotkey && allowed.hotkey !== before) { try { globalShortcut.unregister(before); } catch (e) {} registerSummon(); }
     loginItem(); rebuildTray();
     return { ok: true };
@@ -302,11 +360,21 @@ app.whenReady().then(async function () {
   screenCap = makeScreen({ desktopCapturer: desktopCapturer, screen: eScreen, systemPreferences: systemPreferences });
   ears = makeEars(path.join(BIN, 'JarvisEars'), { onDeviceOnly: function () { return cfg.get().onDeviceOnly; } });
   hands = makeHands(path.join(BIN, 'JarvisHands'));
-  ears.on(function (ev) { if (ev.type === 'state') { earsState = ev.state; rebuildTray(); } send(mainWin, 'ears:event', ev); send(compactWin, 'ears:event', ev); });
+  ears.on(function (ev) {
+    if (ev.type === 'state') { earsState = ev.state; rebuildTray(); }
+    if (!mainLive) send(mainWin, 'ears:event', ev);
+    else if (ev.type === 'final' && ev.text) send(mainWin, 'desk:heard', { text: ev.text });   /* the live page gets only finished phrases */
+    send(compactWin, 'ears:event', ev);
+  });
 
   /* nothing in the windows may ask for the camera, location, notifications and so on: the helpers do the hearing */
-  session.defaultSession.setPermissionRequestHandler(function (wc, perm, cb) { cb(false); });
-  session.defaultSession.setPermissionCheckHandler(function () { return false; });
+  /* the one exception: the live Jarvis page in the full window may ask for the microphone (sound only) */
+  function liveMic(wc, perm, details) {
+    return mainLive && mainWin && wc === mainWin.webContents && perm === 'media' && String((details && (details.requestingUrl || details.securityOrigin)) || '').startsWith(LIVE) &&
+      !(details && details.mediaTypes && details.mediaTypes.indexOf('video') >= 0);
+  }
+  session.defaultSession.setPermissionRequestHandler(function (wc, perm, cb, details) { cb(!!liveMic(wc, perm, details)); });
+  session.defaultSession.setPermissionCheckHandler(function (wc, perm, origin, details) { return !!liveMic(wc, perm, Object.assign({ securityOrigin: origin }, details || {})); });
   serve();
   installInjector();
   wireIpc();
@@ -345,6 +413,23 @@ app.whenReady().then(async function () {
     stepAside: async function () { if (compactWin) compactWin.hide(); if (mainWin) mainWin.hide(); },
     restore: function () { registerSummon(); rebuildTray(); },
     notify: function (title, body) { toast(title, body); send(mainWin, 'control:done', { title: title, body: body }); send(compactWin, 'control:done', { title: title, body: body }); }
+  });
+
+  desk = makeDesk({
+    actions: actions,
+    openExternal: function (url) { return shell.openExternal(url, { activate: true }); },
+    control: control,
+    getConfig: function () { return cfg.get(); },
+    setConfig: function (p) { cfg.set(p); },
+    toast: toast,
+    confirm: async function (q) {
+      app.focus({ steal: true });
+      const r = await dialog.showMessageBox(mainWin && mainWin.isVisible() ? mainWin : null, {
+        type: 'question', buttons: ['Allow', 'No'], defaultId: 1, cancelId: 1, message: q.title, detail: q.detail,
+        checkboxLabel: q.canAlways ? q.alwaysLabel : undefined, checkboxChecked: false
+      });
+      return { ok: r.response === 0, always: !!(q.canAlways && r.checkboxChecked) };
+    }
   });
 
   createMain();

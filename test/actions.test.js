@@ -56,7 +56,7 @@ test('actions call only the shell functions, and toast each one', async () => {
   assert.equal((await acts.openApp({ name: 'notes' })).ok, true);
   const no = await acts.openApp({ name: 'Terminal' });
   assert.equal(no.ok, false); assert.deepEqual(no.allowed, ['Notes']);
-  assert.equal((await acts.searchWeb({ query: 'sur-ron controller' })).ok, true);
+  assert.equal((await acts.searchWeb({ query: 'e-bike controller' })).ok, true);
   assert.deepEqual(seen.map((s) => s[0]), ['ext', 'path', 'ext']);
   assert.equal(toasts.length, 3);
 });

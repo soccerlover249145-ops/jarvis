@@ -23,8 +23,11 @@ const DEFAULTS = {
   folders: [],                 /* folders the owner picked; empty until they pick some */
   caps: { steps: 40, dollars: 2, minutes: 15 },
   relayUrl: '',
-  compactBounds: null
+  compactBounds: null,
+  source: 'live',              /* 'live': the full window shows https://jarvis.unwebbed.app (bundled copy if offline); 'bundled': the copy inside the app */
+  alwaysAllow: []              /* kinds the owner ticked "Always allow" for (see desk.js); empty means every action asks first */
 };
+const ALWAYABLE = ['openUrl', 'openApp', 'revealFile', 'openFile', 'emailDraft'];
 
 function clean(raw) {
   const c = JSON.parse(JSON.stringify(DEFAULTS));
@@ -45,6 +48,8 @@ function clean(raw) {
     c.caps = { steps: Math.round(n(raw.caps.steps, 1, 200, 40)), dollars: n(raw.caps.dollars, 0.05, 50, 2), minutes: n(raw.caps.minutes, 1, 120, 15) };
   }
   if (typeof raw.relayUrl === 'string' && (raw.relayUrl === '' || /^https:\/\/[^\s/@]+(\/[^\s]*)?$/.test(raw.relayUrl))) c.relayUrl = raw.relayUrl.slice(0, 300);
+  if (raw.source === 'live' || raw.source === 'bundled') c.source = raw.source;
+  if (Array.isArray(raw.alwaysAllow)) c.alwaysAllow = raw.alwaysAllow.filter(function (k, i, a) { return ALWAYABLE.indexOf(k) >= 0 && a.indexOf(k) === i; });
   if (raw.compactBounds && ['x', 'y'].every(function (k) { return isFinite(raw.compactBounds[k]); })) c.compactBounds = { x: Math.round(raw.compactBounds.x), y: Math.round(raw.compactBounds.y) };
   return c;
 }
@@ -64,4 +69,4 @@ function makeConfig(dir) {
   };
 }
 
-module.exports = { makeConfig, clean, DEFAULTS };
+module.exports = { makeConfig, clean, DEFAULTS, ALWAYABLE };

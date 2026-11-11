@@ -1,5 +1,41 @@
 # Setting up Jarvis on your Mac
 
+## Quick install (about 5 minutes)
+
+You need macOS 13 or later, Apple's command line tools (`xcode-select --install`, a click-through Apple dialog) and Node.js 20 or later (the LTS installer from https://nodejs.org). Then open Terminal and paste these two lines:
+
+```bash
+git clone -b desktop-app https://github.com/soccerlover249145-ops/jarvis.git ~/jarvis-mac && cd ~/jarvis-mac
+```
+
+```bash
+bash install-mac.sh
+```
+
+It checks your Mac, installs the app's packages, runs the tests, builds the two Swift helpers and Jarvis.app, signs it for this Mac only (no Apple account needed), copies it to Applications and opens it. It never uses `sudo`, never asks for a key, and asks before replacing an older Jarvis.
+
+**If macOS says Jarvis "can't be opened" or "can't be checked"** (the app is not signed with an Apple developer certificate): open Applications, right-click Jarvis, choose Open, then Open again. Or System Settings > Privacy & Security, scroll down, Open Anyway. You only do this once.
+
+### Permissions (once)
+
+Open Jarvis's settings from the menu bar orb > Settings…, Mac section:
+
+1. **Microphone** and **Speech Recognition**: macOS asks when Jarvis first listens. Click Allow on both.
+2. **Screen Recording**: click Open System Settings next to it and switch Jarvis on. Let macOS quit and reopen Jarvis.
+3. **Accessibility** (only for "do it on my computer" tasks): Open System Settings next to it, switch Jarvis on.
+4. **Claude key**: Brain > Claude key > Save key. It goes to the macOS Keychain, never to a file.
+5. **Apps Jarvis may open** and **folders shared with Jarvis**: add them with Add an app… and Share a folder….
+6. **When Jarvis opens things**: every open asks you first in a macOS dialog. Tick "Always allow" for the kinds you trust (web pages, apps on your list, files, email drafts). Tasks that use your mouse and keyboard always ask.
+
+### What the app adds to Jarvis
+
+- The main window shows the live Jarvis site (or the copy inside the app when you're offline; menu bar > "Show the live Jarvis site" switches).
+- Jarvis can open web pages, your listed apps and files in your shared folders, and start **email drafts in your mail app**. You read the draft and press Send yourself; Jarvis never sends.
+- "Do it on my computer" tasks: after you say yes, a red border and the bar **"Jarvis is using your computer"** show. Press **Esc** or **⌥Space**, or just move the mouse, to stop it at once. It asks before passwords, sending, buying, booking, posting, deleting or installing.
+- "Hey Jarvis" works whenever the app is open, heard on this Mac.
+
+## Step by step with Claude Code (alternative)
+
 Open Terminal, go to this folder (the one this file is in), start Claude Code with `claude`, and paste everything in the box below. It builds Jarvis, installs it, and walks you through each permission. It asks before installing anything, and it never asks for your keys in the chat. You paste keys into Jarvis's own Settings.
 
 ---
@@ -17,7 +53,7 @@ Rules for this whole session:
 
 2. Install the app's packages: remove any node_modules folder that came with this folder (it may hold Linux files), then run `npm ci`.
 
-3. Run the unit tests with `npm test`. All 46 should pass. If any fail, stop and show me which ones.
+3. Run the unit tests with `npm test`. All 55 should pass. If any fail, stop and show me which ones.
 
 4. Build the two Swift helpers with `bash native/build.sh`. Then show that both exist and are signed: `ls -l native/bin` and `codesign -dv native/bin/JarvisEars native/bin/JarvisHands`. Also run this, which only asks whether input control is allowed and changes nothing: `echo '{"id":1,"op":"trusted"}' | native/bin/JarvisHands` (it should print a line with "trusted"). Don't run JarvisEars directly: macOS would ask for Terminal's microphone permission instead of Jarvis's.
 

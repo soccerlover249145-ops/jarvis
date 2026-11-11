@@ -209,6 +209,18 @@
     var fb = h('div', 'btns'); fb.appendChild(lnk('Share a folder…', function () { D.config.pickFolder().then(refreshAndBuild); }));
     sec.appendChild(row('', fb));
 
+    sec.appendChild(h('h3', 'sub', 'When Jarvis opens things'));
+    sec.appendChild(h('p', 'note', 'Each time, a macOS dialog asks you first. Tick a kind below (or "Always allow" in that dialog) to skip the question for it. Take control always asks, and nothing is ever sent, bought, posted, booked or deleted without your click. Email only ever opens as a draft in your mail app.'));
+    var KIND = [['openUrl', 'Open web pages'], ['openApp', 'Open apps on my list'], ['revealFile', 'Show files in Finder'], ['openFile', 'Open files from my shared folders'], ['emailDraft', 'Start email drafts in my mail app']];
+    var aa = c.alwaysAllow || [];
+    KIND.forEach(function (k) {
+      sec.appendChild(check('Always allow: ' + k[1], aa.indexOf(k[0]) >= 0, function (v) {
+        var next = (c.alwaysAllow || []).filter(function (x) { return x !== k[0]; }); if (v) next.push(k[0]);
+        D.config.set({ alwaysAllow: next }).then(refreshAndBuild);
+      }));
+    });
+    sec.appendChild(check('Show the live Jarvis site in the main window (the copy inside the app when offline)', c.source !== 'bundled', function (v) { D.config.set({ source: v ? 'live' : 'bundled' }).then(refreshAndBuild); }));
+
     sec.appendChild(h('h3', 'sub', 'Take control'));
     sec.appendChild(h('p', 'note', 'Jarvis only takes the mouse and keyboard after you say yes in a dialog, for one task at a time. A red border shows while it has control. Press Esc, press your shortcut, or move the mouse to stop it at once. It asks you before passwords, sending, buying, booking, deleting or installing, and stays out of banking, password managers, System Settings and Terminal unless you allow that task.'));
     var caps = c.caps || {};

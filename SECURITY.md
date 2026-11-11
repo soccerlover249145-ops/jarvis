@@ -69,7 +69,8 @@ Good habits: watch the first few tasks, give specific tasks ("in Safari, open sh
 
 ## The windows
 
-- The UI is served from inside the app at `app://jarvis/`. It can't navigate away. New windows go to your browser through the open-URL check.
+- The full window shows either the copy inside the app (`app://jarvis/`) or the live site `https://jarvis.unwebbed.app`. It can't navigate anywhere else; other links open in your browser through the open-URL check.
+- The live site gets only `window.jarvisDesk` (desk-preload.js): no Keychain, no settings, no screen picture, no take-control internals. Its calls are accepted only from the top frame of the full window while it shows the live site. Every action asks first in a native macOS dialog (the page cannot click or fake it) unless you ticked "Always allow" for that kind; take control always asks. Email only opens a draft in your mail app; Jarvis never sends it. The live site may ask for the microphone (sound only); every other permission stays refused.
 - Context isolation, sandbox and no Node in the page. The page can reach the Mac only through `preload.js`, a fixed list of messages, and the main process checks every argument again.
 - Every IPC message is refused unless it comes from an `app://jarvis/` page.
 - Permission requests from pages (camera, location and so on) are refused. The helpers do the hearing.
