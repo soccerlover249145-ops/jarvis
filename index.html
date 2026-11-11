@@ -53,6 +53,7 @@
 
     <aside class="dock" id="dock" aria-label="Talk to Jarvis">
       <div class="dock-h">
+        <canvas id="gl" class="figure" aria-hidden="true"></canvas>
         <div class="orb" id="orb" aria-hidden="true"><i></i><i></i><i></i></div>
         <button type="button" class="caption" id="caption" aria-live="polite"><span id="capT"></span><small id="capS"></small></button>
       </div>
@@ -100,6 +101,10 @@
       <p class="note" id="earsNote"></p>
       <label class="row"><span>Wake phrase</span><input type="text" id="wakeP" maxlength="48" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
       <p class="note">“Hey Jarvis”, “Jarvis”, “hey Kin” and “wake up” always work too. Say “go to sleep” to rest it and “stop” to cut it off. After an answer Kin stays awake for about 45 seconds; then it goes back to sleep, so talk in the room is not sent as questions.</p>
+
+      <h3>Look</h3>
+      <div class="row"><span>Jarvis</span><div class="seg" id="lookSeg" role="group" aria-label="How Jarvis looks"><button type="button" data-look="figure" aria-pressed="true">Figure</button><button type="button" data-look="orb" aria-pressed="false">Orb</button></div></div>
+      <p class="note" id="lookNote"></p>
 
       <h3>Voice</h3>
       <label class="row"><span>Voice key</span><input type="password" id="ttsKey" placeholder="ElevenLabs API key" autocomplete="new-password" autocapitalize="off" spellcheck="false"></label>

@@ -1005,7 +1005,7 @@
     $('voiceNote').textContent = voice.live() ? 'Used only if the voice key fails.' + remote : cur.mode === 'device' ? 'Everything is spoken by the browser’s own voice' + (sysName ? ' (' + sysName + ').' : '.') + remote : 'The recorded voice says the fixed lines (welcome, one moment, standing by). Answers use the browser’s own voice' + (sysName ? ' (' + sysName + ')' : '') + '. Tap a name to hear it.' + remote;
     $('keyNote').textContent = Kin.shared ? Kin.SHARED_TEXT : brain.hasKey() ? 'A key is saved on this device: ' + brain.keyHint() + '. Small talk uses ' + brain.QUICK + ', real questions use ' + brain.MAIN + '.' + (Kin.mac && Kin.mac.keptOnMac('claude') ? ' Kept in your Mac\u2019s Keychain.' : '') : 'No key on this device. Kin answers from the pack only.';
     $('webCap').value = Kin.mind.webCap();
-    hfSettings(); gbSettings(); wxSettings(); mailSettings();
+    hfSettings(); gbSettings(); wxSettings(); lookSettings(); mailSettings();
     var sp = Kin.mind.spendToday();
     $('webNote').textContent = 'Web searches today: ' + Kin.mind.webToday() + ' of ' + Kin.mind.webCap() + '. Each search costs about one US cent, on top of the words. Reading a page has no extra charge. At the limit Kin answers without the web and says so.';
     var le = brain.lastError && brain.lastError(), leEl = $('lastErr');
@@ -1110,6 +1110,15 @@
   $('wxTown').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); wxFind(); } });
   $('wxDrop').addEventListener('click', function () { Kin.chart.dropPlace(); wxSettings(); });
   [].forEach.call($('wxUnits').children, function (b) { b.addEventListener('click', function () { Kin.chart.setUnits(b.dataset.u); wxSettings(); }); });
+  /* how Jarvis looks: the figure (default on a computer) or the orb; kept on this device (bust.js) */
+  var LOOK_WHY = { phone: 'On a phone or a touch screen Jarvis is always the orb.', reduced: 'Your device asks for reduced motion, so Jarvis is the orb.', lowpower: 'This device is set to save power or data, so Jarvis is the orb.', nogl: 'This browser cannot draw the figure (no WebGL), so Jarvis is the orb.' };
+  function lookSettings() {
+    if (!$('lookSeg') || !Kin.bust || !Kin.bust.pref) return;
+    var p = Kin.bust.pref(), why = Kin.bust.blocked();
+    [].forEach.call($('lookSeg').children, function (b) { b.setAttribute('aria-pressed', b.dataset.look === p ? 'true' : 'false'); b.disabled = !!Kin.shared; });
+    $('lookNote').textContent = p === 'orb' ? 'The orb: one quiet sphere that breathes while it listens.' : why ? LOOK_WHY[why] || '' : 'The figure: a head and shoulders made of light, in the panel beside the conversation.';
+  }
+  if ($('lookSeg')) [].forEach.call($('lookSeg').children, function (b) { b.addEventListener('click', function () { gesture(); if (Kin.shared) return; Kin.bust.setLook(b.dataset.look); lookSettings(); }); });
   if ($('gauntletOpen')) $('gauntletOpen').addEventListener('click', function () { gesture(); if (Kin.gauntlet) gauntlet(false); });
   if ($('whatsNewOpen')) $('whatsNewOpen').addEventListener('click', function () { gesture(); if (Kin.whatsNew) whatsNew(false); });
   if ($('awayOpen')) $('awayOpen').addEventListener('click', function () { gesture(); if (Kin.shared) { localReply(Kin.SHARED_TEXT); return; } if (Kin.awayPanel) Kin.awayPanel.open('settings', { onSay: panelSay }); });

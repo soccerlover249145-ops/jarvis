@@ -17,7 +17,7 @@
     'kin.bb.settings': 'Morning brief settings', 'kin.bb.ticks': 'Brief priorities ticked', 'kin.bb.started': 'Brief jobs started today',
     'kin.away': 'Away mode and both contact lists', 'kin.calls': 'Calls settings and booking name',
     'kin.gauntlet': 'Last Gauntlet results', 'kin.gauntlet.cap': 'Gauntlet budget cap',
-    'kin.place': 'Weather place', 'kin.units': 'Weather units',
+    'kin.figure': 'Figure or orb', 'kin.place': 'Weather place', 'kin.units': 'Weather units',
     'kin.limH': 'Hourly question limit', 'kin.limD': 'Daily question limit', 'kin.webcap': 'Daily web search limit'
   };
   var OPTIONAL = { 'kin.turns': 'Recent conversation' };

@@ -479,3 +479,13 @@ code, pre, kbd, .md code, .md pre { font-family: var(--f-code) !important; }
   .acx .ac .ac-tile .ac-row { gap: 4px; }
   .acx .ac .ac-tile .ac-num { width: 72px; }
 }
+
+/* ================================================================= the figure: Jarvis's head and shoulders in light
+   The default look on a computer, drawn in the dock's header where the orb sits (bust.js). The orb stays the look on a
+   phone, a touch screen, reduced motion, a low-power device or without WebGL, and whenever the founder picks "Orb". */
+.dock-h #gl.figure { display: none; position: relative; inset: auto; width: 100%; max-width: 360px; height: 224px; margin: -10px auto 0; pointer-events: none;
+  -webkit-mask-image: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent 100%); mask-image: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent 100%); }
+.app[data-fig="on"] .dock-h #gl.figure { display: block; }
+.app[data-fig="on"] .dock-h .orb { display: none; }
+.app[data-fig="on"] .dock .dock-h #caption.caption { margin-top: 6px; }
+@media (max-width: 1099px) { .dock-h #gl.figure { display: none !important; } }
