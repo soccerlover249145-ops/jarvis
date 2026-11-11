@@ -310,7 +310,7 @@ code, pre, kbd, .md code, .md pre { font-family: var(--f-code) !important; }
   --md-glass: var(--s2); --md-edge: var(--line); --md-r: 22px; --md-display: var(--f-ui); --md-mono: var(--f-ui);
   --bb-ink: var(--text); --bb-ink2: var(--text-2); --bb-dim: var(--text-3); --bb-cyan: var(--accent); --bb-cyan2: var(--accent-2); --bb-ok: var(--ok); --bb-warn: var(--warm); --bb-bad: var(--bad);
   --bb-glass: var(--s2); --bb-edge: var(--line); --bb-r: 22px; --bb-display: var(--f-ui); --bb-mono: var(--f-ui);
-  justify-content: flex-end; align-items: stretch; padding: 16px; background: rgba(4, 5, 8, .62); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  justify-content: flex-end; align-items: stretch; padding: 16px; background: rgba(4, 5, 8, .72); -webkit-backdrop-filter: none; backdrop-filter: none;
 }
 .wl-panel, .dl-panel, .bb-panel { flex: none; width: min(560px, 100%); max-width: none; margin: 0; align-self: flex-start; min-height: 100%; padding: 22px 24px 28px; border-radius: 30px; background: var(--s1); border: 1px solid var(--line2); box-shadow: var(--hi), 0 40px 120px -20px rgba(0, 0, 0, .9); animation: qsheet var(--dur-2) var(--ease); }
 .wn .wl-panel { max-width: none; width: min(600px, 100%); }
@@ -413,10 +413,8 @@ code, pre, kbd, .md code, .md pre { font-family: var(--f-code) !important; }
 }
 
 /* ================================================================= refinements after the first screenshots */
-/* a sheet or panel is open: the board steps back (opacity only, so nothing fixed inside it moves) */
-.wrap { transition: opacity var(--dur-2) var(--ease); }
-body:has(#sheet:not([hidden])) .wrap, body:has(#shelf:not([hidden])) .wrap, body:has(.wl.wl-show) .wrap, body:has(.dl.dl-show) .wrap, body:has(.bb.bb-in) .wrap { opacity: .32; }
-.sheet { box-shadow: var(--hi), 0 40px 120px -20px rgba(0, 0, 0, .9); }
+/* a sheet is open: the page behind steps back under a plain scrim (no blur: cheap to draw on every frame) */
+.sheet { box-shadow: var(--hi), 0 40px 120px -20px rgba(0, 0, 0, .9), 0 0 0 200vmax rgba(4, 5, 8, .66); }
 .dock .status #stS + .sep { display: none; }
 .wl-icon svg, .dl-icon svg { width: 18px; height: 18px; }
 /* verdicts: a tinted chip, never a block of colour; amber stays for "needs your OK" */
