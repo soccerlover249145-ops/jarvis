@@ -30,7 +30,8 @@
   function paint() {
     var m = S.talking ? 'speaking' : S.busy ? 'thinking' : S.talk === 'asleep' ? 'asleep' : S.talk === 'awake' ? (S.hearing || !ears.supported ? 'listening' : 'idle') : 'off';
     app.dataset.state = S.talk; app.dataset.mood = m; bust.setMood(m);
-    $('stS').textContent = 'Status: ' + (m === 'off' ? 'resting' : m);
+    /* the state is shown once, in the pill at the top; this bottom pill is the conversation toggle and the mic */
+    convLabel();
     $('stM').textContent = S.micState === 'listening' ? 'Mic on' : S.micState === 'starting' ? 'Mic starting' : S.micState === 'blocked' ? 'Mic blocked' : S.micState === 'paused' ? 'Mic paused' : 'Mic off';
     $('mic').setAttribute('aria-pressed', ears.wanted());
     /* the one-word state at the top: what Kin is doing right now */
@@ -76,7 +77,8 @@
   /* ------------------------------------------------------------ speaking */
   /** what is said aloud is shorter than what is shown: plain words, the first few sentences */
   function plain(text) {
-    return String(text).replace(/```[\s\S]*?```/g, ' ').replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '$1').replace(/\(?https?:\/\/[^\s)]+\)?/g, ' ').replace(/^\s*\|.*\|\s*$/gm, ' ').replace(/^#{1,4}\s+/gm, '').replace(/^\s*(?:[-*]|\d+[.)])\s+/gm, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/[*_`>|]/g, '').replace(/#(\d+)/g, 'number $1').replace(/\s*\n+\s*/g, '. ').replace(/\.\s*\./g, '.').replace(/:\./g, ':').replace(/\s+/g, ' ').trim();
+    /* a path like "Settings > Your data" is read (and captioned) as "Settings, then Your data" instead of losing its separators */
+    return String(text).replace(/```[\s\S]*?```/g, ' ').replace(/^\s*>\s?/gm, '').replace(/(\S)[ \t]+(?:>|&gt;|›)[ \t]+(?=[A-Z])/g, '$1, then ').replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '$1').replace(/\(?https?:\/\/[^\s)]+\)?/g, ' ').replace(/^\s*\|.*\|\s*$/gm, ' ').replace(/^#{1,4}\s+/gm, '').replace(/^\s*(?:[-*]|\d+[.)])\s+/gm, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/[*_`>|]/g, '').replace(/#(\d+)/g, 'number $1').replace(/\s*\n+\s*/g, '. ').replace(/\.\s*\./g, '.').replace(/:\./g, ':').replace(/\s+/g, ' ').trim();
   }
   /** the part of a long answer that is read aloud. It only ever grows as the answer grows, so it can be spoken while streaming. */
   function head(t) { if (t.length <= 620) return t; var cut = t.slice(0, 620), end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('? ')); return cut.slice(0, end > 200 ? end + 1 : 620); }
@@ -297,7 +299,7 @@
     return new Promise(function (res) {
       var t = $('thread'), d = el('div', 'msg kin ask card'), choices = card.choices || [];
       var stopK = (choices.filter(function (c) { return c.kind === 'stop'; })[0] || choices[choices.length - 1] || {}).k;
-      var head = el('div', 'chead'); head.appendChild(el('span', 'chip', card.label || 'Kin asks first')); d.appendChild(head);
+      var head = el('div', 'chead'); head.appendChild(el('span', 'chip', card.label || 'Kin asks first')); if (card.kindName) head.appendChild(el('span', 'chip ghost', card.kindName)); d.appendChild(head);
       d.appendChild(el('p', 'asktitle', card.title));
       if (card.price) { var pr = el('div', 'cprice'); pr.appendChild(el('b', '', card.price)); if (card.priceNote) pr.appendChild(el('span', '', card.priceNote)); d.appendChild(pr); }
       var body = el('div', 'cbody'); (card.lines || []).forEach(function (l) { body.appendChild(el('p', 'cline', l)); }); d.appendChild(body);
@@ -348,7 +350,7 @@
   function jobPanel(d, card, k, question) {
     var t0 = Date.now(), cur = '', spentV = 0, ended = false, picsSent = false, pics = !!card.pics && k !== 'draw', steps = k === 'poster' ? POSTER_STEPS : JOB_STEPS;
     d.className = 'msg kin ask card job live'; d.innerHTML = '';
-    var head = el('div', 'chead'), chip = el('span', 'chip live', 'Working'); head.appendChild(chip); head.appendChild(el('span', 'chip ghost', k === 'poster' ? 'Full poster' : pics ? 'With pictures' : 'Drawn')); d.appendChild(head);
+    var head = el('div', 'chead'), chip = el('span', 'chip live', 'Working'); head.appendChild(chip); var kn = k === 'poster' ? 'Poster job' : (card.kindName === 'Poster job' ? 'Design job' : card.kindName || 'Design job'); head.appendChild(el('span', 'chip ghost', kn + ' \u00b7 ' + (k === 'poster' ? 'Full poster' : pics ? 'With pictures' : 'Drawn'))); d.appendChild(head);
     d.appendChild(el('p', 'asktitle', card.title));
     var stats = el('div', 'jstats'), tm = el('b', 'jtime', '0:00'), sp = el('b', 'jspent', '$0.00');
     [['Time', tm], ['Spent so far', sp]].forEach(function (x) { var c = el('div', 'jstat'); c.appendChild(el('span', 'lab', x[0])); c.appendChild(x[1]); stats.appendChild(c); });
@@ -368,7 +370,7 @@
     var api = {
       step: step,
       /* the poster could not be made: the job carries on as a composed design, and the steps say so */
-      reroute: function () { if (ended) return; steps = JOB_STEPS; pics = pics && !picsSent; drawSteps(); var gh = head.querySelector('.chip.ghost'); if (gh) gh.textContent = pics ? 'Composed, with pictures' : 'Composed'; var tt = d.querySelector('.asktitle'); if (tt) tt.textContent = 'Design job (composed)'; },
+      reroute: function () { if (ended) return; steps = JOB_STEPS; pics = pics && !picsSent; drawSteps(); var gh = head.querySelector('.chip.ghost'); if (gh) gh.textContent = 'Design job (composed)' + (pics ? ' \u00b7 With pictures' : ''); },
       /* the picture batch has gone to Higgsfield: a stop can no longer take it back */
       sent: function () { if (ended) return; picsSent = true; stopNote.textContent = 'Stops every request now. Pictures already sent to Higgsfield may still be charged.'; },
       status: function (s) { if (!ended && s) now.textContent = s; },
@@ -720,6 +722,8 @@
   });
   cap.addEventListener('click', function () { gesture(); if (S.talk !== 'awake') wakeNow(); else if (S.talking) voice.stop(); else touch(); });
   /** open the conversation at its newest answer, from the top of that answer */
+  function convLabel() { var t = $('thread'), on = t && !t.hidden; $('stS').textContent = on ? 'Hide conversation' : 'Conversation'; $('status').setAttribute('aria-expanded', on ? 'true' : 'false'); }
+  if (window.MutationObserver) new MutationObserver(convLabel).observe($('thread'), { attributes: true, attributeFilter: ['hidden'] });
   function showThread() { var t = $('thread'); t.hidden = false; var m = t.querySelector('.msg.kin:last-child'); t.scrollTop = m && m.offsetTop > 0 && m.offsetHeight > t.clientHeight * 0.6 ? Math.max(0, (m.previousElementSibling || m).offsetTop - 12) : t.scrollHeight; }
   $('status').addEventListener('click', function () { var t = $('thread'); if (!t.hidden) { t.hidden = true; return; } showThread(); if (!t.children.length) { var d = document.createElement('p'); d.className = 'empty'; d.textContent = 'Nothing said yet.'; t.appendChild(d); } });
   document.addEventListener('keydown', function (e) {
@@ -880,7 +884,7 @@
     }, function (e) { $('wxNote').textContent = 'Open-Meteo could not be reached (' + ((e && e.message) || e) + ').'; });
   }
   function gbSettings() {
-    var B = Kin.bridge; $('gbSection').hidden = !B; if (!B) return;
+    var B = Kin.bridge; $('gbSection').hidden = !B; $('leavesGB').hidden = !B; if (!B) return;
     var n = $('gbNote'), on = B.enabled();
     $('gbUrl').value = B.relay(); $('gbKeep').checked = B.kept(); $('gbCtx').checked = B.ctxOn(); $('gbTok').value = '';
     $('gbOn').textContent = on ? 'Turn off' : 'Turn on'; $('gbOn').dataset.sure = '';
@@ -932,6 +936,22 @@
   }
   $('gear').addEventListener('click', function () { $('sheet').hidden = false; refreshSettings(); });
   $('sheetx').addEventListener('click', function () { $('sheet').hidden = true; packCard(); });
+  /* settings sections: the pills jump to a section, and the pill of the section in view is lit */
+  (function () {
+    var nav = $('snav'), body = document.querySelector('#sheet .sheetbody'); if (!nav || !body) return;
+    var pills = Array.prototype.slice.call(nav.querySelectorAll('button'));
+    function lit() {
+      var top = body.getBoundingClientRect().top + Math.max(nav.offsetHeight + 24, body.clientHeight * 0.35), cur = pills[0];
+      pills.forEach(function (b) { var g = $('sg-' + b.dataset.sg); if (g && !g.hidden && g.getBoundingClientRect().top <= top) cur = b; });
+      if (body.scrollTop + body.clientHeight >= body.scrollHeight - 4) cur = pills[pills.length - 1];
+      pills.forEach(function (b) { if (b === cur) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current'); });
+      if (cur && cur.scrollIntoView && nav.scrollWidth > nav.clientWidth) { var l = cur.offsetLeft - 16; if (l < nav.scrollLeft || cur.offsetLeft + cur.offsetWidth > nav.scrollLeft + nav.clientWidth) nav.scrollLeft = l; }
+    }
+    pills.forEach(function (b) { var g0 = $('sg-' + b.dataset.sg); if (g0) b.setAttribute('aria-label', g0.getAttribute('aria-label')); b.addEventListener('click', function () { var g = $('sg-' + b.dataset.sg); if (!g) return; body.scrollTop = b.dataset.sg === 'start' ? 0 : Math.max(0, g.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop - nav.offsetHeight - 8); lit(); }); });
+    body.addEventListener('scroll', lit, { passive: true });
+    $('gear').addEventListener('click', function () { setTimeout(lit, 0); });
+    lit();
+  })();
   $('wakeP').addEventListener('change', function (e) { var v = e.target.value.replace(/\s+/g, ' ').trim().slice(0, 48); if (ears.norm(v).split(' ').filter(Boolean).length < 2) v = WAKE_DEF; S.wake = v; ls.set('kin.wake', v); e.target.value = v; });
   $('voiceSeg').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; gesture(); var v = b.dataset.v; if (v === 'device') { voice.set({ mode: 'device' }); ls.set('kin.vmode', 'device'); } else { voice.set({ mode: 'jarvis', who: v }); ls.set('kin.vmode', 'jarvis'); ls.set('kin.voice', v); } refreshSettings(); say(voice.CLIPS.service, true); });
   function ttsBusy(msg) { S.ttsBusy = msg || ''; voiceSettings(); }

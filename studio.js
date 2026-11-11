@@ -381,13 +381,25 @@
     }
 
     /* ---- the job ---- */
+    /* the card's title is the job's own name ("Label for the delta kite"), not its kind */
+    function jobName(t) {
+      var n = String(t || '').replace(/\s+/g, ' ').trim()
+        .replace(/^(hey |ok |okay |hi )?(jarvis|kin)[,.:]?\s*/i, '')
+        .replace(/^(can you|could you|would you|will you|please|i need you to|i want you to|go ahead and)\s+/i, '').replace(/^please\s+/i, '')
+        .replace(/^(design|make|create|draw|build|mock up|put together|do|come up with|whip up|sketch)\s+(me|us)?\s*/i, '')
+        .replace(/^(a|an|the|some)\s+/i, '').replace(/[\s?.!]+$/, '');
+      if (n.length < 3) return '';
+      if (n.length > 52) n = n.slice(0, 50).replace(/\s+\S*$/, '') + '\u2026';
+      return n.charAt(0).toUpperCase() + n.slice(1);
+    }
+    var jname = jobName(text);
     var brief = null, title = '', items = [], pics = {}, verdict = null;
     /* ONE card before anything is spent: the price, then Go, Go without pictures (when Higgsfield is connected), or Stop */
     var hfLeft = hfOn ? Math.max(0, Math.round((Kin.hf.cap() - Kin.hf.used()) * 100) / 100) : 0;
     var withPics = hfOn && hfLeft > 0, usdDraw = estimate(kit, false), usdPics = estimate(kit, true);
     var posterCredits = POSTER_CREDITS * (POSTER_VARIANTS + 1), usdPoster = posterEstimate(kit);
     var poster = withPics && MARKETING.test(text) && !TOO_FACTUAL.test(text) && hfLeft >= POSTER_CREDITS * POSTER_VARIANTS;
-    var card = poster ? { kind: 'job', label: 'Before anything is spent', title: 'Poster job', price: '$' + usdPoster.toFixed(2), priceNote: 'estimated Claude usage · Opus 5.5', pics: true, route: 'poster',
+    var card = poster ? { kind: 'job', label: 'Needs your OK', kindName: 'Poster job', title: jname || 'Poster job', price: '$' + usdPoster.toFixed(2), priceNote: 'estimated Claude usage · Opus 5.5', pics: true, route: 'poster',
       lines: ['One idea with the exact copy, rendered whole by Higgsfield\'s image model in ' + POSTER_VARIANTS + ' variants; the art director reads every word in each, picks one, and asks for one refinement render if it falls short.',
         'Credits: about ' + posterCredits + ' (' + POSTER_VARIANTS + ' posters and 1 refinement, about ' + POSTER_CREDITS + ' each), priced before anything is made; at most ' + hfLeft + ' (what is left of today\'s ' + Kin.hf.cap() + ').',
         'The product and artwork in the picture are the image model\'s invention, not your real packaging. It stays a draft until you say go.'],
@@ -395,7 +407,7 @@
       choices: [{ k: 'poster', label: 'Go', kind: 'go', note: 'The full poster on Higgsfield, priced first.' },
         { k: 'compose', label: 'Compose it instead', kind: 'alt', note: 'About $' + usdPics.toFixed(2) + ': three composed concepts, pictures only where they help.' },
         { k: 'draw', label: 'Go without pictures', kind: 'alt', note: 'About $' + usdDraw.toFixed(2) + ', no Higgsfield credits.' },
-        { k: 'stop', label: 'Stop', kind: 'stop', note: 'Nothing is sent and nothing is spent.' }] } : { kind: 'job', label: 'Before anything is spent', title: 'Design job', price: '$' + (withPics ? usdPics : usdDraw).toFixed(2), priceNote: 'estimated Claude usage · Opus 5.5',
+        { k: 'stop', label: 'Stop', kind: 'stop', note: 'Nothing is sent and nothing is spent.' }] } : { kind: 'job', label: 'Needs your OK', kindName: 'Design job', title: jname || 'Design job', price: '$' + (withPics ? usdPics : usdDraw).toFixed(2), priceNote: 'estimated Claude usage · Opus 5.5',
       pics: withPics, route: 'compose',
       lines: [withPics ? 'A brief, three concepts, real pictures where they help, a strict art director, and up to three rounds of refinement.' : 'A brief, three drawn concepts, a strict art director, and up to three rounds of refinement.',
         withPics ? 'Pictures: up to 4 on Higgsfield, priced first, at most ' + hfLeft + ' credits (what is left of today\'s ' + Kin.hf.cap() + ').' : hfOn ? 'Pictures: today\'s Higgsfield limit is used up, so the concepts are drawn.' : 'Higgsfield is not connected, so the concepts are drawn.'],

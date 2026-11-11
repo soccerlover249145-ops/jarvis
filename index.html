@@ -49,7 +49,7 @@
 
   <div class="prow">
     <button type="button" class="sharepill" id="sharePill" hidden aria-label="Kin can see your screen. Stop sharing"><i class="rec" aria-hidden="true"></i><span>Sharing your screen</span><b>Stop</b></button>
-    <button type="button" class="status" id="status" aria-label="Show or hide the conversation"><i class="led"></i><span id="stS">Status: off</span><i class="sep"></i><span id="stM">Mic off</span><span class="sep tsep"></span><span id="stT" hidden></span></button>
+    <button type="button" class="status" id="status" aria-label="Show or hide the conversation"><i class="led"></i><span id="stS">Conversation</span><i class="sep"></i><span id="stM">Mic off</span><span class="sep tsep"></span><span id="stT" hidden></span></button>
   </div>
 
   <form class="bar" id="bar" autocomplete="off">
@@ -70,10 +70,14 @@
   <section class="sheet" id="sheet" hidden aria-label="Settings">
     <div class="sheethead"><h2>Settings</h2><button type="button" class="icon" id="sheetx" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <div class="sheetbody">
+      <nav class="snav" id="snav" aria-label="Settings sections"><button type="button" data-sg="start">Start</button><button type="button" data-sg="voice">Voice</button><button type="button" data-sg="brain">Brain</button><button type="button" data-sg="brief">Brief</button><button type="button" data-sg="away">Away</button><button type="button" data-sg="privacy">Privacy</button></nav>
+
+      <div class="sgroup" id="sg-start" aria-label="Start">
       <p class="note warn" id="sharedNote" hidden></p>
       <div class="steps" id="steps"></div>
-      <p class="note warn" id="leaves">What leaves this device. Your speech goes to the browser maker (Google in Chrome, Microsoft in Edge, Apple in Safari) to be turned into text, whenever the mic is on, asleep or awake. With a Claude key, what you say or type, the last few exchanges, what Kin remembers that bears on the question, and the parts of your pack Kin uses go to Anthropic; web searches and page reads are run by Anthropic too. With a voice key, every sentence Kin speaks goes to ElevenLabs. With Higgsfield connected, the picture prompts of a design job you approve go, through Anthropic, to Higgsfield, and the finished pictures are fetched from Higgsfield into this page. With the Grok Bot bridge turned on, a question you start with &ldquo;ask Grok Bot&rdquo; goes to your relay and your private GitHub mailbox, as described under Grok Bot bridge. Nothing is ever sent to this website.</p>
-
+      </div>
+      <div class="sgroup" id="sg-voice" aria-label="Voice &amp; listening">
+      <h2 class="sgtitle">Voice &amp; listening</h2>
       <h3>Listening</h3>
       <p class="note" id="earsNote"></p>
       <label class="row"><span>Wake phrase</span><input type="text" id="wakeP" maxlength="48" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
@@ -90,13 +94,9 @@
       <p class="note warn">Optional. The voice key is kept in this browser on this device only. It is sent to ElevenLabs and nowhere else, together with each sentence Kin speaks. Kin says nothing, and sends nothing there, until you have tapped the page once. Anyone who can use this browser can use it, so in ElevenLabs make a key just for this, limit it to Text to Speech and Voices, give it a credit limit, and remove it here if the device is lost.</p>
       <div class="row"><span>Backup voice</span><div class="seg" id="voiceSeg" role="group"></div></div>
       <p class="note" id="voiceNote"></p>
-
-      <h3>Pictures</h3>
-      <p class="note" id="hfNote"></p>
-      <div class="row"><span>Higgsfield</span><div class="btns"><button type="button" class="lnk" id="hfConnect">Connect Higgsfield</button><button type="button" class="lnk dim" id="hfDrop" hidden>Disconnect</button></div></div>
-      <label class="row"><span>Credits a day</span><input type="text" inputmode="decimal" id="hfCap" maxlength="6" autocomplete="off" aria-label="Higgsfield credits per day"></label>
-      <p class="note" id="hfCapNote"></p>
-
+      </div>
+      <div class="sgroup" id="sg-brain" aria-label="Brain &amp; keys">
+      <h2 class="sgtitle">Brain &amp; keys</h2>
       <h3>Brain</h3>
       <label class="row"><span>Claude key</span><input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="new-password" autocapitalize="off" spellcheck="false"></label>
       <div class="row"><span></span><div class="btns"><button type="button" class="lnk" id="keySave">Save key</button><button type="button" class="lnk dim" id="keyDrop">Remove key</button></div></div>
@@ -112,6 +112,12 @@
       <label class="row"><span>Per day</span><input type="text" inputmode="numeric" id="limD" maxlength="4" autocomplete="off" aria-label="Questions to Claude per day"></label>
       <p class="note" id="limNote"></p>
 
+      <h3>Pictures</h3>
+      <p class="note" id="hfNote"></p>
+      <div class="row"><span>Higgsfield</span><div class="btns"><button type="button" class="lnk" id="hfConnect">Connect Higgsfield</button><button type="button" class="lnk dim" id="hfDrop" hidden>Disconnect</button></div></div>
+      <label class="row"><span>Credits a day</span><input type="text" inputmode="decimal" id="hfCap" maxlength="6" autocomplete="off" aria-label="Higgsfield credits per day"></label>
+      <p class="note" id="hfCapNote"></p>
+
       <h3>What Kin remembers</h3>
       <p class="note">Kept in this browser on this device only. Kin adds to it when you say &ldquo;remember that&nbsp;&hellip;&rdquo;, when you correct an answer, and when you tap Good or Not right under one. It never keeps keys, passwords, your age or school, or family money.</p>
       <div id="memList"></div>
@@ -121,7 +127,9 @@
       <p class="note" id="packNote"></p>
       <div class="row"><span>Kin pack</span><div class="btns"><label class="lnk filebtn">Import Kin pack<input type="file" id="packFile" accept="application/json,.json"></label><button type="button" class="lnk dim" id="packDrop">Remove pack</button></div></div>
       <p class="note">The pack is a file you export from the Atlas. It is stored in this browser on this device and is never uploaded to this website. With a Claude key, its rules and brief and the entries Kin looks up are sent to Anthropic to answer you.</p>
-
+      </div>
+      <div class="sgroup" id="sg-brief" aria-label="Morning brief">
+      <h2 class="sgtitle">Morning brief</h2>
       <h3>Weather</h3>
       <p class="note" id="wxNote"></p>
       <label class="row"><span>Your town</span><input type="text" id="wxTown" placeholder="e.g. Berlin" autocomplete="off" maxlength="80" aria-label="Your town for the weather"></label>
@@ -134,7 +142,9 @@
       <p class="note">Say or type &ldquo;give me my morning brief&rdquo;. Choose the cards and their order here. Ticks on priorities stay on this device.</p>
       <div id="briefSettings"></div>
       <p class="note">With &ldquo;Start small jobs on my own&rdquo; on, Kin starts at most two small drafts or plans written here from your pack, each under the limit shown, when the brief opens. Research (the web), designs (pictures and credits) and anything that would send, post, buy, book or call always wait for your tap. Market watch uses one short web search at most every three hours, with your Claude key.</p>
-
+      </div>
+      <div class="sgroup" id="sg-away" aria-label="Away &amp; desk">
+      <h2 class="sgtitle">Away &amp; desk</h2>
       <h3>Away mode and calls</h3>
       <p class="note">Say &ldquo;I&rsquo;m heading out&rdquo; to turn away mode on, and &ldquo;what happened while I was away&rdquo; for the summary. Say &ldquo;book a table for three at a place at 7&rdquo; for a call card. Calls run on a practice line for now: no real call is made until the phone number and the ElevenLabs agent are set up. Anything that would send, post, buy, book, call or delete waits for your tap. Kept on this device only.</p>
       <div class="row"><span></span><div class="btns"><button type="button" class="lnk" id="awayOpen">Open away mode</button></div></div>
@@ -157,10 +167,15 @@
       <p class="note" id="gbNote"></p>
       <div id="gbJobs"></div>
       </div>
+      </div>
+      <div class="sgroup" id="sg-privacy" aria-label="Privacy &amp; data">
+      <h2 class="sgtitle">Privacy &amp; data</h2>
+      <p class="note warn" id="leaves">What leaves this device. Your speech goes to the browser maker (Google in Chrome, Microsoft in Edge, Apple in Safari) to be turned into text, whenever the mic is on, asleep or awake. With a Claude key, what you say or type, the last few exchanges, what Kin remembers that bears on the question, and the parts of your pack Kin uses go to Anthropic; web searches and page reads are run by Anthropic too. With a voice key, every sentence Kin speaks goes to ElevenLabs. With Higgsfield connected, the picture prompts of a design job you approve go, through Anthropic, to Higgsfield, and the finished pictures are fetched from Higgsfield into this page.<span id="leavesGB" hidden> With the Grok Bot bridge turned on, a question you start with &ldquo;ask Grok Bot&rdquo; goes to your relay and your private GitHub mailbox, as described under Grok Bot bridge.</span> Nothing is ever sent to this website.</p>
 
       <h3>This device</h3>
       <div class="row"><span></span><div class="btns"><button type="button" class="lnk bad" id="erase">Erase everything on this device</button></div></div>
       <p class="note" id="about"></p>
+      </div>
     </div>
   </section>
 </div>

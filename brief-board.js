@@ -406,11 +406,12 @@
   function show(d, opts) {
     opts = opts || {}; hide(true); if (!d) return null; d.settings = d.settings || settings.get();
     lastFocus = document.activeElement; var now = d.now || new Date();
-    root = h('div', 'bb'); root.setAttribute('role', 'dialog'); root.setAttribute('aria-modal', 'true'); root.setAttribute('aria-label', 'Morning brief');
+    root = h('div', 'bb'); root.setAttribute('role', 'dialog'); root.setAttribute('aria-modal', 'true'); var period = now.getHours() < 12 ? 'Morning brief' : now.getHours() < 18 ? 'Afternoon brief' : 'Evening brief'; root.setAttribute('aria-label', period);
     var panel = h('div', 'bb-panel'); panel.tabIndex = -1; root.appendChild(panel);
     var hd = h('header', 'bb-head'), l = h('div');
-    l.appendChild(h('div', 'bb-eyebrow', (opts.brand || 'Jarvis') + ' · Morning brief'));
-    l.appendChild(h('h2', 'bb-title', now.getHours() < 12 ? 'Morning brief' : now.getHours() < 18 ? 'Afternoon brief' : 'Evening brief'));
+    /* the eyebrow names the board; the title says which part of the day it is, so the two never disagree */
+    l.appendChild(h('div', 'bb-eyebrow', (opts.brand || 'Jarvis') + ' · Daily brief'));
+    l.appendChild(h('h2', 'bb-title', period));
     var wplace = d.weather && d.weather.place ? '  ·  ' + d.weather.place : '';
     l.appendChild(h('div', 'bb-when', DAYS[now.getDay()] + ', ' + MON[now.getMonth()] + ' ' + now.getDate() + '  ·  ' + clock(now) + wplace));
     l.appendChild(h('p', 'bb-greet', opts.greeting || ((now.getHours() < 12 ? 'Good morning' : now.getHours() < 18 ? 'Good afternoon' : 'Good evening') + ', sir. Here\'s your brief.')));
