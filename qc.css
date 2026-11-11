@@ -30,7 +30,7 @@
   --amber: var(--warm); --amber2: #FFE2B8; --ink: var(--warm-ink); --card: var(--s1); --card2: var(--s2);
 }
 
-html, body { background: var(--bg); color: var(--text); font: 400 15px/22px var(--f-ui); -webkit-font-smoothing: antialiased; }
+html, body { background: var(--bg); color: var(--text); font: 400 15px/22px var(--f-ui); -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
 button, input, select, textarea { font-family: var(--f-ui); }
 .num { font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
 code, pre, kbd, .md code, .md pre { font-family: var(--f-code) !important; }
@@ -436,7 +436,7 @@ body, .app { background:
 .vpill[data-s="listening"], .vpill[data-s="speaking"], .vpill[data-s="thinking"], .vpill[data-s="awake"] { color: var(--accent); background: rgba(111, 227, 255, .10); border-color: rgba(111, 227, 255, .38); box-shadow: 0 0 18px -6px rgba(111, 227, 255, .6); }
 
 /* home cards */
-.qcard { padding: 22px 24px; border-radius: 26px; background: var(--holo); border: 1px solid var(--holo-edge); box-shadow: var(--holo-glow); -webkit-backdrop-filter: blur(14px) saturate(130%); backdrop-filter: blur(14px) saturate(130%); }
+.qcard { padding: 22px 24px; border-radius: 26px; background: var(--holo); border: 1px solid var(--holo-edge); box-shadow: var(--holo-glow); }
 .qcard::before { content: ""; position: absolute; left: 16px; right: 16px; top: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(190, 235, 255, .55), transparent); pointer-events: none; }
 .qcard::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: radial-gradient(120% 80% at 0% 0%, rgba(111, 227, 255, .07), transparent 55%); pointer-events: none; }
 .qcard > * { position: relative; z-index: 1; }
@@ -501,7 +501,7 @@ body, .app { background:
 .qbtn:focus-visible, .lnk:focus-visible, .qchipbtn:focus-visible, .wl-pill:focus-visible, .dl-pill:focus-visible, .bb-pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 /* the dock and the conversation */
-.dock { border-radius: 32px; background: linear-gradient(175deg, rgba(20, 60, 120, .34) 0%, rgba(8, 26, 60, .42) 40%, rgba(3, 10, 24, .82) 100%); border: 1px solid var(--holo-edge); box-shadow: var(--holo-glow), 0 30px 80px -30px rgba(0, 0, 0, .8); -webkit-backdrop-filter: blur(16px) saturate(130%); backdrop-filter: blur(16px) saturate(130%); }
+.dock { border-radius: 32px; background: linear-gradient(175deg, rgba(20, 60, 120, .34) 0%, rgba(8, 26, 60, .42) 40%, rgba(3, 10, 24, .82) 100%); border: 1px solid var(--holo-edge); box-shadow: var(--holo-glow), 0 30px 80px -30px rgba(0, 0, 0, .8); }
 .dock::before { content: ""; position: absolute; left: 22px; right: 22px; top: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(190, 235, 255, .6), transparent); }
 .dock-h { border-bottom-color: rgba(150, 210, 255, .10); }
 .app .dock .dock-h #caption.caption { font: 300 17px/24px var(--f-ui); color: #fff; }
@@ -567,7 +567,10 @@ body, .app { background:
   .qtemp { font-size: 58px; }
   .qcard { padding: 20px; }
 }
-@media (prefers-reduced-transparency: reduce) { .qcard, .dock { -webkit-backdrop-filter: none; backdrop-filter: none; } }
 .qlabel.qnote { font: 400 12px/17px var(--f-ui); letter-spacing: 0; text-transform: none; color: var(--text-2); }
 .qtile .qlabel { letter-spacing: .14em; color: var(--text-2); }
 .gx-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* no town yet: the weather card is a slim row, not half the board */
+.qwx.slim { justify-content: center; }
+.qwx-slim .qempty { margin: 4px 0 0; font-size: 14px; }
+.qwx-slim .qrow { margin-top: 12px; }
