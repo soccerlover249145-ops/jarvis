@@ -18,8 +18,15 @@
   var own = !!document.querySelector('meta[name="kin-own-origin"]');
   Kin.framed = framed;
   /** true when keys and a pack must not be kept here */
-  Kin.shared = framed || (dir !== '/' && !own);
-  Kin.SHARED_TEXT = 'This address is shared with another website, so keys and your pack are not safe here. Open Kin at its own address.';
+  /* a plain http page can be altered on the way to the browser, so nothing private is kept there either.
+     Addresses ending in .test and localhost are for rehearsals on this machine only. */
+  var host = String(location.hostname || '');
+  var insecure = location.protocol !== 'https:' && !/(\.test|^localhost|^127\.0\.0\.1)$/.test(host);
+  Kin.insecure = insecure;
+  Kin.shared = framed || insecure || (dir !== '/' && !own);
+  Kin.SHARED_TEXT = insecure
+    ? 'This is the plain http address. Keys and your pack are only kept at the secure address. Open https://' + host + '/ once it is ready.'
+    : 'This address is shared with another website, so keys and your pack are not safe here. Open Kin at its own address.';
   /** timings and limits in one place, so a rehearsal can shorten them */
   Kin.T = {
     follow: 45000,     /* after an exchange, how long Kin stays awake waiting for the next thing said */
