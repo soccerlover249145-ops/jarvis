@@ -1,10 +1,11 @@
 /* features.js: which optional parts of Kin are deployed on this site.
-   The Grok Bot bridge is built but not switched on until the owner approves it, so its script is not loaded
-   (and not published). With bridge:false, "ask Grok Bot ..." gets a plain local reply and nothing is sent. */
+   The Grok Bot bridge is deployed (approved by the owner). It is still off on every device until the owner turns it on
+   in Settings with two taps and pastes a device token; until then "ask Grok Bot ..." gets a local reply and nothing is sent.
+   With bridge:false the script would not load at all, and "ask Grok Bot ..." would get a plain local reply. */
 (function () {
   'use strict';
   var Kin = window.Kin = window.Kin || {};
-  var F = Kin.features = { bridge: false };
+  var F = Kin.features = { bridge: true };
   var NAME = 'gr(?:o|ou|a)(?:k|ck|c|q|g)(?:\\s*-?\\s*bot)?';
   var ASK = new RegExp('^(?:(?:hey|ok|okay|yo)\\s+)?(?:(?:jarvis|kin)[,!.:]?\\s+)?(?:please\\s+|can you\\s+|could you\\s+|go\\s+)?(?:ask|tell|message|text|check with)\\s+(?:my\\s+)?' + NAME + '\\b', 'i');
   var ADDRESS = new RegExp('^(?:hey\\s+)?' + NAME + '\\s*[,:]\\s*\\S', 'i');

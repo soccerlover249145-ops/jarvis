@@ -589,6 +589,7 @@
     }
     if (k === 'talk') { settingsAt('voice'); return; }
     if (k === 'gauntlet') { if (Kin.gauntlet) gauntlet(false); return; }
+    if (k === 'grok') { settingsAt('grok'); return; }
     if (k === 'settings') { settingsAt('start'); return; }
   }
   function whatsNew(said) {
@@ -920,7 +921,7 @@
     }, function (e) { $('wxNote').textContent = 'Open-Meteo could not be reached (' + ((e && e.message) || e) + ').'; });
   }
   function gbSettings() {
-    var B = Kin.bridge; $('gbSection').hidden = !B; $('leavesGB').hidden = !B; if (!B) return;
+    var B = Kin.bridge; $('gbSection').hidden = !B; if ($('sg-grok')) $('sg-grok').hidden = !B; $('leavesGB').hidden = !B; if (!B) return;
     var n = $('gbNote'), on = B.enabled();
     $('gbUrl').value = B.relay(); $('gbKeep').checked = B.kept(); $('gbCtx').checked = B.ctxOn(); $('gbTok').value = '';
     $('gbOn').textContent = on ? 'Turn off' : 'Turn on'; $('gbOn').dataset.sure = '';

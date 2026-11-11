@@ -17,7 +17,8 @@
     { key: 'book', title: 'Book a table', say: 'Book a table for three at Harbor Table at 7', note: 'I build a call card first. It is the practice line for now, so no real call is made.' },
     { key: 'talk', title: 'Talk over me', say: 'Hey Jarvis… / Stop', note: 'Wake me with “hey Jarvis” or your own phrase. Start talking, or say “stop”, to cut in while I speak.' },
     { key: 'gauntlet', title: 'The Gauntlet', say: 'Test yourself, Jarvis', note: 'Fifteen tasks under a budget cap you set. Nothing runs until you tap Run.' },
-    { key: 'settings', title: 'Settings in sections', say: 'Tap the gear', note: 'Start, Voice, Brain, Brief, Away and Privacy, with a row of pills at the top to jump between them.' }
+    { key: 'grok', title: 'Ask Grok Bot', say: 'Ask Grok Bot what is due tomorrow', note: 'Off until you turn it on in Settings and paste your device token. Only a sentence that starts with “ask Grok Bot” goes to your relay; its reply shows here and is never passed to Claude.' },
+    { key: 'settings', title: 'Settings in sections', say: 'Tap the gear', note: 'Start, Voice, Brain, Brief, Away, Grok Bot and Privacy, with a row of pills at the top to jump between them.' }
   ];
 
   function h(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
