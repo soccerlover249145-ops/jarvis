@@ -422,6 +422,8 @@
     if (ai) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); awayAsk(ai); return; }
     /* the Gauntlet: "test yourself" only opens the panel; nothing runs until the founder taps Run */
     if (Kin.gauntlet && Kin.gauntlet.isRequest(text)) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); gauntlet(true); return; }
+    /* "what's new": a list of the newest abilities; each Try it only opens a panel */
+    if (Kin.whatsNew && Kin.whatsNew.isRequest(text)) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); whatsNew(true); return; }
     var now = Kin.mind.instant(text);
     if (now) { instantly(text, now); return; }
     var me = ++S.askN, hushed = function () { return S.hushed === me; };
@@ -569,6 +571,30 @@
     Kin.gauntlet.open({ onSay: panelSay });
     if (!said) return;
     var line = brain.hasKey() ? 'Here is the Gauntlet, sir. Nothing runs until you tap Run, and it stops at the budget cap.' : 'Here is the Gauntlet, sir. It needs your Claude key in Settings before it can run.';
+    addMsg('kin', line); panelSay(line);
+  }
+
+  /* the What's new sheet: Try it opens the panel for that ability and nothing more; every panel waits for its own tap */
+  function settingsAt(sg) {
+    $('sheet').hidden = false; refreshSettings(); packCard();
+    setTimeout(function () { var b = document.querySelector('#snav [data-sg="' + sg + '"]'); if (b) b.click(); }, 0);
+  }
+  function tryIt(k) {
+    if (k === 'watch') { if (!brain.hasKey() || Kin.shared) $('sheet').hidden = true; if (Kin.watch) watch('watch this'); return; }
+    if (k === 'devices') { if (Kin.devices) devices(); return; }
+    if (k === 'away') { if (Kin.awayPanel) awayAsk({ k: 'settings' }); return; }
+    if (k === 'book') {
+      if (Kin.shared) { $('sheet').hidden = true; addMsg('kin', Kin.SHARED_TEXT); panelSay(Kin.SHARED_TEXT); return; }
+      if (Kin.awayPanel) Kin.awayPanel.open('calls', { onSay: panelSay }); return;
+    }
+    if (k === 'talk') { settingsAt('voice'); return; }
+    if (k === 'gauntlet') { if (Kin.gauntlet) gauntlet(false); return; }
+    if (k === 'settings') { settingsAt('start'); return; }
+  }
+  function whatsNew(said) {
+    Kin.whatsNew.open({ onSay: panelSay, onTry: tryIt });
+    if (!said) return;
+    var line = 'Here is what’s new, sir. Try it only opens the panel; nothing runs until you tap inside it.';
     addMsg('kin', line); panelSay(line);
   }
 
@@ -1001,6 +1027,7 @@
   $('wxDrop').addEventListener('click', function () { Kin.chart.dropPlace(); wxSettings(); });
   [].forEach.call($('wxUnits').children, function (b) { b.addEventListener('click', function () { Kin.chart.setUnits(b.dataset.u); wxSettings(); }); });
   if ($('gauntletOpen')) $('gauntletOpen').addEventListener('click', function () { gesture(); if (Kin.gauntlet) gauntlet(false); });
+  if ($('whatsNewOpen')) $('whatsNewOpen').addEventListener('click', function () { gesture(); if (Kin.whatsNew) whatsNew(false); });
   if ($('awayOpen')) $('awayOpen').addEventListener('click', function () { gesture(); if (Kin.shared) { localReply(Kin.SHARED_TEXT); return; } if (Kin.awayPanel) Kin.awayPanel.open('settings', { onSay: panelSay }); });
   $('notifyOn').addEventListener('click', function () { gesture(); if (Kin.desk) Kin.desk.notify.ask().then(function () { deskSettings(); }); });
   $('hfConnect').addEventListener('click', function () { gesture(); Kin.hf.connect().catch(function (e) { $('hfNote').textContent = (e && e.message) || 'Could not start the sign-in.'; }); });

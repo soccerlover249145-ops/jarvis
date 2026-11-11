@@ -45,4 +45,23 @@
     bargeLevel: 0.12,  /* where there is a level meter, how loud the room must be for words to count as talking over Kin */
     perHour: 40, perDay: 200
   };
+
+  /* panels open with focus on the panel itself, so the page reads its title; a pointer or a voice opens it with no ring.
+     Someone moving with the keyboard gets focus on the panel's first control instead, where the ring belongs. */
+  var kb = false;
+  try {
+    document.addEventListener('keydown', function (e) { if (e.key === 'Tab' || /^Arrow/.test(e.key) || e.key === 'Enter' || e.key === ' ') kb = true; }, true);
+    document.addEventListener('pointerdown', function () { kb = false; }, true);
+  } catch (e) {}
+  Kin.keyboardNav = function () { return kb; };
+  Kin.focusPanel = function (panel) {
+    if (!panel) return;
+    try {
+      if (kb) {
+        var all = panel.querySelectorAll('button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex="0"]');
+        for (var i = 0; i < all.length; i++) { if (all[i].offsetParent !== null || all[i].getClientRects().length) { all[i].focus({ preventScroll: true }); return; } }
+      }
+      panel.focus({ preventScroll: true });
+    } catch (e) {}
+  };
 })();

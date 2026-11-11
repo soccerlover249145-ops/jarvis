@@ -465,7 +465,7 @@
     c.key = function (e) { if (e.key === 'Escape') close(); }; document.addEventListener('keydown', c.key);
     paintAll();
     document.body.appendChild(el);
-    requestAnimationFrame(function () { el.classList.add('dl-show'); panel.focus({ preventScroll: true }); });
+    requestAnimationFrame(function () { el.classList.add('dl-show'); if (Kin.focusPanel) Kin.focusPanel(panel); else panel.focus({ preventScroll: true }); });
     if (opts.onSay) opts.onSay(devices.length ? summary() || 'The device lab is open, sir.' : 'The device lab is open, sir. Wake the device and pair it.');
     return { close: close, element: el };
   }

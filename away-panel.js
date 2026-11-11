@@ -136,7 +136,7 @@
     }
     show(c.tab);
     document.body.appendChild(el);
-    requestAnimationFrame(function () { el.classList.add('wl-show'); panel.focus({ preventScroll: true }); });
+    requestAnimationFrame(function () { el.classList.add('wl-show'); if (Kin.focusPanel) Kin.focusPanel(panel); else panel.focus({ preventScroll: true }); });
     return { close: close, element: el };
   }
 

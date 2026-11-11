@@ -385,3 +385,26 @@ body:has(#thread:not([hidden])) .loadcard { display: none; }
 .sgtitle { margin: 18px 0 2px; font: 400 var(--t-lead)/1.2 var(--f-display); color: var(--fg); letter-spacing: .01em; }
 .sgroup .sgtitle + h3 { margin-top: 12px; padding-top: 0; border-top: 0; }
 @media (max-width: 480px) { .sgroup { padding: 2px 16px 18px; margin-left: -4px; margin-right: -4px; } }
+
+/* a panel container takes focus on open only so the page reads its title: it never shows a ring.
+   Controls inside keep their own :focus-visible ring, and keyboard users land on the first control (Kin.focusPanel). */
+.wl .wl-panel:focus, .wl .wl-panel:focus-visible, .dl .dl-panel:focus, .dl .dl-panel:focus-visible,
+.bb-panel:focus, .bb-panel:focus-visible, .wn-panel:focus, .wn-panel:focus-visible { outline: none; }
+
+/* the What's new sheet (whatsnew.js): rows of deep glass, the phrase in mono, one Try it pill each */
+.wn .wl-panel { max-width: 760px; display: flex; flex-direction: column; gap: 18px; }
+.wn-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.wn-item { display: flex; align-items: center; gap: 18px; padding: 18px 20px; border-radius: var(--r-lg, 26px);
+  background: var(--glass, linear-gradient(162deg, rgba(64, 140, 220, .20), rgba(22, 60, 120, .18) 46%, rgba(8, 22, 52, .34)));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), inset 0 0 0 1px var(--edge, rgba(150, 210, 255, .20)); }
+.wn-mid { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.wn-name { margin: 0; font: 400 20px/1.2 var(--md-display); color: #fff; letter-spacing: .01em; }
+.wn-say { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.wn-k { font: 500 11px/1.2 var(--md-mono); letter-spacing: .22em; text-transform: uppercase; color: var(--md-cyan); }
+.wn-phrase { font: 400 15px/1.4 var(--md-mono); color: var(--md-ink); overflow-wrap: anywhere; }
+.wn-note { margin: 0; font: 400 15px/1.5 var(--md-display); color: var(--md-ink2); }
+.wn-try { flex: none; min-height: 44px; padding: 0 22px; }
+@media (max-width: 560px) {
+  .wn-item { flex-direction: column; align-items: stretch; gap: 14px; padding: 16px 18px; }
+  .wn-try { align-self: flex-start; }
+}

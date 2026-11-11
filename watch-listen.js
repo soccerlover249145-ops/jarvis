@@ -700,7 +700,7 @@
 
     chooser();
     document.body.appendChild(el);
-    requestAnimationFrame(function () { el.classList.add('wl-show'); panel.focus({ preventScroll: true }); });
+    requestAnimationFrame(function () { el.classList.add('wl-show'); if (Kin.focusPanel) Kin.focusPanel(panel); else panel.focus({ preventScroll: true }); });
     if (opts.file) begin(opts.file, opts.question || '');
     else if (opts.onSay) opts.onSay('Pick the file or share the tab, sir.');
     return { close: close, element: el };

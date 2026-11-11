@@ -457,7 +457,7 @@
     (opts.container || document.body).appendChild(root);
     root.addEventListener('click', function (e) { if (e.target === root) hide(); });
     keyH = function (e) { if (e.key === 'Escape') { e.stopPropagation(); hide(); } }; document.addEventListener('keydown', keyH, true);
-    requestAnimationFrame(function () { root && root.classList.add('bb-in'); try { panel.focus({ preventScroll: true }); } catch (e) {} });
+    requestAnimationFrame(function () { root && root.classList.add('bb-in'); try { if (Kin.focusPanel) Kin.focusPanel(panel); else panel.focus({ preventScroll: true }); } catch (e) {} });
     /* small, drafting-only jobs start on their own when the founder allows it (at most two per brief) */
     if (d.settings.autoSmall && opts.autoStart !== false && typeof opts.onStart === 'function' && d.settings.on.start) {
       /* each job's limit is reserved against today's cap before it starts, so the cap holds even if every job spends its limit */
