@@ -12,10 +12,9 @@
 
   /* ---------------------------------------------------------------- the look */
   var C = {
-    surface: '#14171e', ink: '#eef1f6', ink2: '#a4abb9', muted: '#7f8797', grid: '#1f2430', base: '#2f3542',
-    series: ['#3d8bf2', '#74d4ff', '#4fdc9c', '#ffb547', '#ff7a93', '#b49cff'], /* the Quiet Command palette, fixed order */
-    /* charts never use mono: axis labels share the words' face, with tabular numbers */
-    font: 'Geist, Jost, system-ui, -apple-system, "Segoe UI", sans-serif', mono: 'Geist, Jost, system-ui, -apple-system, "Segoe UI", sans-serif'
+    surface: '#141416', ink: '#F0EFEC', ink2: '#C3C2B7', muted: '#9A988F', grid: '#2A2A2C', base: '#46464A',
+    series: ['#3987E5', '#D95926', '#199E70', '#C98500', '#D55181', '#9085E9'], /* dark steps of the reference palette, fixed order */
+    font: 'Jost, system-ui, -apple-system, "Segoe UI", sans-serif', mono: '"IBM Plex Mono", ui-monospace, Menlo, monospace'
   };
   var KINDS = ['line', 'area', 'bar', 'stacked_bar', 'range', 'scatter', 'donut'];
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
@@ -152,7 +151,7 @@
             if (free || !pick) pick = [bx, by]; return free;
           });
           var bx2 = pick[0], by2 = pick[1]; placed.push([bx2, by2, tw]);
-          out.push('<rect x="' + r1(bx2) + '" y="' + r1(by2) + '" width="' + r1(tw) + '" height="24" rx="12" fill="' + (strong ? '#1b1f29' : C.surface) + '" stroke="' + C.grid + '" stroke-width="1"/>');
+          out.push('<rect x="' + r1(bx2) + '" y="' + r1(by2) + '" width="' + r1(tw) + '" height="24" rx="12" fill="' + (strong ? '#232326' : C.surface) + '" stroke="' + C.grid + '" stroke-width="1"/>');
           out.push('<circle cx="' + r1(bx2 + 10) + '" cy="' + r1(by2 + 12) + '" r="3.5" fill="' + col + '"/>');
           out.push('<text x="' + r1(bx2 + 18) + '" y="' + r1(by2 + 16.5) + '" font-size="' + lS + '" font-weight="' + (strong ? 500 : 400) + '" fill="' + C.ink + '">' + esc(text.replace(/^\s+/, '')) + '</text>');
         }
