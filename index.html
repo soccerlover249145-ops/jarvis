@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex,nofollow,noarchive">
 <meta name="referrer" content="no-referrer">
 <!-- Only this site, the Anthropic API, (for the optional voice key) the ElevenLabs API, (for the optional Higgsfield sign-in) Higgsfield's sign-in service and picture hosts, and (for the optional Grok Bot bridge, off by default) the founder's relay may be reached. No third-party scripts, fonts or trackers. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://d8j0ntlcm91z4.cloudfront.net https://cdn.higgsfield.ai; media-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.anthropic.com https://api.elevenlabs.io https://clerk.higgsfield.ai https://d8j0ntlcm91z4.cloudfront.net https://cdn.higgsfield.ai https://api.open-meteo.com https://geocoding-api.open-meteo.com; worker-src 'none'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://d8j0ntlcm91z4.cloudfront.net https://cdn.higgsfield.ai; media-src 'self' data: blob: https:; font-src 'self'; connect-src 'self' https://api.anthropic.com https://api.elevenlabs.io https://clerk.higgsfield.ai https://d8j0ntlcm91z4.cloudfront.net https://cdn.higgsfield.ai https://api.open-meteo.com https://geocoding-api.open-meteo.com; worker-src 'none'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -18,6 +18,7 @@
 <link rel="preload" href="fonts/jost.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="brief-board.css">
+<link rel="stylesheet" href="media-devices.css">
 <title>Kin</title>
 </head>
 <body>
@@ -170,6 +171,8 @@
 <script src="chart.js"></script>
 <script src="studio.js"></script>
 <script src="brief-board.js"></script>
+<script src="watch-listen.js"></script>
+<script src="device-lab.js"></script>
 <script src="desk.js"></script>
 <script src="bust.js"></script>
 <script src="app.js"></script>

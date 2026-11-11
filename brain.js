@@ -587,6 +587,10 @@
     limits: usage,
     setLimits: function (o) { o = o || {}; if (o.perHour >= 1 && o.perHour <= 500) ls.set(LIMH, String(Math.round(o.perHour))); if (o.perDay >= 1 && o.perDay <= 5000) ls.set(LIMD, String(Math.round(o.perDay))); return usage(); },
     smallTalk: smallTalk, route: route, keywordRoute: keywordRoute, local: localAnswer,
+    /** for a panel that asks Claude itself (watch and listen): the client, and the fallback beta */
+    client: function () { return getClient(); }, FALLBACK_BETA: FALLBACK_BETA,
+    /** before such a panel sends a request: '' and the request is counted, or the reason it may not be sent */
+    gate: function () { if (!getClient()) return 'Add your Claude key in Settings first.'; var o = over(); if (o) return o === 'hour' ? 'That would pass the hourly limit you set for questions to Claude.' : 'That would pass the daily limit you set for questions to Claude.'; count(); return ''; },
     /** A job from the brief board, outside the conversation: Opus 5.5 at low effort, a few steps at most, a spending
         limit (budget, in dollars), the web only when web is true. It is not added to the conversation turns, and
         its cost is counted like any other request. Always resolves: { text, code?, made?, sources?, cost?, capped? } */

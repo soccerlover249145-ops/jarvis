@@ -341,6 +341,9 @@
     if (Kin.desk && deskAsk(text)) return;
     if (S.busy) return;
     if (Kin.briefBoard && Kin.briefBoard.isBriefRequest(text)) { inp.value = ''; lastLen = 0; touch(); brief(text); return; }
+    /* a video or a recording, and Bluetooth or USB devices: their own panels; nothing is sent until the founder picks */
+    if (Kin.watch && Kin.watch.isRequest(text)) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); watch(text); return; }
+    if (Kin.devices && Kin.devices.isRequest(text)) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); devices(); return; }
     var now = Kin.mind.instant(text);
     if (now) { instantly(text, now); return; }
     var aloud = S.talk === 'awake', p = null, got = false, t0 = Date.now(), momT = 0, watchI = 0, sess = null, lastSign = Date.now(), stalled = false, pr, making = false, job = null;
@@ -451,6 +454,19 @@
     $('scr').addEventListener('click', function () { gesture(); if (Kin.desk.screen.on()) { Kin.desk.screen.stop(); localReply('I have stopped looking at your screen, sir. Nothing was kept.'); } else shareScreen(); });
     $('sharePill').addEventListener('click', function () { gesture(); Kin.desk.screen.stop(); localReply('I have stopped looking at your screen, sir. Nothing was kept.'); });
   }
+
+  /* ------------------------------------------------------------ watch and listen, and the device lab */
+  function panelSay(line) { if (!line) return; caption(line, ''); captionFade(6000); say(line); }
+  function watch(text) {
+    if (!brain.hasKey() || Kin.shared) { var m = Kin.shared ? Kin.SHARED_TEXT : 'Add your Claude key in Settings first, sir. Then I can watch it.'; addMsg('kin', m); panelSay(m); return; }
+    Kin.watch.open({
+      question: text, client: brain.client(), sttKey: voice.tts.key(), betas: [brain.FALLBACK_BETA], gate: brain.gate, limit: 0.5,
+      onSpend: function (usd) { if (usd > 0) Kin.mind.addSpend(usd); },
+      onSay: panelSay,
+      onSave: function (item) { Kin.mind.addMade(item); refreshMade(); }
+    });
+  }
+  function devices() { Kin.devices.open({ onSay: panelSay }); }
 
   /* ------------------------------------------------------------ the morning brief board */
   var MARKET = 'kin.bb.market';

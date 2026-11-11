@@ -273,6 +273,8 @@
     tts: {
       provider: 'ElevenLabs',
       hasKey: function () { return !!T.key; },
+      /** the key itself, only for the owner's own ElevenLabs speech to text (watch and listen) */
+      key: function () { return T.key; },
       keyHint: function () { return T.key ? T.key.slice(0, 3) + '…' + T.key.slice(-4) : ''; },
       status: function () { return { on: ttsOn(), bad: T.bad, why: T.why, voice: T.voice, voiceName: T.voiceName, model: T.model, voices: T.voices.slice(), models: T.models.slice(), calls: T.calls, chars: T.chars }; },
       /** Save a key after proving it works by reading the account's voices. Resolves { voices } or rejects { text }. */
