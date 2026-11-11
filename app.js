@@ -330,6 +330,7 @@
     /* "ask Grok Bot ...": handled on this device and by the founder's relay only; never sent to Claude */
     var gi = Kin.bridge && Kin.bridge.intent(text);
     if (gi) { bridgeAsk(text, gi.q); return; }
+    if (!Kin.bridge && Kin.features && Kin.features.grokAsked(text)) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); gbReply('The Grok Bot bridge isn\u2019t switched on yet, sir.', 'Nothing was sent'); return; }
     if (S.busy) return;
     var now = Kin.mind.instant(text);
     if (now) { instantly(text, now); return; }
@@ -648,7 +649,7 @@
     }, function (e) { $('wxNote').textContent = 'Open-Meteo could not be reached (' + ((e && e.message) || e) + ').'; });
   }
   function gbSettings() {
-    var B = Kin.bridge; if (!B) return;
+    var B = Kin.bridge; $('gbSection').hidden = !B; if (!B) return;
     var n = $('gbNote'), on = B.enabled();
     $('gbUrl').value = B.relay(); $('gbKeep').checked = B.kept(); $('gbCtx').checked = B.ctxOn(); $('gbTok').value = '';
     $('gbOn').textContent = on ? 'Turn off' : 'Turn on'; $('gbOn').dataset.sure = '';
@@ -742,21 +743,21 @@
   $('hfCap').addEventListener('change', function () { Kin.hf.setCap($('hfCap').value); refreshSettings(); });
 
   /* the Grok Bot bridge settings */
-  $('gbSave').addEventListener('click', function () {
+  if (Kin.bridge) $('gbSave').addEventListener('click', function () {
     var r = Kin.bridge.setToken($('gbTok').value, $('gbKeep').checked); $('gbTok').value = ''; refreshSettings();
     if (!r.ok) $('gbNote').textContent = r.why === 'shared' ? Kin.SHARED_TEXT : r.why === 'storage' ? 'This browser would not save the token. Its storage is blocked or full.' : 'That does not look like a device token. Paste the whole token, with nothing around it.';
   });
-  $('gbKeep').addEventListener('change', function () { /* moving a saved token between tab-only and kept needs it pasted again, so nothing is copied around */ if (Kin.bridge.hasToken()) { Kin.bridge.dropToken(); $('gbNote').textContent = 'Paste the token again to save it ' + ($('gbKeep').checked ? 'on this device.' : 'for this tab only.'); } });
-  $('gbOn').addEventListener('click', function () {
+  if (Kin.bridge) $('gbKeep').addEventListener('change', function () { /* moving a saved token between tab-only and kept needs it pasted again, so nothing is copied around */ if (Kin.bridge.hasToken()) { Kin.bridge.dropToken(); $('gbNote').textContent = 'Paste the token again to save it ' + ($('gbKeep').checked ? 'on this device.' : 'for this tab only.'); } });
+  if (Kin.bridge) $('gbOn').addEventListener('click', function () {
     var B = Kin.bridge, b = $('gbOn');
     if (B.enabled()) { B.setEnabled(false); refreshSettings(); return; }
     if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Tap again to turn it on'; $('gbNote').textContent = 'Turning it on means a sentence you start with “ask Grok Bot” is sent to your relay and private mailbox, as described above. Nothing else.'; setTimeout(function () { if (b.dataset.sure === '1') { b.dataset.sure = ''; b.textContent = 'Turn on'; } }, 6000); return; }
     B.setEnabled(true); refreshSettings();
   });
-  $('gbTest').addEventListener('click', function () { var n = $('gbNote'); n.textContent = 'Checking the relay…'; Kin.bridge.health().then(function (r) { n.textContent = r.ok ? 'The relay is up and answers this page. The token is checked when you ask; if it is refused, Kin says so then.' : 'The relay did not answer from here' + (r.status ? ' (HTTP ' + r.status + ')' : '') + '. It may be down, or not allowing this address.'; }); });
-  $('gbDrop').addEventListener('click', function () { Kin.bridge.stopAll(); Kin.bridge.dropToken(); refreshSettings(); });
-  $('gbUrl').addEventListener('change', function () { var r = Kin.bridge.setRelay($('gbUrl').value); refreshSettings(); if (!r.ok) $('gbNote').textContent = r.why; });
-  $('gbCtx').addEventListener('change', function () { Kin.bridge.setCtx($('gbCtx').checked); refreshSettings(); });
+  if (Kin.bridge) $('gbTest').addEventListener('click', function () { var n = $('gbNote'); n.textContent = 'Checking the relay…'; Kin.bridge.health().then(function (r) { n.textContent = r.ok ? 'The relay is up and answers this page. The token is checked when you ask; if it is refused, Kin says so then.' : 'The relay did not answer from here' + (r.status ? ' (HTTP ' + r.status + ')' : '') + '. It may be down, or not allowing this address.'; }); });
+  if (Kin.bridge) $('gbDrop').addEventListener('click', function () { Kin.bridge.stopAll(); Kin.bridge.dropToken(); refreshSettings(); });
+  if (Kin.bridge) $('gbUrl').addEventListener('change', function () { var r = Kin.bridge.setRelay($('gbUrl').value); refreshSettings(); if (!r.ok) $('gbNote').textContent = r.why; });
+  if (Kin.bridge) $('gbCtx').addEventListener('change', function () { Kin.bridge.setCtx($('gbCtx').checked); refreshSettings(); });
   $('webCap').addEventListener('change', function () { Kin.mind.setWebCap(parseInt($('webCap').value, 10)); refreshSettings(); });
   $('memAll').addEventListener('click', function () { var b = $('memAll'); if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Tap again to forget everything Kin remembers'; setTimeout(function () { b.dataset.sure = ''; b.textContent = 'Forget all'; }, 5000); return; } Kin.mind.forgetAll(); b.dataset.sure = ''; b.textContent = 'Forget all'; refreshSettings(); });
   /* with no pack, one button on the main screen opens the file picker; the two steps sit beside it */
