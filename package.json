@@ -1,0 +1,50 @@
+{
+  "name": "jarvis-desktop",
+  "productName": "Jarvis",
+  "version": "0.1.0",
+  "description": "Jarvis for Mac: menu bar assistant with always-on listening, open actions, screen look and take control.",
+  "private": true,
+  "main": "src/main/main.js",
+  "author": "Jarvis",
+  "license": "UNLICENSED",
+  "scripts": {
+    "helpers": "bash native/build.sh",
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "test:ui": "node test/ui/run.js",
+    "build": "npm run helpers && electron-builder --mac --dir",
+    "dist": "npm run helpers && electron-builder --mac dmg"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.3.0"
+  },
+  "devDependencies": {
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.jarvis.desktop",
+    "productName": "Jarvis",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["src/**/*", "package.json", "!**/*.map"],
+    "asar": true,
+    "extraResources": [{ "from": "native/bin", "to": "bin", "filter": ["JarvisEars", "JarvisHands"] }],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png",
+      "target": [{ "target": "dir" }],
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "darkModeSupport": true,
+      "minimumSystemVersion": "13.0",
+      "extendInfo": {
+        "LSUIElement": false,
+        "NSMicrophoneUsageDescription": "Jarvis listens for its wake phrase (\"hey Jarvis\") and for what you ask after it. Speech is turned into text on this Mac.",
+        "NSSpeechRecognitionUsageDescription": "Jarvis turns what you say into text on this Mac, so it can hear its wake phrase and your questions.",
+        "NSAppleEventsUsageDescription": "Jarvis does not control other apps with scripts. This is only shown if macOS asks."
+      }
+    },
+    "dmg": { "sign": false }
+  }
+}

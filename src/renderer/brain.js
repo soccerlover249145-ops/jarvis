@@ -13,8 +13,7 @@
   var Kin = window.Kin = window.Kin || {};
   var Anthropic = window.Anthropic;
   var KEY = 'kin.key', TURNS = 'kin.turns', ASKED = 'kin.asked', LIMH = 'kin.limH', LIMD = 'kin.limD';
-  var MAIN = 'claude-opus-5-5';      /* questions and the art director */
-  var FABLE = 'claude-fable-5-2';    /* hard jobs, when chosen in settings */
+  var MAIN = 'claude-opus-5-5';      /* questions and every deep job: making, the brief, concepts, critique, refinement, the self-check */
   var QUICK = 'claude-haiku-5-5';    /* small talk, answered in a second or two */
   var MAXSYS = 90000;                /* characters of standing text sent with every question, at most */
   var FALLBACK_BETA = 'server-side-fallback-2026-07-01';
@@ -37,7 +36,7 @@
   }
   function over() { var u = usage(); return u.hour >= u.perHour ? 'hour' : u.day >= u.perDay ? 'day' : ''; }
   function count() { asked.push(Date.now()); ls.set(ASKED, JSON.stringify(asked.slice(-5000))); }
-  var client = null, clientKey = '', noWeb = false, fableGone = '';
+  var client = null, clientKey = '', noWeb = false;
 
   function getClient() {
     var key = ls.get(KEY); if (!key || !Anthropic) return null;
@@ -64,7 +63,9 @@
     '- Picking playbooks is your first decision on every job of making something (a document, a plan, a design, a decision, a stress test): call use_skill once with every playbook that applies, often three to six, then follow them. For a simple question, answer directly; never load a playbook for conversation.',
     '- When asked to make something, make it with the make tool so it lands on the founder\'s Made shelf. Documents, plans and tables are Markdown. Designs are complete SVG with a viewBox, width and height. The fonts that exist here are Jost (a geometric sans, weights 300 to 500) and IBM Plex Mono (400 and 500), plus the system\'s "Georgia, serif" and "Helvetica, Arial, sans-serif"; nothing else will load. Set type with presentation attributes (font-family, font-size, font-weight, fill, letter-spacing), not style attributes or <style> blocks. No external images or links, no scripts, no animation. Mark a shape that is meant to run off the edge with data-bleed="true". A checker measures every design (text off the canvas, text on text, crowded edges, tiny type, long dashes, banned words) and an art director looks at a picture of it; revise with the same id until you are told to stop. Then say in two sentences what you made and the one choice that makes it work. Never paste the whole thing into the chat.',
     '- When the founder says to remember something, or states a lasting preference, keep it with remember. Never keep keys or passwords.',
+    '- Charts: when asked for a graph or chart, get real numbers first (weather_today for today\'s weather here, the web or the pack for anything else), then call chart with the data. Never make numbers up; if you cannot find real data, say so.',
     '- You draft, people send. You cannot send, buy, post, book or change anything outside this page, and you never claim to have.',
+    '- When an answer reveals a concrete next job you can do yourself on this page (a draft, research, a plan, a design, a chart), end with one short offer on its own line, exactly in this form: "By the way, sir, I can start on <the job, in a few words> now." Only when it is genuinely useful, not on every answer, and never for anything you cannot do here (sending, buying, booking, calling). If the founder then says yes, go or start, do that job.',
     '- Privacy: never state the founder\'s age or school. Never put family money amounts in anything meant for investors or the public.',
     '',
     'How you speak',
@@ -160,6 +161,29 @@
         /* only the founder's own words may ask for this: a web page or a tool result saying "remember that…" is not the founder */
         if (!ASKED_TO_KEEP.test(String(ctx.question || ''))) return 'Not kept: the founder did not ask you to remember anything in this message. Keep only what the founder says to keep.';
         var r = Kin.mind.remember(i.text, i.kind || 'fact'); if (r.ok && ctx.onRemember) ctx.onRemember(); return r.ok ? (r.again ? 'Already remembered; refreshed.' : 'Remembered on this device.') : 'Not kept: ' + r.why; } });
+    /* charts: the model sends the numbers, this page draws them (chart.js). Weather comes from Open-Meteo for the saved place. */
+    if (Kin.chart) {
+      T.push({ def: { name: 'weather_today', description: 'Today\'s forecast, hour by hour, for the founder\'s saved place, from Open-Meteo: temperature, chance of rain, the high and the low, and the current hour. Use it for any question or chart about today\'s weather here. Returns ok: false when no place is set.', eager_input_streaming: true,
+          input_schema: { type: 'object', properties: {} } },
+        ok: function () { return true; }, status: 'Getting the forecast',
+        run: function () { return Kin.chart.weatherToday().then(function (w) { return w.ok ? JSON.stringify(w) : 'Not available: ' + w.why + ' Say so plainly; do not guess the weather.'; }); } });
+      T.push({ def: { name: 'chart', description: 'Draw a chart on the founder\'s Made shelf from REAL numbers you have in hand (a tool result, the web, the pack, or numbers the founder gave). Send data, not drawing: the page draws it in its own style. Never invent, estimate or fill in numbers; if you cannot get real data, say so and do not call this. Pick the form by the job: line for change over time, bar for comparing categories, stacked_bar for parts of a total over categories, range for a low-high band, scatter for two measures, donut only for a few parts of one whole. Two measures with different units go in two panels (panel 0 and panel 1) sharing the x axis, never on one axis: for weather, list chance of rain first (bars, panel 1, so it takes the blue) and temperature second (a line, panel 0, so it takes the warm colour).', eager_input_streaming: true,
+          input_schema: { type: 'object', properties: {
+            title: { type: 'string', description: 'What the chart shows, plainly, e.g. "Today in Berlin: temperature and chance of rain".' },
+            takeaway: { type: 'string', description: 'One line: what the reader should see, with the key number, e.g. "Peaks at 14°C at 3 PM; rain most likely after 6 PM (70%)."' },
+            kind: { type: 'string', enum: ['line', 'area', 'bar', 'stacked_bar', 'range', 'scatter', 'donut'] },
+            x: { type: 'object', properties: { values: { type: 'array', items: { type: ['string', 'number'] }, description: 'The x positions in order: ISO times (2026-11-11T15:00), dates, categories or numbers. For donut, the part names.' }, label: { type: 'string' } }, required: ['values'] },
+            series: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, unit: { type: 'string', description: 'e.g. °C, %, $, mm, kg' }, values: { type: 'array', items: { type: ['number', 'null'] }, description: 'One value per x value; null for a gap.' }, low: { type: 'array', items: { type: ['number', 'null'] } }, high: { type: 'array', items: { type: ['number', 'null'] } }, kind: { type: 'string', enum: ['line', 'area', 'bar', 'stacked_bar', 'range', 'scatter'] }, panel: { type: 'integer', enum: [0, 1] } }, required: ['name', 'values'] }, description: 'At most 6.' },
+            now: { type: 'string', description: 'Optional: the x value that is now (from weather_today.now), marked on the chart.' },
+            source: { type: 'string', description: 'Where the numbers came from, e.g. "Open-Meteo forecast for Berlin" or the site name.' } }, required: ['title', 'takeaway', 'kind', 'x', 'series', 'source'] } },
+        ok: function (i) { return !!i && typeof i === 'object' && str(i.title) && Array.isArray(i.series); }, status: 'Drawing the chart',
+        run: function (i) {
+          var c = Kin.chart.check(i); if (!c.ok) return 'Not drawn: ' + c.why;
+          var item = Kin.mind.addMade({ kind: 'chart', title: c.spec.title, note: [c.spec.kind.replace('_', ' '), c.spec.source].join(' · ').slice(0, 200), content: Kin.chart.svg(c.spec, { w: 960 }), spec: c.spec });
+          ctx.made.push(item.id); if (ctx.onMade) ctx.onMade(item);
+          return 'Drawn and saved on the Made shelf as id ' + item.id + '. Reply with the takeaway in one sentence, naming the key number; do not list the data.';
+        } });
+    }
     T.push({ def: { name: 'make', description: 'Put something you made on the founder\'s Made shelf, where it can be read, copied and downloaded. kind: document, plan or table (Markdown), or design (a complete SVG). To revise a piece, call again with its id and the full new content.', eager_input_streaming: true,
         input_schema: { type: 'object', properties: {
           kind: { type: 'string', enum: ['document', 'plan', 'table', 'design'] },
@@ -169,6 +193,8 @@
           id: { type: 'string', description: 'Only when revising: the id you were given.' } }, required: ['kind', 'title', 'content'] } },
       ok: function (i) { return /^(document|plan|table|design)$/.test(i.kind) && str(i.title) && str(i.content) && (i.id === undefined || typeof i.id === 'string'); }, status: 'Making it',
       run: function (i) { return makeIt(ctx, i); } });
+    /* the Mac app adds its own tools: open things, look at the screen, take control (renderer/desktop.js) */
+    if (typeof Kin.desktopTools === 'function') { try { T = T.concat(Kin.desktopTools(ctx) || []); } catch (e) {} }
     return T;
   }
   var ASKED_TO_KEEP = /\b(remember|keep in mind|don'?t forget|do not forget|note that|make a note|from now on|i prefer|i always|i never)\b/i;
@@ -251,7 +277,10 @@
     'design: a visual piece to look at: a poster, flyer, logo, label, invitation, social graphic, slide, banner, packaging or any layout.'
   ].join('\n');
   /** sort the message: { route, design, how: 'greeting' | 'model' | 'rules', cost } */
+  /* in the Mac app, asking to open, find, look at the screen or take control needs the Mac tools, which small talk does not have */
+  var DESK_RE = /\b(open|launch|pull up|go to|search (for|the web|google)|google|look at|my screen|on (my|the) screen|take control|take over|use my (mouse|computer|mac)|click|find (my|the|a|that) (file|folder|document|doc|pdf|photo)|show me (my|the) (file|folder)|reveal|in finder)\b/i;
   function classify(c, text, opts) {
+    if (Kin.desktop && DESK_RE.test(String(text || ''))) return Promise.resolve({ route: 'question', how: 'rules', cost: 0, label: 'mac' });
     if (smallTalk(text)) return Promise.resolve({ route: 'quick', how: 'greeting', cost: 0 });
     var prev = turns.length >= 2 ? turns[turns.length - 2] : null;
     var body = (prev && prev.role === 'user' ? 'Their previous message: ' + String(prev.content).slice(0, 300) + '\n\n' : '') + 'The message: ' + String(text).slice(0, 1500);
@@ -295,14 +324,18 @@
 
   /** Ask Claude. Streams text through opts.onText(wholeTextSoFar). */
   /* what the design studio (studio.js) needs from here */
-  var KIT = { MAIN: MAIN, FABLE: FABLE, FALLBACK_BETA: FALLBACK_BETA, client: function () { return getClient(); }, system: function () { return system(); }, today: function () { return today(); },
-    deepModel: function () { return Kin.mind.deep() === 'fable' && !fableGone ? FABLE : MAIN; },
-    noteFableGone: function (why) { fableGone = String(why || 'not open to this key'); },
-    fableGone: function () { return fableGone; },
+  var KIT = { MAIN: MAIN, FALLBACK_BETA: FALLBACK_BETA, client: function () { return getClient(); }, system: function () { return system(); }, today: function () { return today(); },
+    deepModel: function () { return MAIN; },
     designPlaybooks: function (text) { return designPlaybooks({ loaded: {}, skills: 0 }, text); } };
 
+  /* the last answer ended with "By the way, sir, I can start on X now." and the founder said yes: the request is X */
+  var OFFER = /By the way, sir, I can start on (.{3,200}?) now\.?\s*$/i, TAKE = /^(yes|yeah|yep|yup|sure|ok|okay|go|go ahead|go for it|do it|start|start it|start on it|please do|yes please)( sir| kin| jarvis)?[.!]*$/;
+  function offerTaken(text) {
+    var last = turns.length ? turns[turns.length - 1] : null, m = last && last.role === 'assistant' && OFFER.exec(String(last.content || ''));
+    return m && TAKE.test(Kin.ears.norm(text)) ? 'Start on ' + m[1].trim() + ' now.' : '';
+  }
   function askClaude(text, opts) {
-    var c = getClient();
+    var c = getClient(), job = offerTaken(text); if (job) text = job;
     return classify(c, text, opts).then(function (k) {
       if (opts.onRoute) opts.onRoute(k.design ? 'design' : k.route, k);
       /* a design job goes to the studio: a brief, three concepts, pictures when Higgsfield is connected, a strict art director */
@@ -312,7 +345,7 @@
     });
   }
   function answer(text, opts, c, k) {
-    var r = k.route, deepModel = Kin.mind.deep() === 'fable' && !fableGone ? FABLE : MAIN;
+    var r = k.route, deepModel = MAIN;
     var prev = turns.slice(-10), messages = prev.map(function (t) { return { role: t.role, content: t.content }; });
     var notes = '\n\n[Today is ' + today() + '.]';
     var mem = Kin.mind.recall(text, 3500); if (mem) notes += '\n\n[' + mem + ']';
@@ -383,7 +416,7 @@
     function turn() {
       /* Thinking is adaptive (Claude decides how much); effort sets the depth. A request the safety
          systems decline is re-run by the API on a fallback model (server-side fallbacks). */
-      var params = { model: model, max_tokens: room, betas: [FALLBACK_BETA], fallbacks: 'default', thinking: { type: 'adaptive' },
+      var params = { model: model, max_tokens: room, betas: [FALLBACK_BETA], fallbacks: 'default', thinking: { type: 'adaptive', display: 'summarized' },
         output_config: { effort: effort }, system: system(), messages: cached(messages), tools: toolList() };
       var s = c.beta.messages.stream(params, reqOpts), pm = partialMeter(s, model);
       s.on('text', function (delta) { live += delta; show(); });
@@ -414,10 +447,10 @@
           if (opts.onTool) opts.onTool(u.name); if (t && t.status) status(t.status);
           if (!t) return Promise.resolve({ out: 'Unknown tool.', bad: true });
           if (!input || !t.ok(input)) return Promise.resolve({ out: JSON.stringify({ INVALID_JSON: JSON.stringify(u.input).slice(0, 2000) }), bad: true });
-          return Promise.resolve().then(function () { return t.run(input); }).then(function (out) { if (u.name !== 'use_skill' && u.name !== 'make') ctx.evidence.push(u.name + ': ' + (typeof out === 'string' ? out : JSON.stringify(out)).slice(0, 2500)); return { out: out }; }, function (e) { return { out: 'The tool failed: ' + (e && e.message), bad: true }; });
+          return Promise.resolve().then(function () { return t.run(input); }).then(function (out) { if (u.name !== 'use_skill' && u.name !== 'make') ctx.evidence.push(u.name + ': ' + (typeof out === 'string' ? out : out && out.__blocks ? out.__blocks.filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join(' ') : JSON.stringify(out)).slice(0, 2500)); return { out: out }; }, function (e) { return { out: 'The tool failed: ' + (e && e.message), bad: true }; });
         })).then(function (results) {
           messages.push({ role: 'user', content: results.map(function (res, k) {
-            var block = { type: 'tool_result', tool_use_id: uses[k].id, content: typeof res.out === 'string' ? res.out : JSON.stringify(res.out).slice(0, 24000) };
+            var block = { type: 'tool_result', tool_use_id: uses[k].id, content: typeof res.out === 'string' ? res.out : res.out && res.out.__blocks ? res.out.__blocks : JSON.stringify(res.out).slice(0, 24000) };
             if (res.bad) block.is_error = true; return block;
           }) });
           return turn();
@@ -427,7 +460,6 @@
         if (pm.start) total.cost += Kin.mind.partialCost(pm.model, pm.start, pm.chars);
         /* web search or fetch switched off for the organization: answer without the web this time and from now on */
         if (err instanceof Anthropic.BadRequestError && /web (search|fetch)[^.]*not enabled|not enabled[^.]*web (search|fetch)/i.test(String(err.message || '')) && !noWeb) { noWeb = true; return turn(); }
-        if (model === FABLE && step === 0 && (err instanceof Anthropic.BadRequestError || err instanceof Anthropic.PermissionDeniedError || err instanceof Anthropic.NotFoundError) && /model|retention|fable|not available|access/i.test(String(err.message || ''))) { model = MAIN; ctx.model = MAIN; ctx.fableOff = String(err.message || '').slice(0, 160); fableGone = ctx.fableOff; return turn(); }
         /* a tool input that could not be parsed at all: ask again, twice at most. API errors go up. */
         if (err instanceof Anthropic.APIError || !/pars|JSON/i.test(String((err && err.message) || '')) || jsonRetries++ >= 1) throw err;
         return turn();
@@ -435,7 +467,7 @@
     }
     return turn().then(function (res) {
       res.routed = k.how; res.route = r; res.sources = acc.sources; res.made = ctx.made; res.searches = total.searches;
-      res.cost = spentSoFar(); if (!res.model) res.model = total.model || model; if (ctx.fableOff || (fableGone && deepModel !== FABLE && r === 'make' && Kin.mind.deep() === 'fable')) res.fableOff = ctx.fableOff || fableGone;
+      res.cost = spentSoFar(); if (!res.model) res.model = total.model || model;
       if (r === 'make' || opts.aloud || res.refused || res.cut || !res.text || res.text.length < 160 || (opts.signal && opts.signal.aborted)) return res;
       status('Checking the answer');
       /* the check sees what the answer could rest on: tool results, web quotes, the pack's rules, brief and numbers, and what Kin remembers */
@@ -470,15 +502,33 @@
       }, function () { return { verdict: 'skipped', cost: 0 }; });
   }
 
-  function explain(err) {
-    if (err instanceof Anthropic.APIUserAbortError) return { code: 'stopped', text: '' };
-    if (err instanceof Anthropic.AuthenticationError) return { code: 'key', text: 'Anthropic did not accept the key on this device, sir. Check it in settings.' };
-    if (err instanceof Anthropic.PermissionDeniedError) return { code: 'denied', text: 'That key is not allowed to do this, sir. Check its workspace and spend limit in the Anthropic Console.' };
-    if (err instanceof Anthropic.RateLimitError) return { code: 'busy', text: 'The key has hit its rate or spend limit, sir. Give it a minute, or raise the limit in the Console.' };
-    if (err instanceof Anthropic.BadRequestError) return { code: 'request', text: 'Anthropic rejected that request, sir. The reason is on screen.', detail: String(err.message || '').slice(0, 300) };
-    if (err instanceof Anthropic.APIConnectionError) return { code: 'network', text: 'I cannot reach Anthropic from here, sir. Check the connection.' };
-    if (err instanceof Anthropic.APIError) return { code: 'api', text: 'Anthropic had a problem, sir (' + (err.status || 'no status') + '). Try again in a moment.' };
-    return { code: 'error', text: 'Something went wrong on this page, sir. The reason is on screen.', detail: String((err && err.message) || err).slice(0, 300) };
+  /* the last thing that went wrong, kept on this device for the founder to screenshot: status, type, request id, model. Never the key. */
+  var LASTERR = 'kin.lastErr';
+  function noteError(x) {
+    var rec = { at: Date.now(), status: x.status || 0, type: String(x.type || '').slice(0, 60), code: String(x.code || '').slice(0, 30), request: String(x.request || '').slice(0, 80), model: String(x.model || '').slice(0, 40), message: String(x.message || '').replace(/sk-ant-[A-Za-z0-9_-]+/g, '[key]').slice(0, 200) };
+    ls.set(LASTERR, JSON.stringify(rec)); return rec;
+  }
+  function lastError() { try { return JSON.parse(ls.get(LASTERR) || 'null'); } catch (e) { return null; } }
+  function errType(err) { var b = err && err.error; return (b && b.error && b.error.type) || (b && b.type) || (err && err.constructor && err.constructor.name) || ''; }
+  /** what went wrong, in plain words, with what to do; every API error is also kept as the "last error" */
+  function explain(err, model) {
+    if (err instanceof Anthropic.APIUserAbortError || (err && err.name === 'APIUserAbortError')) return { code: 'stopped', text: '' };
+    var st = err && err.status || 0, body = err && err.error, type = errType(err);
+    var msg = String((body && body.error && body.error.message) || (err && err.apiMessage) || (err && err.message) || err || '');
+    if (err && err.code === 'timeout') { noteError({ code: 'timeout', type: 'step time limit', model: model, message: msg }); return { code: 'timeout', text: msg.replace(/\.$/, '') + ', sir.', todo: 'What it spent is counted. Tap Try again, or ask for something simpler.' }; }
+    if (err instanceof Anthropic.APIError) noteError({ status: st, type: type, code: 'api', request: err.requestID || (err.headers && err.headers.get && err.headers.get('request-id')) || '', model: model, message: msg });
+    if (err instanceof Anthropic.APIConnectionTimeoutError) return { code: 'timeout', text: 'Claude is taking longer than usual, sir.', todo: 'Tap Retry, or ask again in a minute.' };
+    if (err instanceof Anthropic.APIConnectionError) return { code: 'network', text: 'I cannot reach Anthropic from here, sir. Check the connection.', todo: 'Tap Retry when you are back online.' };
+    if (st === 402 || /credit balance|billing|purchase credits|out of credit/i.test(msg)) return { code: 'credit', text: 'Your Anthropic account is out of credit, sir.', todo: 'Add credit at console.anthropic.com, under Billing, then ask again.' };
+    if (err instanceof Anthropic.AuthenticationError) return { code: 'key', text: 'Anthropic did not accept the key on this device, sir.', todo: 'Check or replace the key in settings.' };
+    if (err instanceof Anthropic.PermissionDeniedError) return { code: 'denied', text: 'That key is not allowed to do this, sir.', todo: 'Check the key\'s workspace and spend limit in the Anthropic Console.' };
+    if (err instanceof Anthropic.NotFoundError || (st === 400 && /model/i.test(msg) && /not (found|available|supported)|does not exist|access/i.test(msg))) return { code: 'model', text: 'Your key cannot use ' + (model ? model.replace('claude-', '').replace(/-(\d+)-(\d+)$/, ' $1.$2').replace(/^\w/, function (c) { return c.toUpperCase(); }) : 'this model') + ', sir.', todo: 'Check the key\'s workspace in the Anthropic Console, or use a key that has it.', detail: msg.slice(0, 300) };
+    if (err instanceof Anthropic.RateLimitError) return { code: 'busy', text: 'Claude is busy for this key right now, sir. I retried and it still is.', todo: 'Try again in a minute, or raise the key\'s rate limit in the Console.' };
+    if (st === 529 || st === 503 || /overloaded/i.test(type)) return { code: 'busy', text: 'Claude is busy right now, sir. I retried and it still is.', todo: 'Try again in a minute.' };
+    if (err instanceof Anthropic.BadRequestError) return { code: 'request', text: 'Anthropic rejected that request, sir.', detail: msg.slice(0, 300), todo: 'The exact reason is above. Send me a screenshot of it.' };
+    if (err instanceof Anthropic.APIError) return { code: 'api', text: 'Anthropic had a problem, sir (' + (st || 'no status') + ').', todo: 'Try again in a minute.' };
+    noteError({ code: 'page', type: 'page error', model: model, message: msg });
+    return { code: 'error', text: 'Something went wrong on this page, sir. The reason is on screen.', detail: msg.slice(0, 300) };
   }
 
   var PACK_STEPS = 'In the Atlas: Kin\'s settings > Your data > Export everything. Then here: Settings > Import Kin pack.';
@@ -499,7 +549,7 @@
   }
 
   Kin.brain = {
-    MAIN: MAIN, QUICK: QUICK, FABLE: FABLE, PACK_STEPS: PACK_STEPS,
+    MAIN: MAIN, QUICK: QUICK, PACK_STEPS: PACK_STEPS, noteError: noteError, lastError: lastError, explain: explain,
     hasKey: function () { return !!ls.get(KEY); },
     keyHint: function () { var k = ls.get(KEY) || ''; return k ? k.slice(0, 10) + '…' + k.slice(-4) : ''; },
     /** { ok } or { ok: false, why: "shared" | "shape" | "storage" } */
@@ -523,7 +573,7 @@
         if (o) return Promise.resolve({ text: o === 'hour' ? 'I have reached the hourly limit you set, sir.' : 'I have reached the daily limit you set, sir.', source: 'limit', code: 'limit', which: o });
         count();
         return askClaude(text, opts).then(function (r) { r.source = 'claude'; if (r.text) keep(text, r.text); if (r.cost) Kin.mind.addSpend(r.cost); return r; },
-          function (err) { var spent = err && err.spent || 0; if (spent) Kin.mind.addSpend(spent); var e = explain(err); return { text: e.text, detail: e.detail || '', source: 'claude', code: e.code, cost: spent }; });
+          function (err) { var spent = err && err.spent || 0; if (spent) Kin.mind.addSpend(spent); var e = explain(err, MAIN); return { text: e.text, detail: e.detail || '', todo: e.todo || '', source: 'claude', code: e.code, cost: spent }; });
       } catch (err) { var x = explain(err); return Promise.resolve({ text: x.text, detail: x.detail || '', source: 'claude', code: x.code || 'error' }); }
     }
   };

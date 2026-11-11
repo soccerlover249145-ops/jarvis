@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<link rel="stylesheet" href="compact.css">
+<title>Jarvis</title>
+</head>
+<body>
+<main class="wrap" id="wrap" data-state="off" data-mode="ask">
+  <form class="pill" id="pill" autocomplete="off">
+    <div class="orb" id="orb" aria-hidden="true"><i></i><i></i><i></i><b></b></div>
+    <div class="field">
+      <label class="tag" id="tag" for="q">Jarvis</label>
+      <input id="q" type="text" spellcheck="false" placeholder="Ask anything, or say “hey Jarvis”" aria-label="Ask Jarvis">
+    </div>
+    <button type="button" class="ib" id="mic" aria-label="Listen" title="Listen"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+    <button type="button" class="ib" id="ctl" aria-label="Take control for a task" title="Take control for a task"><svg viewBox="0 0 24 24"><path d="M5 3l12 8-5.5 1.2L14 19l-2.6 1.1-2.5-6.7L5 17z"/></svg></button>
+    <button type="button" class="ib" id="open" aria-label="Open the full window" title="Open the full window"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-8 8M10 20H4v-6"/></svg></button>
+  </form>
+  <div class="cap" id="cap" hidden><span id="capT"></span><small id="capS"></small></div>
+</main>
+<script src="compact.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>com.jarvis.desktop.ears</string>
+  <key>CFBundleName</key><string>JarvisEars</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>0.1.0</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Jarvis listens for its wake phrase ("hey Jarvis") and for what you ask after it. Speech is turned into text on this Mac.</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>Jarvis turns what you say into text on this Mac, so it can hear its wake phrase and your questions.</string>
+</dict>
+</plist>

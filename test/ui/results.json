@@ -1,0 +1,120 @@
+{
+  "at": "2026-11-11T07:22:57.414Z",
+  "results": [
+    {
+      "name": "full window loads from app://jarvis",
+      "ok": true,
+      "detail": "app://jarvis/index.html"
+    },
+    {
+      "name": "the page knows it is the Mac app, at its own secure address",
+      "ok": true,
+      "detail": "{\"desktop\":true,\"shared\":false,\"insecure\":false,\"earsDesktop\":true,\"bridge\":\"object\",\"require\":\"undefined\",\"process\":\"undefined\"}"
+    },
+    {
+      "name": "ears come from the Swift helper bridge",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no Node in the page (only the bridge)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a typed key is not kept in the page storage",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "name": "the page reads a placeholder, not the key",
+      "ok": true,
+      "detail": "sk-ant-api03-JARVIS-KEYCHAIN-PLACEHOLDER-not-a-key-0000000000"
+    },
+    {
+      "name": "the key is nowhere in the app's files on disk",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the request to api.anthropic.com left with the Keychain key swapped in",
+      "ok": true,
+      "detail": "HTTP 401, server saw sk-ant-api03-TESTKEY-not-real-0123456789abcdef"
+    },
+    {
+      "name": "the Claude key is not sent to another host (it gets the placeholder)",
+      "ok": true,
+      "detail": "sk-ant-api03-JARVIS-KEYCHAIN-PLACEHOLDER-not-a-key-0000000000"
+    },
+    {
+      "name": "no request anywhere carried the key except to Anthropic",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Jarvis's brain gets the Mac tools",
+      "ok": true,
+      "detail": "open_website, search_in_browser, open_app, look_at_screen, take_control"
+    },
+    {
+      "name": "opening a file:// address is refused over IPC",
+      "ok": true,
+      "detail": "{\"ok\":false,\"why\":\"Only http and https addresses can be opened.\"}"
+    },
+    {
+      "name": "an app not on the list is refused",
+      "ok": true,
+      "detail": "That app is not on your list. Add it in Settings, Mac, Apps Jarvis may open."
+    },
+    {
+      "name": "look at the screen returns one JPEG picture",
+      "ok": true,
+      "detail": "1440x900"
+    },
+    {
+      "name": "the look_at_screen tool hands Claude text plus an image block",
+      "ok": true,
+      "detail": "[\"text\",\"image\"]"
+    },
+    {
+      "name": "take control asks the owner first, and a no stops it",
+      "ok": true,
+      "detail": "{\"ok\":false,\"why\":\"You did not allow it.\",\"declined\":true}"
+    },
+    {
+      "name": "with a yes but no input helper or Accessibility, it stops before touching anything",
+      "ok": true,
+      "detail": "{\"ok\":false,\"why\":\"Allow Accessibility for Jarvis first (System Settings, Privacy & Security, Accessibility), then try again.\",\"permission\":\"accessibility\"}"
+    },
+    {
+      "name": "Settings has a Mac section with permissions, apps, folders and limits",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the key line says the key is in the Keychain",
+      "ok": true,
+      "detail": "A key is saved on this device: kept in the macOS Keychain. Small talk uses claude-haiku-5-5, real questions use claude-opus-5-5."
+    },
+    {
+      "name": "the compact pill window exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a question typed in the pill reaches Jarvis in the full window",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the overlay shows step, spend and the last action",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no script errors in the full window",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

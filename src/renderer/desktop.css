@@ -1,0 +1,31 @@
+/* desktop.css: the Mac app's additions to the Jarvis UI, in the same language (Jost and Plex Mono,
+   ice-blue accent, pill shapes, hairlines on black). */
+
+/* the window has no title bar: the top strip drags the window and clears the traffic lights */
+.is-desktop .top { -webkit-app-region: drag; padding-left: 86px; }
+.is-desktop .top button, .is-desktop .top input, .is-desktop .top a { -webkit-app-region: no-drag; }
+.is-desktop ::selection { background: rgba(87, 230, 255, .28); }
+
+/* toasts: small glass pills top right, one line of what Jarvis just did */
+.dtoasts { position: fixed; top: 58px; right: 16px; z-index: 60; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none; }
+.dtoast { display: flex; align-items: baseline; gap: 10px; max-width: min(440px, calc(100vw - 32px)); padding: 10px 18px; border-radius: 999px;
+  background: rgba(16, 20, 28, .72); backdrop-filter: blur(22px) saturate(1.4); -webkit-backdrop-filter: blur(22px) saturate(1.4);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .10) inset, 0 12px 32px -14px rgba(0, 0, 0, .9);
+  opacity: 0; transform: translateY(-6px) scale(.98); transition: opacity .28s ease, transform .28s cubic-bezier(.2, .8, .2, 1); }
+.dtoast.on { opacity: 1; transform: none; }
+.dtoast b { font: var(--label); letter-spacing: .16em; text-transform: uppercase; color: var(--accent); white-space: nowrap; }
+.dtoast span { font: 400 13px/1.35 var(--f-display); color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Settings, Mac */
+.macset { padding-bottom: 6px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
+.macset h3.sub { margin-top: 22px; }
+.permpill { font: var(--label); letter-spacing: .14em; text-transform: uppercase; padding: 5px 12px; border-radius: 999px; }
+.permpill.ok { color: #9CF5C5; box-shadow: 0 0 0 1px rgba(156, 245, 197, .45) inset; }
+.permpill.todo { color: var(--signal); box-shadow: 0 0 0 1px rgba(255, 180, 92, .5) inset; }
+.macset .btns { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 4px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 6px 6px 14px; border-radius: 999px; font: 400 13px/1.2 var(--f-display); color: var(--fg);
+  background: rgba(255, 255, 255, .05); box-shadow: 0 0 0 1px var(--line2) inset; max-width: 100%; }
+.chipx { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; color: var(--dim); font-size: 15px; line-height: 1; }
+.chipx:hover { color: var(--fg); background: rgba(255, 255, 255, .08); }
+.chipx:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

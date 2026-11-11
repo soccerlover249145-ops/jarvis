@@ -5,19 +5,19 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow,noarchive">
 <meta name="referrer" content="no-referrer">
-<!-- Only this site, the Anthropic API, (for the optional voice key) the ElevenLabs API, and (for the optional Higgsfield sign-in) Higgsfield's sign-in service and picture hosts may be reached. No third-party scripts, fonts or trackers. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://d8j0ntlcm91z4.cloudfront.net https://cdn.higgsfield.ai; media-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.anthropic.com https://api.elevenlabs.io https://clerk.higgsfield.ai https://d8j0ntlcm91z4.cloudfront.net https://cdn.higgsfield.ai; worker-src 'none'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<!-- Only this site, the Anthropic API, (for the optional voice key) the ElevenLabs API, (for the optional Higgsfield sign-in) Higgsfield's sign-in service and picture hosts, and (for the optional Grok Bot bridge, off by default) the founder's relay may be reached. No third-party scripts, fonts or trackers. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://d8j0ntlcm91z4.cloudfront.net https://cdn.higgsfield.ai; media-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.anthropic.com https://api.elevenlabs.io https://clerk.higgsfield.ai https://d8j0ntlcm91z4.cloudfront.net https://cdn.higgsfield.ai https://jarvis-relay-next-of-kin.vercel.app https://api.open-meteo.com https://geocoding-api.open-meteo.com; worker-src 'none'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Kin">
-<link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="preload" href="fonts/jost.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
-<title>Kin</title>
+<link rel="stylesheet" href="desktop.css">
+<title>Jarvis</title>
 </head>
 <body>
 <div class="app" id="app" data-state="off">
@@ -66,7 +66,7 @@
     <div class="sheetbody">
       <p class="note warn" id="sharedNote" hidden></p>
       <div class="steps" id="steps"></div>
-      <p class="note warn" id="leaves">What leaves this device. Your speech goes to the browser maker (Google in Chrome, Microsoft in Edge, Apple in Safari) to be turned into text, whenever the mic is on, asleep or awake. With a Claude key, what you say or type, the last few exchanges, what Kin remembers that bears on the question, and the parts of your pack Kin uses go to Anthropic; web searches and page reads are run by Anthropic too. With a voice key, every sentence Kin speaks goes to ElevenLabs. With Higgsfield connected, the picture prompts of a design job you approve go, through Anthropic, to Higgsfield, and the finished pictures are fetched from Higgsfield into this page. Nothing is ever sent to this website.</p>
+      <p class="note warn" id="leaves">What leaves this device. Your speech goes to the browser maker (Google in Chrome, Microsoft in Edge, Apple in Safari) to be turned into text, whenever the mic is on, asleep or awake. With a Claude key, what you say or type, the last few exchanges, what Kin remembers that bears on the question, and the parts of your pack Kin uses go to Anthropic; web searches and page reads are run by Anthropic too. With a voice key, every sentence Kin speaks goes to ElevenLabs. With Higgsfield connected, the picture prompts of a design job you approve go, through Anthropic, to Higgsfield, and the finished pictures are fetched from Higgsfield into this page. With the Grok Bot bridge turned on, a question you start with &ldquo;ask Grok Bot&rdquo; goes to your relay and your private GitHub mailbox, as described under Grok Bot bridge. Nothing is ever sent to this website.</p>
 
       <h3>Listening</h3>
       <p class="note" id="earsNote"></p>
@@ -96,8 +96,9 @@
       <div class="row"><span></span><div class="btns"><button type="button" class="lnk" id="keySave">Save key</button><button type="button" class="lnk dim" id="keyDrop">Remove key</button></div></div>
       <p class="note" id="keyNote"></p>
       <p class="note warn">The key is kept in this browser on this device only and is sent to Anthropic and nowhere else. With a key, what you say or type, the last few exchanges, your pack&rsquo;s rules and brief, and the entries Kin looks up are sent to Anthropic to get each answer. Anyone who can use this browser can use the key, so create one just for this, give it a monthly spend limit in the Anthropic Console, and remove it here if the device is lost.</p>
-      <div class="row"><span>Hard jobs</span><div class="seg" id="deepSeg" role="group"><button type="button" data-deep="opus">Opus 5.5</button><button type="button" data-deep="fable">Fable 5.2</button></div></div>
-      <p class="note">Documents, plans, designs and decisions go to the strongest model and think harder. Fable 5.2 is the default: Anthropic&rsquo;s most capable model, about twice the price of Opus 5.5 per word. Choose Opus 5.5 to spend less. Ordinary questions use Opus 5.5 either way.</p>
+      <div class="row"><span>Models</span><span class="val" id="modelLine">Opus 5.5 for questions and hard jobs</span></div>
+      <p class="note">Documents, plans, designs and decisions go to Opus 5.5 and think harder; so do the design studio&rsquo;s brief, concepts, art director, refinements and the answer check. Small talk and the quick sorting look use Haiku 5.5. A full design job costs about $1.60 to $1.80 in Claude usage; what each answer cost is shown under it.</p>
+      <p class="note lasterr" id="lastErr" hidden></p>
       <label class="row"><span>Web per day</span><input type="text" inputmode="numeric" id="webCap" maxlength="3" autocomplete="off" aria-label="Web searches per day"></label>
       <p class="note" id="webNote"></p>
       <p class="note" id="spendNote"></p>
@@ -115,6 +116,24 @@
       <div class="row"><span>Kin pack</span><div class="btns"><label class="lnk filebtn">Import Kin pack<input type="file" id="packFile" accept="application/json,.json"></label><button type="button" class="lnk dim" id="packDrop">Remove pack</button></div></div>
       <p class="note">The pack is a file you export from the Atlas. It is stored in this browser on this device and is never uploaded to this website. With a Claude key, its rules and brief and the entries Kin looks up are sent to Anthropic to answer you.</p>
 
+      <h3>Weather</h3>
+      <p class="note" id="wxNote"></p>
+      <label class="row"><span>Your town</span><input type="text" id="wxTown" placeholder="e.g. Berlin" autocomplete="off" maxlength="80" aria-label="Your town for the weather"></label>
+      <div class="row"><span></span><div class="btns"><button type="button" class="lnk" id="wxFind">Find it</button><button type="button" class="lnk dim" id="wxDrop">Forget the place</button></div></div>
+      <div class="wxpick" id="wxPick"></div>
+      <p class="note">For today&rsquo;s weather and weather charts, Kin asks Open-Meteo (free, no account). Finding your town sends its name to Open-Meteo once; after that only the place&rsquo;s coordinates are sent. The place is kept on this device.</p>
+
+      <h3>Grok Bot bridge</h3>
+      <p class="note warn" id="gbLeaves">Off until you turn it on. When it is on, only a sentence that starts by asking Grok Bot (&ldquo;ask Grok Bot what is due tomorrow&rdquo;, typed, or said while Kin is awake) is sent. What leaves this device is that question, and pack excerpts only if you pick them for that question. It goes to your relay below, which files it as an issue in your private GitHub mailbox and wakes Grok Bot; Grok Bot&rsquo;s reply is posted to that issue and read back here. GitHub keeps those issues until someone deletes them. Nothing else from Kin, your pack, your keys or the conversation is sent, and Grok Bot&rsquo;s replies are shown as its words and are never passed to Claude. Anything Grok Bot would send, post, buy or deploy comes back to you as &ldquo;needs your OK&rdquo;.</p>
+      <label class="row"><span>Relay</span><input type="text" id="gbUrl" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Relay address"></label>
+      <label class="row"><span>Device token</span><input type="password" id="gbTok" placeholder="Paste the device token" autocomplete="new-password" autocapitalize="off" spellcheck="false"></label>
+      <div class="row"><span></span><label class="chkline"><input type="checkbox" id="gbKeep"> Keep the token on this device after this tab closes</label></div>
+      <p class="note">By default the token is forgotten when this tab closes. If you keep it, anyone who can use this browser profile can ask Grok Bot through your relay until you remove it. Paste it here only, never in a chat.</p>
+      <div class="row"><span></span><div class="btns"><button type="button" class="lnk" id="gbSave">Save token</button><button type="button" class="lnk" id="gbOn">Turn on</button><button type="button" class="lnk" id="gbTest">Test</button><button type="button" class="lnk dim" id="gbDrop">Remove</button></div></div>
+      <div class="row"><span></span><label class="chkline"><input type="checkbox" id="gbCtx"> Offer pack excerpts with a question (you choose each time)</label></div>
+      <p class="note" id="gbNote"></p>
+      <div id="gbJobs"></div>
+
       <h3>This device</h3>
       <div class="row"><span></span><div class="btns"><button type="button" class="lnk bad" id="erase">Erase everything on this device</button></div></div>
       <p class="note" id="about"></p>
@@ -123,15 +142,20 @@
 </div>
 <script src="vendor/three.min.js"></script>
 <script src="vendor/anthropic-sdk.js"></script>
+<script src="desktop-shim.js"></script>
 <script src="guard.js"></script>
 <script src="pack.js"></script>
 <script src="mind.js"></script>
 <script src="voice.js"></script>
 <script src="ears.js"></script>
+<script src="desktop-ears.js"></script>
 <script src="hf.js"></script>
+<script src="grok-bridge.js"></script>
 <script src="brain.js"></script>
+<script src="chart.js"></script>
 <script src="studio.js"></script>
 <script src="bust.js"></script>
 <script src="app.js"></script>
+<script src="desktop.js"></script>
 </body>
 </html>

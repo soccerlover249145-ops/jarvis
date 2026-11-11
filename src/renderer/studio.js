@@ -11,24 +11,31 @@
    5. The winner is refined, up to three rounds in all, until it scores 90 or more.
    6. The Made shelf shows the winner, the brief, the art director's notes, and the two other concepts.
 
-   Spending: before a job that is likely to cost more than $2 in Claude usage, Kin says so and asks once.
-   Higgsfield credits are priced and approved separately, with a daily cap the founder sets. */
+   Every Claude step runs on Opus 5.5. Before anything is spent, ONE card shows the price (about $1.62 in Claude usage,
+   $1.80 with pictures, and at most what is left of the day's Higgsfield credits) with Go, Go without pictures, and Stop.
+   Stop ends the job there and nothing is sent. After Go the card is a live panel: the step, the time, the money spent
+   from real usage, and Stop, which aborts every request in flight; no further request is made for that job.
+   Each step has a time limit, and every failure is reported in plain words. If the pictures would cost more credits
+   than were approved, Kin stops and asks again. */
 (function () {
   'use strict';
   var Kin = window.Kin = window.Kin || {};
-  var PASS = 90, TYPE_CAP = 70, FAULT_CAP = PASS - 4, ASK_OVER = 2;
+  var PASS = 90, TYPE_CAP = 70, FAULT_CAP = PASS - 4;
   var MCP_BETA = 'mcp-client-2026-09-15';
   var ASPECTS = ['1:1', '3:4', '4:3', '4:5', '9:16', '16:9', '2:3', '3:2'];
   function noop() {}
+  /* how long each step may take before Kin stops it and says so */
+  var LIMIT = { concepts: 420000, pictures: 300000, director: 240000, refine: 360000 };
+  var STEP_NAME = { concepts: 'brief and three concepts', pictures: 'pictures', director: 'art director', refine: 'refinement' };
 
-  /* ---------------------------------------------------------------- what the job will cost, roughly, before it starts */
-  function estimate(kit, deep, pictures) {
-    var cost = Kin.mind.costOf;
-    var usd = cost(deep, { input_tokens: 34000, output_tokens: 30000 }) +      /* brief and three concepts */
-      cost(deep, { input_tokens: 7000, output_tokens: 3000 }) +                  /* the art director, three pictures */
-      2 * cost(kit.MAIN, { input_tokens: 16000, output_tokens: 14000 }) +       /* up to two refinement rounds, on Opus */
-      2 * cost(deep, { input_tokens: 4000, output_tokens: 2000 });              /* their reviews */
-    if (pictures) usd += 2 * cost(kit.MAIN, { input_tokens: 9000, output_tokens: 2500 }); /* price check and making the pictures */
+  /* ---------------------------------------------------------------- what a job costs, roughly (for the notes and the tests; the answer line shows the real cost) */
+  function estimate(kit, pictures) {
+    var cost = Kin.mind.costOf, m = kit.MAIN;
+    var usd = cost(m, { input_tokens: 34000, output_tokens: 30000 }) +      /* brief and three concepts */
+      cost(m, { input_tokens: 7000, output_tokens: 3000 }) +                  /* the art director, three pictures */
+      2 * cost(m, { input_tokens: 16000, output_tokens: 14000 }) +            /* up to two refinement rounds */
+      2 * cost(m, { input_tokens: 4000, output_tokens: 2000 });               /* their reviews */
+    if (pictures) usd += 2 * cost(m, { input_tokens: 9000, output_tokens: 2500 }); /* price check and making the pictures */
     return Math.round(usd * 100) / 100;
   }
 
@@ -112,14 +119,34 @@
 
   function run(text, opts, kit) {
     opts = opts || {};
-    var c = kit.client(), deep = kit.deepModel(), status = opts.onStatus || noop, signal = opts.signal, reqOpts = signal ? { signal: signal } : undefined;
-    var spent = 0, hfCredits = 0, notes = [], madeIds = [], fableOff = '';
-    /* Fable not open to this key (some organisations): carry on with Opus for the rest of the job and say so */
-    function fableGone(e, model) { return model === kit.FABLE && e && (e.status === 400 || e.status === 403 || e.status === 404) && /model|retention|fable|not available|access/i.test(String(e.message || '')); }
+    var c = kit.client(), deep = kit.deepModel(), status = opts.onStatus || noop, signal = opts.signal;
+    var spent = 0, hfCredits = 0, notes = [], madeIds = [], budget = 0;
     var hfOn = !!(Kin.hf && Kin.hf.connected());
-    if (kit.fableGone && kit.fableGone() && Kin.mind.deep() === 'fable') fableOff = kit.fableGone();
-    function add(m) { spent += Kin.mind.costOf(m.model, m.usage); }
+    var onStep = opts.onStep || noop, onSpend = opts.onSpend || noop;
+    function add(m) { spent += Kin.mind.costOf(m.model, m.usage); onSpend(spent); }
     function beat(s) { status(s); }
+    /* the founder stopped the job: no further request is made */
+    function abortErr() { var e = new Error('Request was aborted.'); e.name = 'APIUserAbortError'; e.byFounder = true; return e; }
+    function alive() { if (signal && signal.aborted) throw abortErr(); }
+    function isAbort(e) { return !!e && (e.name === 'APIUserAbortError' || e.name === 'AbortError' || !!(window.Anthropic && e instanceof window.Anthropic.APIUserAbortError)); }
+    function limit(step) { return (Kin.T && Kin.T['studio_' + step]) || LIMIT[step] || 300000; }
+    /* one request's own stop switch: tripped by the founder's Stop or by the step's time limit */
+    function guard(step) {
+      alive();
+      var ctl = new AbortController(), g = { timedOut: false, opts: { signal: ctl.signal } };
+      function outer() { ctl.abort(); }
+      if (signal) signal.addEventListener('abort', outer);
+      var t = setTimeout(function () { g.timedOut = true; ctl.abort(); }, limit(step));
+      g.done = function () { clearTimeout(t); if (signal) signal.removeEventListener('abort', outer); };
+      /* an error from this request, in plain terms: the founder's stop, the time limit, or what Anthropic said */
+      g.fail = function (e) {
+        g.done();
+        if (signal && signal.aborted) return abortErr();
+        if (g.timedOut) { var m = Math.round(limit(step) / 60000); return Object.assign(new Error('The ' + STEP_NAME[step] + ' step took longer than ' + (m >= 1 ? m + (m === 1 ? ' minute' : ' minutes') : Math.round(limit(step) / 1000) + (Math.round(limit(step) / 1000) === 1 ? ' second' : ' seconds')) + ', so I stopped it.'), { code: 'timeout', step: step }); }
+        return e;
+      };
+      return g;
+    }
     /* every event of every stream keeps the page's watchdog fed; a stream that stops part way is still counted */
     function meter(st, model) {
       var pm = { model: model, start: null, chars: 0, counted: false };
@@ -128,30 +155,26 @@
         if (ev.type === 'message_start' && ev.message) { pm.start = ev.message.usage; pm.model = ev.message.model || model; }
         else if (ev.type === 'content_block_delta' && ev.delta) pm.chars += String(ev.delta.text || ev.delta.thinking || ev.delta.partial_json || '').length;
       });
-      pm.lost = function () { if (!pm.counted && pm.start) { pm.counted = true; spent += Kin.mind.partialCost(pm.model, pm.start, pm.chars); } };
+      pm.lost = function () { if (!pm.counted && pm.start) { pm.counted = true; spent += Kin.mind.partialCost(pm.model, pm.start, pm.chars); onSpend(spent); } };
       return pm;
     }
 
     /* one streamed request with a single local tool the model must hand its work to */
-    function toolCall(model, effort, system, user, tool, room, label) {
+    function toolCall(model, effort, system, user, tool, room, label, step, onJson) {
       var tries = 0;
       function once(msgs) {
-        var s = c.beta.messages.stream({ model: model, max_tokens: room, betas: [kit.FALLBACK_BETA], fallbacks: 'default', thinking: { type: 'adaptive' }, output_config: { effort: effort },
-          system: system, messages: msgs, tools: [tool] }, reqOpts), n = 0, pm = meter(s, model);
-        s.on('streamEvent', function () { if (++n % 40 === 0) beat(label); });
+        var g = guard(step);
+        var s = c.beta.messages.stream({ model: model, max_tokens: room, betas: [kit.FALLBACK_BETA], fallbacks: 'default', thinking: { type: 'adaptive', display: 'summarized' }, output_config: { effort: effort },
+          system: system, messages: msgs, tools: [tool] }, g.opts), n = 0, pm = meter(s, model), js = '';
+        s.on('streamEvent', function (ev) { if (++n % 40 === 0) beat(label); if (onJson && ev.type === 'content_block_delta' && ev.delta && ev.delta.partial_json) { js += ev.delta.partial_json; onJson(js); } });
         return s.finalMessage().then(function (m) {
-          add(m);
+          g.done(); add(m);
           if (m.stop_reason === 'refusal') throw Object.assign(new Error('refused'), { refused: true });
           var u = (m.content || []).filter(function (b) { return b.type === 'tool_use' && b.name === tool.name; })[0];
           if (u && u.input && typeof u.input === 'object') return u.input;
           if (++tries > 1) throw new Error('The designer did not hand the work over.');
           return once(msgs.concat([{ role: 'assistant', content: m.content }, { role: 'user', content: [{ type: 'text', text: 'Call ' + tool.name + ' now with the complete work. Nothing else.' }] }]));
-        }, function (e) {
-          pm.lost();
-          if (!fableGone(e, model)) throw e;
-          fableOff = String(e.message || '').slice(0, 160); model = deep = kit.MAIN; if (kit.noteFableGone) kit.noteFableGone(fableOff); beat('Fable 5.2 is not open to this key; using Opus 5.5');
-          return once(msgs);
-        });
+        }, function (e) { pm.lost(); throw g.fail(e); });
       }
       return once([{ role: 'user', content: user }]);
     }
@@ -167,11 +190,12 @@
       });
       content.push({ type: 'text', text: 'The brief:\n' + JSON.stringify(brief).slice(0, 3000) });
       /* streamed, so a long look at three pictures keeps showing signs of life */
-      var st = c.beta.messages.stream({ model: deep, max_tokens: 12000, betas: [kit.FALLBACK_BETA], fallbacks: 'default', thinking: { type: 'adaptive' }, output_config: { effort: 'high' }, system: STRICT, messages: [{ role: 'user', content: content }] }, reqOpts), n = 0, jm = meter(st, deep);
+      var g = guard('director');
+      var st = c.beta.messages.stream({ model: deep, max_tokens: 12000, betas: [kit.FALLBACK_BETA], fallbacks: 'default', thinking: { type: 'adaptive', display: 'summarized' }, output_config: { effort: 'high' }, system: STRICT, messages: [{ role: 'user', content: content }] }, g.opts), n = 0, jm = meter(st, deep);
       st.on('streamEvent', function () { if (++n % 40 === 0) beat('The art director is looking'); });
       return st.finalMessage()
         .then(function (m) {
-          add(m); var j = jsonIn(textOf(m)) || {}, list = Array.isArray(j.concepts) ? j.concepts : [];
+          g.done(); add(m); var j = jsonIn(textOf(m)) || {}, list = Array.isArray(j.concepts) ? j.concepts : [];
           items.forEach(function (it, k) {
             var r = list[k] || {}, s = typeof r.score === 'number' ? Math.max(0, Math.min(100, Math.round(r.score))) : null;
             it.raw = s; it.notes = (Array.isArray(r.notes) ? r.notes : []).map(String).slice(0, 3); it.fixes = (Array.isArray(r.fixes) ? r.fixes : []).map(String).slice(0, 4); it.caps = [];
@@ -180,7 +204,7 @@
             it.score = s;
           });
           return { winner: typeof j.winner === 'number' ? j.winner : 0, why: String(j.why || '').slice(0, 300) };
-        }, function (e) { jm.lost(); if (e && e.name === 'APIUserAbortError') throw e; items.forEach(function (it) { it.score = null; it.notes = []; it.fixes = []; it.caps = []; }); notes.push('The art director could not be reached (' + String((e && e.message) || e).slice(0, 100) + ').'); return { winner: 0, why: '', failed: true }; });
+        }, function (e) { jm.lost(); e = g.fail(e); if (isAbort(e)) throw e; items.forEach(function (it) { it.score = null; it.notes = []; it.fixes = []; it.caps = []; }); notes.push('The art director could not be reached (' + String((e && e.message) || e).slice(0, 100) + ').'); return { winner: 0, why: '', failed: true }; });
     }
 
     /* ---- turn one SVG into something the art director can see: compose, clean, measure, draw ---- */
@@ -197,12 +221,13 @@
         if (!tok) throw Object.assign(new Error('Higgsfield is not connected.'), { hf: 'auth' });
         var msgs = [{ role: 'user', content: prompt }], uses = [], results = [], pauses = 0;
         function step() {
+          var g = guard('pictures');
           var s = c.beta.messages.stream({ model: kit.MAIN, max_tokens: room || 8000, betas: [MCP_BETA, kit.FALLBACK_BETA], fallbacks: 'default', output_config: { effort: 'low' },
             mcp_servers: [{ type: 'url', url: Kin.hf.MCP_URL, name: 'higgsfield', authorization_token: tok }],
-            tools: [{ type: 'mcp_toolset', mcp_server_name: 'higgsfield', default_config: { enabled: false }, configs: enable }], messages: msgs }, reqOpts), n = 0, mm = meter(s, kit.MAIN);
+            tools: [{ type: 'mcp_toolset', mcp_server_name: 'higgsfield', default_config: { enabled: false }, configs: enable }], messages: msgs }, g.opts), n = 0, mm = meter(s, kit.MAIN);
           s.on('streamEvent', function () { if (++n % 30 === 0) beat('Talking to Higgsfield'); });
-          return s.finalMessage().catch(function (e) { mm.lost(); throw e; }).then(function (m) {
-            add(m);
+          return s.finalMessage().catch(function (e) { mm.lost(); throw g.fail(e); }).then(function (m) {
+            g.done(); add(m);
             (m.content || []).forEach(function (b) { if (b.type === 'mcp_tool_use') uses.push(b); if (b.type === 'mcp_tool_result') results.push(b); });
             if (m.stop_reason === 'pause_turn' && ++pauses <= 4) { msgs.push({ role: 'assistant', content: m.content }); return step(); }
             return { uses: uses, results: results, text: textOf(m) };
@@ -214,6 +239,7 @@
         if (authFail) { Kin.hf.rejected(resultText(authFail).slice(0, 80)); throw Object.assign(new Error('Higgsfield turned the sign-in down.'), { hf: 'auth' }); }
         return r;
       }, function (e) {
+        if (isAbort(e) || (e && e.code === 'timeout')) throw e;
         if (e && !e.hf && /mcp|authori[sz]|401|403|token/i.test(String(e.message || ''))) { Kin.hf.rejected(String(e.message || '').slice(0, 80)); throw Object.assign(new Error('Higgsfield turned the sign-in down.'), { hf: 'auth' }); }
         throw e;
       });
@@ -232,9 +258,16 @@
           if (priced < plan.length) { notes.push('Higgsfield did not price every picture, so none were made.'); return null; }
           credits = Math.round(credits * 100) / 100;
           var used = Kin.hf.used(), cap = Kin.hf.cap();
-          if (used + credits > cap) { notes.push('The pictures would cost about ' + credits + ' credits, which passes your daily Higgsfield limit (' + used + ' of ' + cap + ' used today). Raise it in settings to allow them.'); return null; }
-          return (opts.confirm ? opts.confirm({ kind: 'credits', title: 'Make ' + plan.length + (plan.length === 1 ? ' picture' : ' pictures') + ' on Higgsfield?', lines: ['About ' + credits + ' Higgsfield credits, from your account.', 'Today so far: ' + used + ' of your ' + cap + '-credit daily limit.'], say: 'The pictures cost about ' + credits + ' Higgsfield credits, sir. Shall I make them?', yes: 'Make them', no: 'Skip pictures' }) : Promise.resolve(false))
-            .then(function (ok) { if (!ok) { notes.push('Pictures skipped at your word; the concepts are drawn instead.'); return null; } return credits; });
+          /* approved on the card: at most what was left of today's limit. More than that: stop and ask again */
+          if (credits <= budget && used + credits <= cap) return credits;
+          var over = { kind: 'credits', label: 'Kin stopped to ask', title: 'The pictures cost more than you approved', price: credits + ' credits',
+            lines: ['Higgsfield priced ' + plan.length + (plan.length === 1 ? ' picture' : ' pictures') + ' at ' + credits + ' credits. You approved up to ' + budget + ' (today: ' + used + ' of ' + cap + ' used).', 'Raise the daily limit in settings to allow more. Nothing has been made on Higgsfield.'],
+            say: 'The pictures cost ' + credits + ' credits, more than you approved, sir. Draw them instead, or stop?',
+            choices: [{ k: 'draw', label: 'Draw them instead', kind: 'go', note: 'Carries on without pictures. Claude usage continues.' }, { k: 'stop', label: 'Stop the job', kind: 'stop', note: 'Ends the job now. Nothing more is spent.' }] };
+          return (opts.choose ? opts.choose(over) : Promise.resolve('draw')).then(function (k) {
+            if (k === 'stop') throw abortErr();
+            notes.push('The pictures would have cost ' + credits + ' credits, more than the ' + budget + ' approved, so the concepts are drawn instead.'); return null;
+          });
         })
         .then(function (credits) {
           if (credits == null) return {};
@@ -273,24 +306,37 @@
         .catch(function (e) {
           if (e && e.hf === 'auth') { notes.push('Higgsfield did not accept the sign-in, so the concepts are drawn instead. Connect it again in settings.'); return {}; }
           if (e && e.hf === 'breach') return {};
-          if (e && e.name === 'APIUserAbortError') throw e;
+          if (isAbort(e)) throw e;
+          if (e && e.code === 'timeout') { notes.push(e.message + ' The concepts are drawn instead; Higgsfield may still finish the pictures and count the credits.'); return {}; }
           notes.push('The pictures could not be made (' + String((e && e.message) || e).slice(0, 120) + '); the concepts are drawn instead.'); return {};
         });
     }
 
     /* ---- the job ---- */
-    var est = estimate(kit, deep, hfOn);
-    var gate = est > ASK_OVER && opts.confirm
-      ? opts.confirm({ kind: 'cost', title: 'A full design job', lines: ['About $' + est.toFixed(2) + ' in Claude usage on ' + (/fable/.test(deep) ? 'Fable 5.2' : 'Opus 5.5') + ': a brief, three concepts, an art director and up to three rounds of refinement.', hfOn ? 'Pictures are priced and asked for separately.' : 'Higgsfield is not connected, so the concepts are drawn, not photographed.'], say: 'A full design job costs about ' + est.toFixed(2) + ' dollars, sir. Shall I go ahead?', yes: 'Go ahead', no: 'Not now' })
-      : Promise.resolve(true);
     var brief = null, title = '', items = [], pics = {}, verdict = null;
-    return gate.then(function (ok) {
-      if (!ok) return { text: 'Understood, sir. Nothing was made and nothing was spent.', declined: true };
-      beat('Writing the brief and three concepts');
+    /* ONE card before anything is spent: the price, then Go, Go without pictures (when Higgsfield is connected), or Stop */
+    var hfLeft = hfOn ? Math.max(0, Math.round((Kin.hf.cap() - Kin.hf.used()) * 100) / 100) : 0;
+    var withPics = hfOn && hfLeft > 0, usdDraw = estimate(kit, false), usdPics = estimate(kit, true);
+    var card = { kind: 'job', label: 'Before anything is spent', title: 'Design job', price: '$' + (withPics ? usdPics : usdDraw).toFixed(2), priceNote: 'estimated Claude usage · Opus 5.5',
+      lines: [withPics ? 'A brief, three concepts, real pictures where they help, a strict art director, and up to three rounds of refinement.' : 'A brief, three drawn concepts, a strict art director, and up to three rounds of refinement.',
+        withPics ? 'Pictures: up to 4 on Higgsfield, priced first, at most ' + hfLeft + ' credits (what is left of today\'s ' + Kin.hf.cap() + ').' : hfOn ? 'Pictures: today\'s Higgsfield limit is used up, so the concepts are drawn.' : 'Higgsfield is not connected, so the concepts are drawn.'],
+      say: 'A design job costs about ' + (withPics ? usdPics : usdDraw).toFixed(2) + ' dollars, sir. Go, or stop?',
+      choices: [{ k: 'go', label: 'Go', kind: 'go', note: withPics ? 'Starts now, with pictures.' : 'Starts now.' }]
+        .concat(withPics ? [{ k: 'draw', label: 'Go without pictures', kind: 'alt', note: 'About $' + usdDraw.toFixed(2) + ', no Higgsfield credits.' }] : [])
+        .concat([{ k: 'stop', label: 'Stop', kind: 'stop', note: 'Nothing is sent and nothing is spent.' }]) };
+    var gate = opts.plan ? opts.plan(card) : Promise.resolve('go');
+    return gate.then(function (k) {
+      if (k !== 'go' && k !== 'draw') return { text: 'Stopped, sir. Nothing was spent.', declined: true };
+      alive();
+      hfOn = withPics && k === 'go'; budget = hfOn ? hfLeft : 0;
+      onStep('brief'); beat('Writing the brief');
       var books = kit.designPlaybooks(text);
       var user = [{ type: 'text', text: text + '\n\n[Today is ' + kit.today() + '.]' + (books ? '\n\n' + books : '') }];
-      return toolCall(deep, 'high', kit.system().concat([{ type: 'text', text: conceptRules(hfOn) }]), user, CONCEPTS_TOOL, 64000, 'Drawing three concepts')
+      var onConcepts = false;
+      return toolCall(deep, 'high', kit.system().concat([{ type: 'text', text: conceptRules(hfOn) }]), user, CONCEPTS_TOOL, 64000, 'Drawing three concepts', 'concepts',
+        function (js) { if (!onConcepts && /"concepts"\s*:/.test(js)) { onConcepts = true; onStep('concepts'); beat('Drawing three concepts'); } })
         .then(function (input) {
+          if (!onConcepts) onStep('concepts');
           brief = input.brief || {}; title = String(input.title || 'Design').slice(0, 120);
           var seen = {}, plan = [];
           items = (input.concepts || []).slice(0, 3).map(function (k) {
@@ -298,12 +344,13 @@
             return { name: String(k.name || '').slice(0, 60), idea: String(k.idea || '').slice(0, 300), src: String(k.svg || '') };
           });
           if (!items.length) throw new Error('No concepts came back.');
+          if (plan.length) onStep('pictures');
           return pictures(plan);
         })
         .then(function (p) { pics = p || {}; beat('Measuring the three concepts'); return Promise.all(items.map(function (it) { return prepare(it, pics); })); })
         .then(function () {
           items = items.filter(function (it) { return it.svg; }); if (!items.length) throw new Error('None of the concepts was a usable SVG.');
-          beat('The art director is comparing the concepts'); return judge(brief, items);
+          onStep('director'); beat('The art director is comparing the concepts'); return judge(brief, items);
         })
         .then(function (v) {
           verdict = v;
@@ -312,7 +359,7 @@
           var win = items[best]; win.chosen = true; win.round = 1;
           function refine() {
             if (win.score == null || win.score >= PASS || win.round >= 3) return Promise.resolve(win);
-            beat('Refining the winner, round ' + (win.round + 1) + ' of 3');
+            onStep('refine'); beat('Refining the winner, round ' + (win.round + 1) + ' of 3');
             var asks = (win.checked && win.checked.hard.length ? ['Measured problems, fix all of these first:\n- ' + win.checked.hard.join('\n- ')] : [])
               .concat(win.fixes.length ? ['The art director asks:\n- ' + win.fixes.join('\n- ')] : [])
               .concat(win.caps.indexOf('type only') >= 0 ? ['This is a type-only piece and the brief does not ask for minimalism. Add a real image: ' + (Object.keys(pics).length ? 'use the existing pictures (' + Object.keys(pics).map(function (k) { return 'hf:' + k; }).join(', ') + ') or ' : '') + 'draw an illustration in the SVG.'] : [])
@@ -320,7 +367,7 @@
             var u = [{ type: 'text', text: 'Refine this design to an excellent, finished piece (the bar is ' + PASS + ' of 100; it scored ' + win.score + ').\nThe brief: ' + JSON.stringify(brief).slice(0, 3000) + '\nThe concept: ' + win.name + ': ' + win.idea + '\n\n' + asks.join('\n\n') + '\n\nKeep what works' + (win.notes.length ? ' (' + win.notes.join('; ') + ')' : '') + '. Picture references stay as href="hf:imgN". Here is the SVG:\n' + win.src.slice(0, 120000) + '\n\nCall revise_design with the complete revised SVG.' }];
             /* the brief, the three concepts and every critique run on the deep model; a refinement round applies
                concrete fixes, which Opus 5.5 does as well for about half the price */
-            return toolCall(kit.MAIN, 'high', kit.system(), u, REVISE_TOOL, 48000, 'Refining the winner')
+            return toolCall(kit.MAIN, 'high', kit.system(), u, REVISE_TOOL, 48000, 'Refining the winner', 'refine')
               .then(function (r) {
                 var next = { name: win.name, idea: win.idea, src: String(r.svg || ''), changed: String(r.changed || '').slice(0, 200) };
                 return prepare(next, pics).then(function () {
@@ -331,7 +378,7 @@
                     return refine();
                   });
                 });
-              }, function (e) { if (e && e.name === 'APIUserAbortError') throw e; notes.push('A refinement round failed (' + String((e && e.message) || e).slice(0, 100) + ').'); win.round = 3; return win; });
+              }, function (e) { if (isAbort(e)) throw e; notes.push('A refinement round failed (' + String((e && e.message) || e).slice(0, 100) + ').'); win.round = 3; return win; });
           }
           return refine();
         })
@@ -345,9 +392,10 @@
           var s = win.score;
           var line = 'The ' + win.name + ' concept won, sir: ' + win.idea.replace(/\.$/, '') + '. ' + (s == null ? 'The art director could not be reached, so judge it yourself.' : 'The art director gave it ' + s + ' of 100' + (win.round > 1 ? ' after ' + win.round + ' rounds' : '') + '.') +
             (s != null && s < PASS && win.fixes.length ? ' The one thing I would still change: ' + win.fixes[0].replace(/\.$/, '') + '.' : '') + ' It is on your Made shelf with the brief and the two other concepts.' + (notes.length ? '\n\n' + notes.join(' ') : '');
+          onStep('done');
           return { text: line, model: deep, made: madeIds, studio: true };
         });
-    }).then(function (r) { r.cost = spent; r.route = 'make'; r.credits = hfCredits; if (fableOff) r.fableOff = fableOff; return r; },
+    }).then(function (r) { r.cost = spent; r.route = 'make'; r.credits = hfCredits; return r; },
       function (e) { if (e && typeof e === 'object') e.spent = spent; throw e; });
   }
 

@@ -21,7 +21,10 @@
   /* a plain http page can be altered on the way to the browser, so nothing private is kept there either.
      Addresses ending in .test and localhost are for rehearsals on this machine only. */
   var host = String(location.hostname || '');
-  var insecure = location.protocol !== 'https:' && !/(\.test|^localhost|^127\.0\.0\.1)$/.test(host);
+  /* the Mac app serves this page from inside itself at app://jarvis/, its own address, and keeps keys in the Keychain */
+  var desktop = location.protocol === 'app:' && host === 'jarvis' && !!window.jarvisDesktop;
+  Kin.desktop = desktop;
+  var insecure = !desktop && location.protocol !== 'https:' && !/(\.test|^localhost|^127\.0\.0\.1)$/.test(host);
   Kin.insecure = insecure;
   Kin.shared = framed || insecure || (dir !== '/' && !own);
   Kin.SHARED_TEXT = insecure

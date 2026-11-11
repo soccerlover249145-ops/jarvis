@@ -28,6 +28,8 @@
     get: function (k, d) { if (Kin.shared) return d; try { var v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } },
     set: function (k, v) { if (Kin.shared) return; try { localStorage.setItem(k, v); } catch (e) {} }
   };
+  /* the old Fable/Opus choice for hard jobs is gone (Opus 5.5 does every deep job); drop its leftover setting */
+  try { if (!Kin.shared) localStorage.removeItem('kin.deep'); } catch (e) {}
   function uid(p) { return p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
   function words(s) { return Kin.pack ? Kin.pack.words(s) : String(s || '').toLowerCase().split(/\W+/).filter(Boolean); }
   function today() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
@@ -119,7 +121,7 @@
     if (old) { Object.keys(item).forEach(function (k) { old[k] = item[k]; }); old.at = Date.now(); old.round = (old.round || 1) + (item.content ? 1 : 0); save('made'); return old; }
     var m = { id: item.id || uid('d'), kind: item.kind, title: item.title, note: item.note || '', content: item.content, at: Date.now(), round: 1, score: null };
     /* a design from the studio also keeps its brief, the art director's notes and the other concepts */
-    ['src', 'brief', 'concept', 'notes', 'why', 'caps', 'others', 'pictures', 'credits', 'usd', 'issues'].forEach(function (k) { if (item[k] !== undefined) m[k] = item[k]; });
+    ['src', 'brief', 'concept', 'notes', 'why', 'caps', 'others', 'pictures', 'credits', 'usd', 'issues', 'spec'].forEach(function (k) { if (item[k] !== undefined) m[k] = item[k]; });
     data.made.unshift(m); if (data.made.length > MADE_MAX) data.made.length = MADE_MAX; save('made'); return m;
   }
   function getMade(id) { return data.made.filter(function (m) { return m.id === id; })[0] || null; }
@@ -265,7 +267,7 @@
       setTimeout(function () { URL.revokeObjectURL(url); }, 4000); return true;
     } catch (e) { return false; }
   }
-  function fileName(m) { var base = String(m.title || 'kin').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 50) || 'kin'; return base + (m.kind === 'design' ? '.svg' : '.md'); }
+  function fileName(m) { var base = String(m.title || 'kin').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 50) || 'kin'; return base + (m.kind === 'design' || m.kind === 'chart' ? '.svg' : '.md'); }
 
   /* ---------------------------------------------------------------- a small, safe Markdown renderer.
      Builds DOM nodes with textContent only, so nothing in the text can become markup. */
@@ -432,7 +434,7 @@
   }
   function instantHelp(raw) {
     if (!/^(help|what can (you|i) (do|say)|what do you do|commands)[?.! ]*$/i.test(String(raw || '').trim())) return null;
-    var show = 'Things you can say:\n- "hey Jarvis", "go to sleep", "stop"\n- "What is due this week?", "brief me", "what is the latest on ..."\n- "Design a poster for ...", "Write a plan for ...", "Make a table of ..."\n- "bench, 135 for 8", "log that I changed the brake pads", "rest 90 seconds"\n- "run the morning protocol", "shutdown", "focus"\n- "remember that ...", and the thumbs under each answer teach me what works.';
+    var show = 'Things you can say:\n- "hey Jarvis", "go to sleep", "stop"\n- "What is due this week?", "brief me", "what is the latest on ..."\n- "Design a poster for ...", "Write a plan for ...", "Make a table of ..."\n- "bench, 135 for 8", "log that I changed the brake pads", "rest 90 seconds"\n- "run the morning protocol", "shutdown", "focus"\n- "ask Grok Bot ..." (when the Grok Bot bridge is on in settings)\n- "remember that ...", and the thumbs under each answer teach me what works.';
     return { say: 'It is on screen now, sir.', show: show };
   }
   /** Phrases Kin handles on this device at once, without Claude. Returns { say, show, clip?, sleep?, open? } or null. */
@@ -443,7 +445,7 @@
   /* ---------------------------------------------------------------- spend: an estimate from the token counts */
   /* dollars per million tokens: input, output, cache read, cache write (5-minute writes cost 1.25 times input) */
   var PRICES = {
-    'claude-opus-5-5': [4, 20, 0.2, 5], 'claude-fable-5-2': [8, 40, 0.2, 10], 'claude-haiku-5-5': [0.1, 0.5, 0.01, 0.125],
+    'claude-opus-5-5': [4, 20, 0.2, 5], 'claude-haiku-5-5': [0.1, 0.5, 0.01, 0.125],
     'claude-opus-4-8': [5, 25, 0.5, 6.25], 'claude-opus-5': [5, 25, 0.5, 6.25], 'claude-sonnet-5-5': [2, 10, 0.1, 2.5]
   };
   var SEARCH_USD = 0.01;
@@ -476,7 +478,6 @@
     instant: instant, numify: numify, onTimer: onTimer, timer: function () { return timer ? { left: Math.ceil((timer.end - Date.now()) / 1000), label: timer.label } : null }, stopTimer: stopTimer, fmt: fmt,
     md: md,
     costOf: costOf, partialCost: partialCost, addSpend: addSpend, spendToday: spendToday, webCap: webCap, setWebCap: setWebCap, webToday: webToday, addWeb: addWeb, webLeft: webLeft,
-    deep: function () { return ls.get('kin.deep', 'fable') === 'opus' ? 'opus' : 'fable'; }, setDeep: function (v) { ls.set('kin.deep', v === 'fable' ? 'fable' : 'opus'); },
     wipe: function () { data = { memory: [], made: [], log: [] }; stopTimer(true); var k = kv(); if (k) ['memory', 'made', 'log'].forEach(function (n) { k.del('mind.' + n).catch(function () {}); }); }
   };
 })();
