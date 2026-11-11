@@ -163,6 +163,8 @@ button { background: none; border: 0; padding: 0; cursor: pointer; -webkit-tap-h
 
 /* the line under the face would print over an open conversation */
 body:has(#thread:not([hidden])) .caption { visibility: hidden; }
+/* the conversation covers the stage: the first-run "Load your data" card steps aside instead of sitting on top of it */
+body:has(#thread:not([hidden])) .loadcard { display: none; }
 
 /* asking before spending */
 /* ---- cards that ask first, and the live job panel: large soft corners, layered surfaces, pill buttons ---- */

@@ -297,7 +297,7 @@
   }
   function today() { var d = new Date(); return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d.getDay()] + ' ' + ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear(); }
 
-  function keep(q, a) { turns.push({ role: 'user', content: q }, { role: 'assistant', content: a }); turns = turns.slice(-16); ls.set(TURNS, JSON.stringify(turns)); }
+  function keep(q, a) { turns.push({ role: 'user', content: q }, { role: 'assistant', content: a, at: Date.now() }); turns = turns.slice(-16); ls.set(TURNS, JSON.stringify(turns)); }
 
   /** Split a reply into what the founder should read and where it came from. Short text written just before
       a search or a tool call ("I will look that up") is a preamble and is dropped; the rest is kept in order. */
@@ -325,8 +325,11 @@
 
   /* the last answer ended with "By the way, sir, I can start on X now." and the founder said yes: the request is X */
   var OFFER = /By the way, sir, I can start on (.{3,200}?) now\.?\s*$/i, TAKE = /^(yes|yeah|yep|yup|sure|ok|okay|go|go ahead|go for it|do it|start|start it|start on it|please do|yes please)( sir| kin| jarvis)?[.!]*$/;
+  /* only an offer in Kin's very last answer, made in the last few minutes; an older one is just a "yes" */
+  var OFFER_MS = 5 * 60000;
   function offerTaken(text) {
-    var last = turns.length ? turns[turns.length - 1] : null, m = last && last.role === 'assistant' && OFFER.exec(String(last.content || ''));
+    var last = turns.length ? turns[turns.length - 1] : null, fresh = last && last.at > 0 && Date.now() - last.at < OFFER_MS,
+      m = fresh && last.role === 'assistant' && OFFER.exec(String(last.content || ''));
     return m && TAKE.test(Kin.ears.norm(text)) ? 'Start on ' + m[1].trim() + ' now.' : '';
   }
   function askClaude(text, opts) {

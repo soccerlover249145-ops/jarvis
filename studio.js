@@ -25,7 +25,10 @@
   var ASPECTS = ['1:1', '3:4', '4:3', '4:5', '9:16', '16:9', '2:3', '3:2'];
   function noop() {}
   /* how long each step may take before Kin stops it and says so */
+  /* each request may go this long with no stream event at all (the clock restarts on every event) ... */
   var LIMIT = { concepts: 420000, pictures: 300000, director: 240000, refine: 360000 };
+  /* ... and never longer than this in total, however busy it is */
+  var HARD = { concepts: 900000, pictures: 600000, director: 480000, refine: 720000 };
   var STEP_NAME = { concepts: 'brief and three concepts', pictures: 'pictures', director: 'art director', refine: 'refinement' };
 
   /* ---------------------------------------------------------------- what a job costs, roughly (for the notes and the tests; the answer line shows the real cost) */
@@ -130,27 +133,35 @@
     function alive() { if (signal && signal.aborted) throw abortErr(); }
     function isAbort(e) { return !!e && (e.name === 'APIUserAbortError' || e.name === 'AbortError' || !!(window.Anthropic && e instanceof window.Anthropic.APIUserAbortError)); }
     function limit(step) { return (Kin.T && Kin.T['studio_' + step]) || LIMIT[step] || 300000; }
-    /* one request's own stop switch: tripped by the founder's Stop or by the step's time limit */
+    function hardLimit(step) { return (Kin.T && Kin.T['studio_hard_' + step]) || HARD[step] || 600000; }
+    function span(ms) { var m = Math.round(ms / 60000), sec = Math.round(ms / 1000); return m >= 1 ? m + (m === 1 ? ' minute' : ' minutes') : sec + (sec === 1 ? ' second' : ' seconds'); }
+    /* one request's own stop switch: tripped by the founder's Stop, by a stream that goes quiet, or by the step's overall limit.
+       g.poke() runs on every stream event, so a stream that is still producing is never cut off by the quiet limit. */
     function guard(step) {
       alive();
-      var ctl = new AbortController(), g = { timedOut: false, opts: { signal: ctl.signal } };
+      var ctl = new AbortController(), g = { timedOut: '', over: false, opts: { signal: ctl.signal } }, t = null;
       function outer() { ctl.abort(); }
+      function arm() { clearTimeout(t); t = setTimeout(function () { g.timedOut = 'quiet'; ctl.abort(); }, limit(step)); }
       if (signal) signal.addEventListener('abort', outer);
-      var t = setTimeout(function () { g.timedOut = true; ctl.abort(); }, limit(step));
-      g.done = function () { clearTimeout(t); if (signal) signal.removeEventListener('abort', outer); };
+      arm();
+      var h = setTimeout(function () { g.timedOut = 'hard'; ctl.abort(); }, hardLimit(step));
+      g.poke = function () { if (!g.over && !g.timedOut) arm(); };
+      g.done = function () { g.over = true; clearTimeout(t); clearTimeout(h); if (signal) signal.removeEventListener('abort', outer); };
       /* an error from this request, in plain terms: the founder's stop, the time limit, or what Anthropic said */
       g.fail = function (e) {
         g.done();
         if (signal && signal.aborted) return abortErr();
-        if (g.timedOut) { var m = Math.round(limit(step) / 60000); return Object.assign(new Error('The ' + STEP_NAME[step] + ' step took longer than ' + (m >= 1 ? m + (m === 1 ? ' minute' : ' minutes') : Math.round(limit(step) / 1000) + (Math.round(limit(step) / 1000) === 1 ? ' second' : ' seconds')) + ', so I stopped it.'), { code: 'timeout', step: step }); }
+        if (g.timedOut === 'hard') return Object.assign(new Error('The ' + STEP_NAME[step] + ' step took longer than ' + span(hardLimit(step)) + ', so I stopped it.'), { code: 'timeout', step: step });
+        if (g.timedOut) return Object.assign(new Error('The ' + STEP_NAME[step] + ' step went quiet for ' + span(limit(step)) + ', so I stopped it.'), { code: 'timeout', step: step });
         return e;
       };
       return g;
     }
     /* every event of every stream keeps the page's watchdog fed; a stream that stops part way is still counted */
-    function meter(st, model) {
+    function meter(st, model, g) {
       var pm = { model: model, start: null, chars: 0, counted: false };
       st.on('streamEvent', function (ev) {
+        if (g) g.poke();
         if (opts.onBeat) opts.onBeat();
         if (ev.type === 'message_start' && ev.message) { pm.start = ev.message.usage; pm.model = ev.message.model || model; }
         else if (ev.type === 'content_block_delta' && ev.delta) pm.chars += String(ev.delta.text || ev.delta.thinking || ev.delta.partial_json || '').length;
@@ -165,7 +176,7 @@
       function once(msgs) {
         var g = guard(step);
         var s = c.beta.messages.stream({ model: model, max_tokens: room, betas: [kit.FALLBACK_BETA], fallbacks: 'default', thinking: { type: 'adaptive', display: 'summarized' }, output_config: { effort: effort },
-          system: system, messages: msgs, tools: [tool] }, g.opts), n = 0, pm = meter(s, model), js = '';
+          system: system, messages: msgs, tools: [tool] }, g.opts), n = 0, pm = meter(s, model, g), js = '';
         s.on('streamEvent', function (ev) { if (++n % 40 === 0) beat(label); if (onJson && ev.type === 'content_block_delta' && ev.delta && ev.delta.partial_json) { js += ev.delta.partial_json; onJson(js); } });
         return s.finalMessage().then(function (m) {
           g.done(); add(m);
@@ -191,7 +202,7 @@
       content.push({ type: 'text', text: 'The brief:\n' + JSON.stringify(brief).slice(0, 3000) });
       /* streamed, so a long look at three pictures keeps showing signs of life */
       var g = guard('director');
-      var st = c.beta.messages.stream({ model: deep, max_tokens: 12000, betas: [kit.FALLBACK_BETA], fallbacks: 'default', thinking: { type: 'adaptive', display: 'summarized' }, output_config: { effort: 'high' }, system: STRICT, messages: [{ role: 'user', content: content }] }, g.opts), n = 0, jm = meter(st, deep);
+      var st = c.beta.messages.stream({ model: deep, max_tokens: 12000, betas: [kit.FALLBACK_BETA], fallbacks: 'default', thinking: { type: 'adaptive', display: 'summarized' }, output_config: { effort: 'high' }, system: STRICT, messages: [{ role: 'user', content: content }] }, g.opts), n = 0, jm = meter(st, deep, g);
       st.on('streamEvent', function () { if (++n % 40 === 0) beat('The art director is looking'); });
       return st.finalMessage()
         .then(function (m) {
@@ -224,7 +235,7 @@
           var g = guard('pictures');
           var s = c.beta.messages.stream({ model: kit.MAIN, max_tokens: room || 8000, betas: [MCP_BETA, kit.FALLBACK_BETA], fallbacks: 'default', output_config: { effort: 'low' },
             mcp_servers: [{ type: 'url', url: Kin.hf.MCP_URL, name: 'higgsfield', authorization_token: tok }],
-            tools: [{ type: 'mcp_toolset', mcp_server_name: 'higgsfield', default_config: { enabled: false }, configs: enable }], messages: msgs }, g.opts), n = 0, mm = meter(s, kit.MAIN);
+            tools: [{ type: 'mcp_toolset', mcp_server_name: 'higgsfield', default_config: { enabled: false }, configs: enable }], messages: msgs }, g.opts), n = 0, mm = meter(s, kit.MAIN, g);
           s.on('streamEvent', function () { if (++n % 30 === 0) beat('Talking to Higgsfield'); });
           return s.finalMessage().catch(function (e) { mm.lost(); throw g.fail(e); }).then(function (m) {
             g.done(); add(m);
@@ -272,13 +283,15 @@
         .then(function (credits) {
           if (credits == null) return {};
           beat('Making the pictures');
+          /* counted against today's limit now, before the batch goes out: a stop, a time-out or an error after this point
+             can still leave pictures being made (and charged) on Higgsfield, and the next card must not offer those credits again */
+          Kin.hf.addUsed(credits); hfCredits = credits; if (opts.onSent) opts.onSent();
           var reqs = plan.map(function (p, i) { return '- index ' + i + ' (' + p.id + '): aspect ' + p.aspect + '; prompt: ' + p.prompt; }).join('\n');
           return mcpAsk({ generate_image_batch: { enabled: true }, jobs_wait: { enabled: true } },
             'Make these pictures on Higgsfield now. Call generate_image_batch ONCE with one request per picture: { index: the index given, params: { model: "' + IMAGE_MODEL + '", prompt: the prompt exactly as written, aspect_ratio: the aspect given, use_unlim: false } }. Then call jobs_wait with every returned { index, job_id } until all are finished (call it again while any is still running). Never submit a picture twice. Then reply with one line per picture: the id (img…), a space, and its result URL.\n' + reqs, 12000)
             .then(function (g) {
               var subs = g.uses.filter(function (u) { return u.name === 'generate_image_batch'; }), asked = 0;
               subs.forEach(function (u) { asked += (u.input && Array.isArray(u.input.requests)) ? u.input.requests.length : 0; });
-              Kin.hf.addUsed(credits); hfCredits = credits;
               if (asked > plan.length) notes.push('Higgsfield was asked for ' + asked + ' pictures where ' + plan.length + ' were approved; the extra cost may show on your Higgsfield account.');
               /* which picture is which: the index of each request, the job id it got, the URL the wait returned */
               var jobOf = {}, urlOf = {};
@@ -324,7 +337,7 @@
       choices: [{ k: 'go', label: 'Go', kind: 'go', note: withPics ? 'Starts now, with pictures.' : 'Starts now.' }]
         .concat(withPics ? [{ k: 'draw', label: 'Go without pictures', kind: 'alt', note: 'About $' + usdDraw.toFixed(2) + ', no Higgsfield credits.' }] : [])
         .concat([{ k: 'stop', label: 'Stop', kind: 'stop', note: 'Nothing is sent and nothing is spent.' }]) };
-    var gate = opts.plan ? opts.plan(card) : Promise.resolve('go');
+    var gate = opts.plan ? opts.plan(card) : Promise.resolve('stop'); /* no one to ask: nothing is spent */
     return gate.then(function (k) {
       if (k !== 'go' && k !== 'draw') return { text: 'Stopped, sir. Nothing was spent.', declined: true };
       alive();

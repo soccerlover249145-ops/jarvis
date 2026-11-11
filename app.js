@@ -275,7 +275,7 @@
   function money(v) { v = v || 0; return v > 0 && v < 0.005 ? '<$0.01' : '$' + v.toFixed(2); }
   function clock(ms) { var s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
   function jobPanel(d, card, k, question) {
-    var t0 = Date.now(), cur = '', spentV = 0, ended = false, pics = k === 'go' && /Pictures: up to/.test((card.lines || []).join(' '));
+    var t0 = Date.now(), cur = '', spentV = 0, ended = false, picsSent = false, pics = k === 'go' && /Pictures: up to/.test((card.lines || []).join(' '));
     d.className = 'msg kin ask card job live'; d.innerHTML = '';
     var head = el('div', 'chead'), chip = el('span', 'chip live', 'Working'); head.appendChild(chip); head.appendChild(el('span', 'chip ghost', pics ? 'With pictures' : 'Drawn')); d.appendChild(head);
     d.appendChild(el('p', 'asktitle', card.title));
@@ -286,7 +286,7 @@
     JOB_STEPS.forEach(function (st) { if (st[0] === 'pictures' && !pics) return; var li = el('li', 'step', st[1]); li.dataset.k = st[0]; ol.appendChild(li); lis[st[0]] = li; });
     d.appendChild(ol);
     var now = el('p', 'jnow', 'Starting…'); d.appendChild(now);
-    var bt = el('div', 'cbtns'), stop = el('button', 'pill stop jstop'); stop.type = 'button'; stop.appendChild(el('span', 'pl', 'Stop the job')); stop.appendChild(el('span', 'pn', 'Stops every request now. Nothing more is spent.'));
+    var bt = el('div', 'cbtns'), stop = el('button', 'pill stop jstop'); stop.type = 'button'; stop.appendChild(el('span', 'pl', 'Stop the job')); var stopNote = el('span', 'pn', 'Stops every request now. Nothing more is spent.'); stop.appendChild(stopNote);
     stop.addEventListener('click', function () { gesture(); if (S.ctl) S.ctl.abort(); }); bt.appendChild(stop); d.appendChild(bt);
     var tick = setInterval(function () { if (ended) return clearInterval(tick); tm.textContent = clock(Date.now() - t0); }, 1000);
     function step(key) {
@@ -296,6 +296,8 @@
     }
     var api = {
       step: step,
+      /* the picture batch has gone to Higgsfield: a stop can no longer take it back */
+      sent: function () { if (ended) return; picsSent = true; stopNote.textContent = 'Stops every request now. Pictures already sent to Higgsfield may still be charged.'; },
       status: function (s) { if (!ended && s) now.textContent = s; },
       spend: function (v) { spentV = v || 0; sp.textContent = money(spentV); },
       /** the job is over: done, stopped by the founder, or failed (with the reason and what to do) */
@@ -311,7 +313,7 @@
           d.classList.add('bad'); chip.textContent = 'Stopped';
           if (lis[cur]) lis[cur].className = 'step bad';
           var by = r.code === 'stopped' && !r.stalled;
-          now.textContent = by ? 'You stopped it' + (cur && lis[cur] ? ' at ' + lis[cur].textContent.toLowerCase() : '') + '. Spent about ' + money(cost) + '; nothing more will be spent.' : out;
+          now.textContent = by ? 'You stopped it' + (cur && lis[cur] ? ' at ' + lis[cur].textContent.toLowerCase() : '') + '. Spent about ' + money(cost) + (picsSent ? '. Pictures already sent to Higgsfield may still be charged.' : '; nothing more will be spent.') : out;
           if (!by && r.todo) d.insertBefore(el('p', 'jtodo', r.todo), bt);
           if (!by && r.detail) d.insertBefore(el('p', 'jdetail', r.detail), bt);
           var again = el('button', 'pill alt'); again.type = 'button'; again.appendChild(el('span', 'pl', 'Try again')); again.addEventListener('click', function () { gesture(); if (!S.busy) ask(question); }); bt.appendChild(again);
@@ -383,6 +385,7 @@
         plan: function (card) { return choiceCard(card).then(function (c) { if (c.k === 'go' || c.k === 'draw') { lastSign = Date.now(); job = jobPanel(c.d, card, c.k, text); } return c.k; }); },
         choose: function (card) { return choiceCard(card).then(function (c) { lastSign = Date.now(); if (c.k === 'stop' && S.ctl) S.ctl.abort(); return c.k; }); },
         onStep: function (k) { lastSign = Date.now(); if (job) job.step(k); },
+        onSent: function () { if (job) job.sent(); },
         onSpend: function (v) { if (job) job.spend(v); }
       });
     } catch (e) { pr = Promise.resolve({ text: 'Something went wrong on this page, sir. The reason is on screen.', detail: String((e && e.message) || e).slice(0, 200), source: 'local', code: 'error' }); }

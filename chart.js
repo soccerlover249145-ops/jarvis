@@ -27,10 +27,15 @@
   }
   /* round axis steps: 1, 2, 2.5 or 5 times a power of ten */
   function ticks(lo, hi, n) {
-    if (lo === hi) { lo -= 1; hi += 1; }
+    if (!isFinite(lo) || !isFinite(hi)) return [0, 1];
+    if (hi < lo) { var sw = lo; lo = hi; hi = sw; }
+    /* equal or nearly equal values (closer than the numbers can tell apart): give them room around the middle */
+    if (hi - lo <= Math.max(Math.abs(lo), Math.abs(hi)) * 1e-9) { var mid = (lo + hi) / 2, padd = Math.max(Math.abs(mid) * 0.01, 1); lo = mid - padd; hi = mid + padd; }
     var raw = (hi - lo) / Math.max(2, n), p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p, st = (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p;
     var a = Math.floor(lo / st) * st, b = Math.ceil(hi / st) * st, out = [];
-    for (var v = a; v <= b + st / 2; v += st) out.push(Math.round(v * 1e6) / 1e6);
+    /* a step too small to move the value, or far too many ticks: the ends alone */
+    if (!(st > 0) || !isFinite(a) || !isFinite(b) || a + st === a || (b - a) / st > 50) return [lo, hi];
+    for (var v = a; v <= b + st / 2; v += st) out.push(parseFloat(v.toPrecision(12)));
     return out;
   }
   /* an x value as a short label: an ISO hour becomes "3 PM", an ISO day "Wed 12" */
@@ -294,6 +299,6 @@
     }, function (e) { return { ok: false, why: 'Open-Meteo could not be reached (' + String(e && e.message || e).slice(0, 80) + ').' }; });
   }
 
-  Kin.chart = { check: check, svg: svg, mount: mount, tsv: tsv, colors: C, KINDS: KINDS,
+  Kin.chart = { check: check, svg: svg, ticks: ticks, mount: mount, tsv: tsv, colors: C, KINDS: KINDS,
     place: place, setPlace: setPlace, dropPlace: function () { ls.del(PLACE); }, findPlace: findPlace, weatherToday: weatherToday };
 })();
