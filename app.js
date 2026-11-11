@@ -50,10 +50,12 @@
       r.sources.forEach(function (x) { var li = document.createElement('li'), a = document.createElement('a'), host = ''; try { host = new URL(x.url).hostname.replace(/^www\./, ''); } catch (e) {} a.href = x.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = x.title || host || x.url; li.appendChild(a); if (host && x.title) { var hs = document.createElement('span'); hs.textContent = ' · ' + host; li.appendChild(hs); } ol.appendChild(li); });
       src.appendChild(ol); d.appendChild(src);
     }
-    (r.made || []).forEach(function (id) { var m = Kin.mind.getMade(id); if (!m || d.querySelector('[data-made="' + id + '"]')) return; var b = document.createElement('button'); b.type = 'button'; b.className = 'madeb'; b.dataset.made = id; b.textContent = 'Open ' + (m.kind === 'design' ? 'the design' : 'the ' + m.kind) + ': ' + m.title; d.appendChild(b); });
+    (r.made || []).forEach(function (id) { var m = Kin.mind.getMade(id); if (!m || d.querySelector('[data-made="' + id + '"]')) return;
+      if (m.kind === 'chart' && m.spec && Kin.chart) { var cc = document.createElement('div'); cc.className = 'chartcard'; d.appendChild(cc); try { Kin.chart.mount(cc, m.spec); } catch (e) { cc.remove(); } }
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'madeb'; b.dataset.made = id; b.textContent = 'Open ' + (m.kind === 'design' ? 'the design' : 'the ' + m.kind) + ': ' + m.title; d.appendChild(b); });
     if (r.source === 'claude' && !r.code && !r.declined) {
       var meta = document.createElement('div'); meta.className = 'meta'; var bits = [];
-      var model = String(r.model || ''); bits.push(/haiku/.test(model) ? 'Quick' : /fable/.test(model) ? 'Fable 5.2' : 'Opus 5.5' + (r.fableOff ? ' (Fable 5.2 was not open to this key)' : ''));
+      var model = String(r.model || ''); bits.push(/haiku/.test(model) ? 'Quick' : 'Opus 5.5');
       if (r.route === 'make') bits.push('deep'); if (r.route === 'compute') bits.push('with code');
       if (r.searches) bits.push(r.searches + (r.searches === 1 ? ' search' : ' searches'));
       if (r.checked === 'ok') bits.push('checked'); else if (r.checked === 'revised') bits.push('checked and corrected');
@@ -143,7 +145,7 @@
     if (!silent) say(voice.CLIPS.standby, true);
     caption(S.talk === 'asleep' ? sayPhrase() : 'Standing by, sir.', S.talk === 'asleep' ? sleepHint() : 'Tap here to wake Kin'); paint();
   }
-  function stopAll() { voice.stop(); S.queued = ''; if (S.busy && S.ctl) S.ctl.abort(); caption(null); }
+  function stopAll() { voice.stop(); S.queued = ''; if (S.busy && S.ctl) S.ctl.abort(); if (Kin.bridge) Kin.bridge.stopAll(); caption(null); }
   /** typed or spoken words that are orders to Kin itself, not questions */
   function command(text) {
     if (ears.wakeIn(text, S.wake, true)) { if (S.talk !== 'awake') cue(); else { flare(); voice.chime('wake'); touch(); } greetNow(''); return true; }
@@ -216,32 +218,108 @@
      A job that will cost real money (a big design job, Higgsfield credits) stops and asks once.
      The founder answers with the buttons, or by saying or typing yes or no. */
   var pendingConfirm = null;
-  var YES = /^(yes|yeah|yep|yup|sure|ok|okay|go|go ahead|do it|make them|make it|please do|approved|yes please)( sir| kin| jarvis)?$/, NO = /^(no|nope|not now|skip|skip (them|pictures)|cancel|stop|dont|do not|no thanks)( sir| kin| jarvis)?$/;
-  function confirmCard(card) {
+  var YES = /^(yes|yeah|yep|yup|sure|ok|okay|go|go ahead|go for it|do it|make them|make it|please do|approved|approve|yes please|start|start it)( sir| kin| jarvis)?$/,
+    NO = /^(no|nope|not now|skip|skip (them|pictures)|cancel|cancel (that|it)|stop|stop (it|that|the job)|decline|declined|dont|do not|dont do it|no thanks|no thank you)( sir| kin| jarvis)?$/,
+    DRAW = /^(go )?(without|with no|no) pictures( please)?( sir| kin| jarvis)?$|^draw (it|them)( instead)?( sir| kin| jarvis)?$/;
+  function el(tag, cls, text) { var x = document.createElement(tag); if (cls) x.className = cls; if (text != null) x.textContent = text; return x; }
+  /** A card that asks before anything is spent. card: { label, title, price, priceNote, lines, say, choices: [{ k, label, kind: 'go' | 'alt' | 'stop', note }] }.
+      Resolves { k, d } with the chosen key; the founder's stop, a spoken "no" or "decline", or the job being stopped resolve the 'stop' choice. */
+  function choiceCard(card) {
     return new Promise(function (res) {
-      var t = $('thread'), d = document.createElement('div'); d.className = 'msg kin ask';
-      var sm = document.createElement('small'); sm.textContent = 'Kin asks before spending'; d.appendChild(sm);
-      var h = document.createElement('p'); h.className = 'asktitle'; h.textContent = card.title; d.appendChild(h);
-      (card.lines || []).forEach(function (l) { var q = document.createElement('p'); q.className = 'note'; q.textContent = l; d.appendChild(q); });
-      var bt = document.createElement('div'); bt.className = 'btns';
-      var y = document.createElement('button'); y.type = 'button'; y.className = 'askyes'; y.textContent = card.yes || 'Go ahead';
-      var n = document.createElement('button'); n.type = 'button'; n.className = 'lnk dim'; n.textContent = card.no || 'Not now';
-      bt.appendChild(y); bt.appendChild(n); d.appendChild(bt);
+      var t = $('thread'), d = el('div', 'msg kin ask card'), choices = card.choices || [];
+      var stopK = (choices.filter(function (c) { return c.kind === 'stop'; })[0] || choices[choices.length - 1] || {}).k;
+      var head = el('div', 'chead'); head.appendChild(el('span', 'chip', card.label || 'Kin asks first')); d.appendChild(head);
+      d.appendChild(el('p', 'asktitle', card.title));
+      if (card.price) { var pr = el('div', 'cprice'); pr.appendChild(el('b', '', card.price)); if (card.priceNote) pr.appendChild(el('span', '', card.priceNote)); d.appendChild(pr); }
+      var body = el('div', 'cbody'); (card.lines || []).forEach(function (l) { body.appendChild(el('p', 'cline', l)); }); d.appendChild(body);
+      var bt = el('div', 'cbtns'), btns = [];
+      choices.forEach(function (c) {
+        var b = el('button', 'pill ' + (c.kind === 'go' ? 'go askyes' : c.kind === 'alt' ? 'alt askalt' : 'stop askno')); b.type = 'button'; b.dataset.k = c.k;
+        b.appendChild(el('span', 'pl', c.label)); if (c.note) b.appendChild(el('span', 'pn', c.note));
+        b.addEventListener('click', function () { gesture(); done(c.k); }); bt.appendChild(b); btns.push(b);
+      });
+      d.appendChild(bt);
       /* the question sits above the answer that is waiting on it */
       var cur = t.lastElementChild; if (S.busy && cur && cur.classList.contains('kin') && !cur.classList.contains('ask')) t.insertBefore(d, cur); else t.appendChild(d);
-      function done(v) {
-        if (!pendingConfirm || pendingConfirm.d !== d) return; pendingConfirm = null; S.confirming = false; y.disabled = n.disabled = true;
-        var r = document.createElement('p'); r.className = 'note'; r.textContent = v ? 'Approved.' : 'Declined. Nothing was spent on this.'; d.appendChild(r);
-        caption(v ? 'Thank you, sir. Working on it.' : 'Understood, sir.', v ? 'Working' : ''); res(v);
+      function done(k) {
+        if (!pendingConfirm || pendingConfirm.d !== d) return; pendingConfirm = null; S.confirming = false;
+        btns.forEach(function (b) { b.disabled = true; });
+        d.classList.add('answered'); d.dataset.chose = k;
+        var c = choices.filter(function (x) { return x.k === k; })[0] || {};
+        if (k === stopK) { d.classList.add('declined'); bt.remove(); body.remove(); var pr2 = d.querySelector('.cprice'); if (pr2) pr2.remove(); d.appendChild(el('p', 'cresult', card.noNote || 'Stopped. Nothing was spent.')); }
+        else if (card.yesNote) d.appendChild(el('p', 'cresult', card.yesNote));
+        if (!card.quiet) caption(k === stopK ? 'Understood, sir. Stopped.' : 'Thank you, sir. ' + (c.label === 'Go' ? 'Starting now.' : 'Working on it.'), k === stopK ? '' : 'Working');
+        res({ k: k, d: d });
       }
-      pendingConfirm = { d: d, done: done, answer: function (q) { var x = ears.norm(q); if (YES.test(x)) { done(true); return true; } if (NO.test(x)) { done(false); return true; } return false; } };
+      pendingConfirm = { d: d, done: done, answer: function (q) {
+        var x = ears.norm(q), has = function (k) { return choices.some(function (c) { return c.k === k; }); };
+        if (DRAW.test(x) && has('draw')) { done('draw'); return true; }
+        if (YES.test(x)) { done(choices[0].k); return true; }
+        if (NO.test(x)) { done(stopK); return true; }
+        return false; } };
       S.confirming = true;
-      y.addEventListener('click', function () { gesture(); done(true); }); n.addEventListener('click', function () { gesture(); done(false); });
-      if (S.ctl) S.ctl.signal.addEventListener('abort', function () { done(false); });
+      if (S.ctl) S.ctl.signal.addEventListener('abort', function () { done(stopK); });
       showThread(); d.scrollIntoView({ block: 'end' });
-      caption(card.title, 'Tap ' + (card.yes || 'Go ahead') + ', or say yes or no');
+      caption(card.title + (card.price ? ': ' + card.price : ''), 'Tap ' + choices.map(function (c) { return c.label; }).join(', ') + ', or say yes or no');
       if (card.say && (S.talk === 'awake' || S.speakTyped) && S.unlocked) say(card.say, true);
     });
+  }
+  /** the yes-or-no card other parts of the page use: resolves true or false */
+  function confirmCard(card) {
+    return choiceCard({ label: card.label || 'Kin asks before spending', title: card.title, lines: card.lines, say: card.say, quiet: card.quiet, noNote: card.noNote || 'Declined. Nothing was spent on this.', yesNote: card.yesNote || 'Approved.',
+      choices: [{ k: 'yes', label: card.yes || 'Go ahead', kind: 'go' }, { k: 'no', label: card.no || 'Not now', kind: 'stop' }] }).then(function (r) { return r.k === 'yes'; });
+  }
+
+  /* ---- a design job, live: the card becomes this panel the moment the founder says Go ---- */
+  var JOB_STEPS = [['brief', 'Brief'], ['concepts', 'Three concepts'], ['pictures', 'Pictures'], ['director', 'Art director'], ['refine', 'Refining'], ['done', 'Done']];
+  function money(v) { v = v || 0; return v > 0 && v < 0.005 ? '<$0.01' : '$' + v.toFixed(2); }
+  function clock(ms) { var s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
+  function jobPanel(d, card, k, question) {
+    var t0 = Date.now(), cur = '', spentV = 0, ended = false, pics = k === 'go' && /Pictures: up to/.test((card.lines || []).join(' '));
+    d.className = 'msg kin ask card job live'; d.innerHTML = '';
+    var head = el('div', 'chead'), chip = el('span', 'chip live', 'Working'); head.appendChild(chip); head.appendChild(el('span', 'chip ghost', pics ? 'With pictures' : 'Drawn')); d.appendChild(head);
+    d.appendChild(el('p', 'asktitle', card.title));
+    var stats = el('div', 'jstats'), tm = el('b', 'jtime', '0:00'), sp = el('b', 'jspent', '$0.00');
+    [['Time', tm], ['Spent so far', sp]].forEach(function (x) { var c = el('div', 'jstat'); c.appendChild(el('span', 'lab', x[0])); c.appendChild(x[1]); stats.appendChild(c); });
+    d.appendChild(stats);
+    var ol = el('ol', 'jsteps'), lis = {};
+    JOB_STEPS.forEach(function (st) { if (st[0] === 'pictures' && !pics) return; var li = el('li', 'step', st[1]); li.dataset.k = st[0]; ol.appendChild(li); lis[st[0]] = li; });
+    d.appendChild(ol);
+    var now = el('p', 'jnow', 'Starting…'); d.appendChild(now);
+    var bt = el('div', 'cbtns'), stop = el('button', 'pill stop jstop'); stop.type = 'button'; stop.appendChild(el('span', 'pl', 'Stop the job')); stop.appendChild(el('span', 'pn', 'Stops every request now. Nothing more is spent.'));
+    stop.addEventListener('click', function () { gesture(); if (S.ctl) S.ctl.abort(); }); bt.appendChild(stop); d.appendChild(bt);
+    var tick = setInterval(function () { if (ended) return clearInterval(tick); tm.textContent = clock(Date.now() - t0); }, 1000);
+    function step(key) {
+      if (ended || !lis[key]) return; cur = key; var seen = true;
+      JOB_STEPS.forEach(function (st) { var li = lis[st[0]]; if (!li) return; if (st[0] === key) { seen = false; li.className = 'step on'; } else li.className = seen ? 'step ok' : 'step'; });
+      if (key === 'done') lis.done.className = 'step ok';
+    }
+    var api = {
+      step: step,
+      status: function (s) { if (!ended && s) now.textContent = s; },
+      spend: function (v) { spentV = v || 0; sp.textContent = money(spentV); },
+      /** the job is over: done, stopped by the founder, or failed (with the reason and what to do) */
+      end: function (r, out) {
+        if (ended) return; ended = true; clearInterval(tick); tm.textContent = clock(Date.now() - t0);
+        var cost = r.cost != null ? r.cost : spentV; if (cost) sp.textContent = money(cost);
+        bt.innerHTML = ''; d.classList.remove('live'); chip.classList.remove('live');
+        if (r.made && r.made.length) {
+          step('done'); d.classList.add('done'); chip.textContent = 'Done'; now.textContent = (/^.*?[.!?](\s|$)/.exec(out) || [out])[0].trim();
+          var open = el('button', 'pill go'); open.type = 'button'; open.appendChild(el('span', 'pl', 'Open the design')); var id = r.made[r.made.length - 1];
+          open.addEventListener('click', function () { gesture(); openShelf('made', id); }); bt.appendChild(open);
+        } else {
+          d.classList.add('bad'); chip.textContent = 'Stopped';
+          if (lis[cur]) lis[cur].className = 'step bad';
+          var by = r.code === 'stopped' && !r.stalled;
+          now.textContent = by ? 'You stopped it' + (cur && lis[cur] ? ' at ' + lis[cur].textContent.toLowerCase() : '') + '. Spent about ' + money(cost) + '; nothing more will be spent.' : out;
+          if (!by && r.todo) d.insertBefore(el('p', 'jtodo', r.todo), bt);
+          if (!by && r.detail) d.insertBefore(el('p', 'jdetail', r.detail), bt);
+          var again = el('button', 'pill alt'); again.type = 'button'; again.appendChild(el('span', 'pl', 'Try again')); again.addEventListener('click', function () { gesture(); if (!S.busy) ask(question); }); bt.appendChild(again);
+        }
+      }
+    };
+    step('brief'); now.textContent = 'Writing the brief';
+    return api;
   }
   Kin.confirm = confirmCard;
 
@@ -249,10 +327,13 @@
     text = String(text || '').trim(); if (!text) return;
     if (pendingConfirm && pendingConfirm.answer(text)) { inp.value = ''; lastLen = 0; return; }
     if (command(text)) { inp.value = ''; lastLen = 0; return; }
+    /* "ask Grok Bot ...": handled on this device and by the founder's relay only; never sent to Claude */
+    var gi = Kin.bridge && Kin.bridge.intent(text);
+    if (gi) { bridgeAsk(text, gi.q); return; }
     if (S.busy) return;
     var now = Kin.mind.instant(text);
     if (now) { instantly(text, now); return; }
-    var aloud = S.talk === 'awake', p = null, got = false, t0 = Date.now(), momT = 0, watchI = 0, sess = null, lastSign = Date.now(), stalled = false, pr, making = false;
+    var aloud = S.talk === 'awake', p = null, got = false, t0 = Date.now(), momT = 0, watchI = 0, sess = null, lastSign = Date.now(), stalled = false, pr, making = false, job = null;
     inp.value = ''; lastLen = 0; multi = single = 0; S.asks++; touch();
     addMsg('you', text); p = addMsg('kin', '…');
     caption(text.length > 150 ? text.slice(0, 147) + '…' : text, 'Thinking', 'you');
@@ -264,14 +345,18 @@
     function finish(r) {
       S.last = { ms: Date.now() - t0, source: r.source, code: r.code || '', model: r.model || '' };
       var out = r.text || (r.code === 'stopped' ? (got ? p.textContent : 'Stopped.') : 'I have nothing to say to that, sir.');
-      if (r.code === 'stopped' && stalled) out = got ? p.textContent + ' … The answer stopped arriving, sir. Ask again.' : 'Claude did not answer, sir. Check the connection and the key in settings, then ask again.';
+      if (r.code === 'stopped' && stalled) { r.stalled = true; out = got ? p.textContent + ' … The answer stopped arriving, sir. Ask again.' : 'Claude is taking longer than usual, sir. Nothing came back in ' + Math.round((making ? Kin.T.making : Kin.T.firstText) / 1000) + ' seconds, so I stopped waiting.'; r.todo = 'Tap Retry, or ask again in a minute.'; brain.noteError({ code: 'timeout', type: 'no reply in time', model: r.model || '' }); }
+      if (job) { job.end(r, out); if (r.code === 'stopped' && !r.stalled) out = 'Stopped, sir. Spent about $' + (r.cost || 0).toFixed(2) + '; nothing more will be spent.'; }
       if (r.source === 'local' && !S.toldLocal && !brain.hasKey()) { S.toldLocal = true; out = 'No Claude key on this device yet, sir, so this is only what I hold here. ' + out; }
       /* the detail of an error is for the eye only: it is never spoken and never sent to a voice service */
+      var box = p.parentNode;
       if (r.detail) p.textContent = out + '\n' + r.detail; else settle(p, out, r, text);
+      if (r.todo && !job && box) box.appendChild(el('p', 'note todo', r.todo));
+      if ((r.stalled || /^(busy|api|network|timeout)$/.test(r.code || '')) && !job) { var rb = el('button', 'pill alt retry'); rb.type = 'button'; rb.appendChild(el('span', 'pl', 'Retry')); rb.addEventListener('click', function () { gesture(); rb.disabled = true; if (!S.busy) ask(text); }); if (box) box.appendChild(rb); }
       if (r.code === 'limit') { S.queued = ''; if (S.talk === 'awake') sleep(true); caption(out, 'Change the limit in settings'); if (speakIt) say(out, true); else captionFade(9000); refreshSettings(); return; }
       if (r.code === 'stopped' && got && !stalled) { if (sess) voice.stop(); caption(null); return; }
       if (sess) { var fin = spoken(out); S.said = ears.norm(fin); sess.finish(fin); }
-      else if (speakIt && voice.canSpeak()) { caption(spoken(out).slice(0, 190), r.detail ? 'The reason is in the conversation' : ''); say(out); }
+      else if (speakIt && voice.canSpeak()) { var one = r.studio || job ? (/^.*?[.!?](\s|$)/.exec(plain(out)) || [plain(out)])[0].trim() : out; caption(spoken(one).slice(0, 190), r.detail || job ? 'The details are on screen' : ''); say(one, !!(r.studio || job)); }
       else { caption(spoken(out).slice(0, 260), r.source === 'local' ? 'From this device only' : !S.unlocked && aloud ? 'Tap once so I can speak' : ''); captionFade(9000); touch(); }
       /* what was made opens on the shelf; a typed answer with sources, or longer than what is read out, opens the conversation */
       if (r.made && r.made.length) openShelf('made', r.made[r.made.length - 1]);
@@ -289,10 +374,15 @@
         /* every event of a stream is a sign of life: thinking, a tool's input arriving, a search */
         onBeat: function () { lastSign = Date.now(); },
         onRoute: function (route) { making = route === 'make' || route === 'design'; },
-        onStatus: function (st) { lastSign = Date.now(); if (!S.talking && !got) caption(text.length > 150 ? text.slice(0, 147) + '…' : text, st, 'you'); else if (!S.talking) $('capS').textContent = st; },
+        onStatus: function (st) { lastSign = Date.now(); if (job) job.status(st); if (!S.talking && !got) caption(text.length > 150 ? text.slice(0, 147) + '…' : text, st, 'you'); else if (!S.talking) $('capS').textContent = st; },
         onMade: function () { lastSign = Date.now(); refreshMade(); },
         onRemember: function () { refreshSettings(); },
-        confirm: confirmCard
+        confirm: confirmCard,
+        /* a design job: one card before anything is spent, then the same card shows the job live */
+        plan: function (card) { return choiceCard(card).then(function (c) { if (c.k === 'go' || c.k === 'draw') { lastSign = Date.now(); job = jobPanel(c.d, card, c.k, text); } return c.k; }); },
+        choose: function (card) { return choiceCard(card).then(function (c) { lastSign = Date.now(); if (c.k === 'stop' && S.ctl) S.ctl.abort(); return c.k; }); },
+        onStep: function (k) { lastSign = Date.now(); if (job) job.step(k); },
+        onSpend: function (v) { if (job) job.spend(v); }
       });
     } catch (e) { pr = Promise.resolve({ text: 'Something went wrong on this page, sir. The reason is on screen.', detail: String((e && e.message) || e).slice(0, 200), source: 'local', code: 'error' }); }
     /* whatever happens, Kin must never be left "thinking" */
@@ -301,6 +391,85 @@
       function () { end(); caption('Something went wrong on this page, sir.', ''); captionFade(9000); paint(); });
   }
   Kin.ask = ask;
+
+  /* ------------------------------------------------------------ the Grok Bot bridge
+     Asked only by name ("ask Grok Bot ..."). The reply is Grok Bot's words: shown with its own label, spoken
+     as a short summary only when the founder is here and talking, and never passed to Claude or back to Grok Bot. */
+  var gbEls = {}, gbEngaged = {};
+  var GB_STATE = { sending: 'Sending to Grok Bot…', queued: 'The relay has it. Waiting for Grok Bot to start…', accepted: 'Grok Bot has it and is working on it.', pending: 'Grok Bot is working on it.',
+    needs_owner_approval: 'Grok Bot needs your OK for this, sir. It will ask you in its own chat.', error: 'Grok Bot could not answer.', unknown: '', not_sent: 'Not sent.' };
+  function gbResumable(j) { return /^(queued|accepted|pending)$/.test(j.st); }
+  function gbMsg(j) {
+    if (gbEls[j.id]) return gbEls[j.id];
+    var t = $('thread'), e = t.querySelector('.empty'); if (e) e.remove();
+    var d = document.createElement('div'); d.className = 'msg grok'; d.dataset.gb = j.id;
+    var s = document.createElement('small'); s.textContent = 'Grok Bot';
+    var st = document.createElement('p'); st.className = 'gbst'; var rp = document.createElement('p'); rp.className = 'gbreply';
+    var bt = document.createElement('div'); bt.className = 'btns';
+    function btn(id, label, fn, dim) { var b = document.createElement('button'); b.type = 'button'; b.className = 'lnk' + (dim ? ' dim' : ''); b.dataset.act = id; b.textContent = label; b.addEventListener('click', function () { gesture(); fn(); }); bt.appendChild(b); return b; }
+    btn('stop', 'Stop waiting', function () { Kin.bridge.stop(j.id); }, true);
+    btn('resume', 'Resume', function () { if (!Kin.bridge.resume(j.id)) gbNoteLine(j.id, Kin.bridge.hasToken() ? 'This one can no longer be checked from here.' : Kin.bridge.REASON.no_token); });
+    btn('again', 'Send again', function () { var x = Kin.bridge.job(j.id); if (x) { gbEngaged[j.id] = Date.now(); Kin.bridge.submit(x.q, null, j.id).then(gbAfterSubmit); } });
+    btn('forget', 'Forget', function () { Kin.bridge.forget(j.id); d.remove(); delete gbEls[j.id]; }, true);
+    d.appendChild(s); d.appendChild(st); d.appendChild(rp); d.appendChild(bt); t.appendChild(d); t.scrollTop = t.scrollHeight;
+    gbEls[j.id] = { d: d, st: st, rp: rp, bt: bt }; return gbEls[j.id];
+  }
+  function gbNoteLine(id, text) { var el = gbEls[id]; if (el) el.st.textContent = text; }
+  function gbPaint(j) {
+    var el = gbMsg(j), term = Kin.bridge.terminal(j.st);
+    var line = j.st === 'answered' ? '' : (GB_STATE[j.st] || '');
+    if (j.err) line = line ? line + ' ' + j.err : j.err;
+    el.st.textContent = line;
+    /* untrusted words from another bot: text only, never markup, never a link that runs anything */
+    el.rp.textContent = term ? j.reply : '';
+    [].forEach.call(el.bt.children, function (b) {
+      var a = b.dataset.act, show = a === 'stop' ? j.waiting : a === 'resume' ? !j.waiting && gbResumable(j) : a === 'again' ? (j.st === 'unknown' && /^(unknown|malformed)$/.test(j.local)) || (j.st === 'not_sent' && /^(rate|busy|unreachable)$/.test(j.local) && Date.now() >= (j.retryAt || 0)) : a === 'forget' ? term || j.st === 'not_sent' || j.st === 'unknown' : false;
+      b.hidden = !show;
+    });
+    /* after a rate or busy wait, offer "Send again" once the wait is over (still only on a tap) */
+    if (j.st === 'not_sent' && j.retryAt > Date.now() && !el.wake) el.wake = setTimeout(function () { el.wake = 0; var n = Kin.bridge.job(j.id); if (n && gbEls[j.id]) gbPaint(n); }, Math.min(j.retryAt - Date.now() + 50, 3600000));
+  }
+  /** what Kin may say aloud about a reply: a short summary, never the words that would ask Grok Bot again */
+  function gbSummary(j) {
+    if (j.st === 'needs_owner_approval') return 'Grok Bot needs your OK for that, sir. It will ask you in its own chat.';
+    if (j.st === 'error') return 'Grok Bot could not answer, sir. The reason is on screen.';
+    var t = plain(Kin.bridge.unaddress(j.reply || '')), m = /^(.{12,180}?[.!?])(\s|$)/.exec(t), first = m ? m[1] : t.slice(0, 160);
+    return first ? 'Grok Bot says: ' + first : 'Grok Bot answered, sir. It is on screen.';
+  }
+  function gbAfterSubmit(r) {
+    if (!r || r.ok) return;
+    if (r.code === 'in_flight') { caption('Grok Bot is still working on your last question, sir.', 'One question at a time through the bridge'); captionFade(8000); return; }
+    var j = r.job; if (j) { caption(j.err || 'Not sent to Grok Bot.', ''); captionFade(9000); }
+  }
+  function gbReply(text, small) { var p = addMsg('kin', text); caption(text, small || ''); if (S.unlocked && S.talk === 'awake') say(text, true); else captionFade(9000); return p; }
+  function bridgeAsk(text, q) {
+    var B = Kin.bridge; inp.value = ''; lastLen = 0; multi = single = 0; touch(); addMsg('you', text);
+    if (!B.available()) return gbReply(Kin.shared ? Kin.SHARED_TEXT : 'This browser cannot use the Grok Bot bridge.');
+    if (!B.enabled()) return gbReply('The Grok Bot bridge is off, sir. Turn it on in Settings, under Grok Bot bridge.', 'Nothing was sent');
+    if (!B.hasToken()) return gbReply('There is no device token on this device, sir. Paste it in Settings, under Grok Bot bridge.', 'Nothing was sent');
+    if (!q || q.split(/\s+/).length < 2) return gbReply('What should I ask Grok Bot, sir?', 'Say “ask Grok Bot” and the question');
+    if (B.pending().length) { var w = B.pending()[0]; gbPaint(w); return gbReply('Grok Bot is still working on your last question, sir. I will show its answer here.', 'One question at a time through the bridge'); }
+    function go(ctx) {
+      var t0 = Date.now();
+      B.submit(q, ctx).then(function (r) { if (r && r.job) gbEngaged[r.job.id] = t0; gbAfterSubmit(r); });
+    }
+    var ex = B.ctxOn() && Kin.pack.get() ? Kin.pack.search(q, 3).map(function (n) { return (n.t + (n.s ? ': ' + n.s : '')).slice(0, 1000); }).filter(Boolean) : [];
+    if (!ex.length) { go([]); return; }
+    confirmCard({ label: 'Kin asks before sharing', title: 'Send these pack excerpts to Grok Bot with the question?', lines: ex.map(function (x) { return '· ' + x.slice(0, 160) + (x.length > 160 ? '…' : ''); }), yes: 'Send with them', no: 'Question only', yesNote: 'Sent with the excerpts.', noNote: 'Sent without the excerpts.', quiet: true })
+      .then(function (v) { go(v ? ex : []); });
+  }
+  Kin.bridge && Kin.bridge.on(function (e) {
+    var j = e.job; if (!j) return;
+    if (!gbEls[j.id] && !j.here && !Kin.bridge.terminal(j.st) && !/^(queued|accepted|pending)$/.test(j.st)) return;
+    gbPaint(j); refreshSettings();
+    if (!e.arrived) { if (j.st === 'accepted' || j.st === 'queued') { if (!S.talking && !S.busy) { caption(GB_STATE[j.st], 'Grok Bot'); captionFade(6000); } } return; }
+    Kin.bridge.markSeen(j.id);
+    var line = gbSummary(j), engaged = S.talk === 'awake' || (gbEngaged[j.id] && Date.now() - gbEngaged[j.id] < 180000 && document.visibilityState === 'visible');
+    if (S.talking || S.busy) return;
+    caption(line.length > 190 ? line.slice(0, 187) + '…' : line, 'Grok Bot · the whole reply is in the conversation');
+    if (S.unlocked && engaged) say(line, true); else captionFade(12000);
+    if (S.talk !== 'awake') showThread();
+  });
   /** a phrase handled on this device at once: a log line, a timer, a protocol, help */
   function instantly(text, r) {
     inp.value = ''; lastLen = 0; multi = single = 0; touch();
@@ -363,6 +532,7 @@
       var h = document.createElement('h3'); h.className = 'mtitle'; h.textContent = m.title; el.appendChild(h);
       var sub = document.createElement('p'); sub.className = 'note'; sub.textContent = [m.kind, m.note, m.score != null ? 'art director ' + m.score + ' of 100' : '', m.round > 1 ? 'round ' + m.round : ''].filter(Boolean).join(' · '); el.appendChild(sub);
       var bt = document.createElement('div'); bt.className = 'btns';
+      if (m.kind === 'chart' && m.spec && Kin.chart) { chartShelf(el, m); return; }
       var dl = document.createElement('button'); dl.type = 'button'; dl.className = 'lnk'; dl.textContent = 'Download'; dl.addEventListener('click', function () { if (m.kind !== 'design') { Kin.mind.download(Kin.mind.fileName(m), m.content, 'text/markdown'); return; }
         /* the downloaded file carries its fonts, so it looks the same wherever it is opened */
         Kin.mind.withFonts(m.content).then(function (full) { Kin.mind.download(Kin.mind.fileName(m), full, 'image/svg+xml'); }, function () { Kin.mind.download(Kin.mind.fileName(m), m.content, 'image/svg+xml'); }); });
@@ -379,6 +549,24 @@
     }
     if (!made.length) { var e1 = document.createElement('p'); e1.className = 'empty'; e1.textContent = 'Nothing made yet. Ask for a document, a plan, a table or a design, and it lands here.'; el.appendChild(e1); return; }
     made.forEach(function (x) { var b = document.createElement('button'); b.type = 'button'; b.className = 'mrow'; var k = document.createElement('small'); k.textContent = x.kind + ' · ' + new Date(x.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + (x.score != null ? ' · ' + x.score : ''); var t = document.createElement('span'); t.textContent = x.title; b.appendChild(k); b.appendChild(t); b.addEventListener('click', function () { shelfOpen = x.id; refreshMade(); }); el.appendChild(b); });
+  }
+  /** a chart on the shelf: the chart itself (hover or tap for values), Download SVG, Download PNG, Copy, Remove */
+  function chartShelf(host, m) {
+    var bt = el('div', 'btns pills');
+    function pb(label, cls, fn) { var b = el('button', 'pill sm ' + cls); b.type = 'button'; b.appendChild(el('span', 'pl', label)); b.addEventListener('click', function () { gesture(); fn(b); }); bt.appendChild(b); return b; }
+    function full() { return Kin.mind.withFonts(m.content).catch(function () { return m.content; }); }
+    function png() { return full().then(function (sv) { var w = +(/width="(\d+)"/.exec(sv) || [0, 960])[1], h = +(/height="(\d+)"/.exec(sv) || [0, 600])[1]; return Kin.mind.svgToPng(sv, w, h, 1920); }); }
+    pb('Download SVG', 'go', function () { full().then(function (sv) { Kin.mind.download(Kin.mind.fileName(m), sv, 'image/svg+xml'); }); });
+    pb('Download PNG', 'alt', function () { png().then(function (b64) { if (!b64) return; var a = document.createElement('a'); a.href = 'data:image/png;base64,' + b64; a.download = Kin.mind.fileName(m).replace(/\.svg$/, '.png'); document.body.appendChild(a); a.click(); a.remove(); }); });
+    pb('Copy', 'alt', function (b) {
+      var done = function (t) { b.querySelector('.pl').textContent = t; setTimeout(function () { b.querySelector('.pl').textContent = 'Copy'; }, 2200); };
+      var asText = function () { return navigator.clipboard.writeText(Kin.chart.tsv(m.spec)).then(function () { done('Numbers copied'); }); };
+      try { if (window.ClipboardItem && navigator.clipboard.write) { navigator.clipboard.write([new ClipboardItem({ 'image/png': png().then(function (b64) { var bin = atob(b64), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new Blob([u], { type: 'image/png' }); }) })]).then(function () { done('Copied'); }, function () { asText().catch(function () { done('Copy failed'); }); }); }
+        else asText().catch(function () { done('Copy failed'); }); } catch (e) { done('Copy failed'); }
+    });
+    pb('Remove', 'stop', function () { Kin.mind.dropMade(m.id); shelfOpen = ''; refreshMade(); });
+    host.appendChild(bt);
+    var box = el('div', 'chartcard big'); host.appendChild(box); Kin.chart.mount(box, m.spec);
   }
   /** a design from the studio: the idea, the art director's view, the brief, and the two concepts that lost */
   function studioDetails(el, m) {
@@ -440,6 +628,42 @@
     else n.textContent = 'A key is saved (' + voice.tts.keyHint() + '). Every sentence is spoken as ' + (t.voiceName || 'the chosen voice') + '.' + (t.calls ? ' This visit: ' + t.calls + (t.calls === 1 ? ' sentence, ' : ' sentences, ') + t.chars + ' characters sent.' : '');
     $('ttsKey').value = '';
   }
+
+  /* the place for the weather: looked up once by name, then only its coordinates are used */
+  function wxSettings() {
+    if (!Kin.chart || !$('wxNote')) return;
+    var pl = Kin.chart.place();
+    $('wxNote').textContent = Kin.shared ? 'Not available at this address.' : pl ? 'Weather for ' + [pl.name, pl.region, pl.country].filter(Boolean).join(', ') + '.' : 'No place set. Type your town and tap Find it.';
+    $('wxDrop').hidden = !pl; $('wxTown').disabled = $('wxFind').disabled = !!Kin.shared;
+  }
+  function wxFind() {
+    var name = $('wxTown').value.trim(), box = $('wxPick'); box.textContent = ''; if (name.length < 2) return;
+    $('wxNote').textContent = 'Looking up ' + name + '…';
+    Kin.chart.findPlace(name).then(function (list) {
+      if (!list.length) { $('wxNote').textContent = 'Open-Meteo found no place called ' + name + '. Try the nearest town.'; return; }
+      $('wxNote').textContent = list.length === 1 ? '' : 'Which one?';
+      function pick(p) { Kin.chart.setPlace(p); box.textContent = ''; $('wxTown').value = ''; wxSettings(); }
+      if (list.length === 1) { pick(list[0]); return; }
+      list.forEach(function (p) { var b = el('button', 'pill sm alt'); b.type = 'button'; b.appendChild(el('span', 'pl', [p.name, p.region, p.country].filter(Boolean).join(', '))); b.addEventListener('click', function () { pick(p); }); box.appendChild(b); });
+    }, function (e) { $('wxNote').textContent = 'Open-Meteo could not be reached (' + ((e && e.message) || e) + ').'; });
+  }
+  function gbSettings() {
+    var B = Kin.bridge; if (!B) return;
+    var n = $('gbNote'), on = B.enabled();
+    $('gbUrl').value = B.relay(); $('gbKeep').checked = B.kept(); $('gbCtx').checked = B.ctxOn(); $('gbTok').value = '';
+    $('gbOn').textContent = on ? 'Turn off' : 'Turn on'; $('gbOn').dataset.sure = '';
+    if (!B.available()) { n.textContent = Kin.shared ? Kin.SHARED_TEXT : 'This browser cannot use the bridge.'; ['gbSave', 'gbOn', 'gbTest', 'gbDrop'].forEach(function (id) { $(id).disabled = true; }); }
+    else n.textContent = (on ? 'On.' : 'Off. Nothing is sent to Grok Bot.') + ' ' + (B.hasToken() ? (B.kept() ? 'A device token is kept on this device.' : 'A device token is saved for this tab only.') : 'No device token on this device.') + (B.relay() !== B.DEFAULT_RELAY ? ' Note: only ' + B.DEFAULT_RELAY + ' is allowed by this page, so another relay address will not connect.' : '');
+    var el = $('gbJobs'); el.textContent = '';
+    B.jobs().slice(-5).reverse().forEach(function (j) {
+      var r = document.createElement('div'); r.className = 'gbjob'; var p = document.createElement('p'); var k = document.createElement('small'); k.textContent = j.st.replace(/_/g, ' ') + (j.waiting ? ' · checking' : '');
+      p.appendChild(k); p.appendChild(document.createTextNode(' ' + (j.q.length > 90 ? j.q.slice(0, 87) + '…' : j.q))); r.appendChild(p);
+      var bt = document.createElement('div'); bt.className = 'btns';
+      if (!j.waiting && /^(queued|accepted|pending)$/.test(j.st)) { var rs = document.createElement('button'); rs.type = 'button'; rs.className = 'lnk'; rs.textContent = 'Resume'; rs.addEventListener('click', function () { gesture(); B.resume(j.id); refreshSettings(); }); bt.appendChild(rs); }
+      if (j.waiting) { var sp = document.createElement('button'); sp.type = 'button'; sp.className = 'lnk dim'; sp.textContent = 'Stop'; sp.addEventListener('click', function () { B.stop(j.id); refreshSettings(); }); bt.appendChild(sp); }
+      r.appendChild(bt); el.appendChild(r);
+    });
+  }
   function refreshSettings() {
     if ($('sheet').hidden) return;
     steps();
@@ -456,11 +680,12 @@
     var sysName = voice.systemVoiceName(), remote = voice.systemVoiceRemote() ? ' That voice is spoken by the browser maker’s servers, so the sentences are sent there.' : '';
     $('voiceNote').textContent = voice.live() ? 'Used only if the voice key fails.' + remote : cur.mode === 'device' ? 'Everything is spoken by the browser’s own voice' + (sysName ? ' (' + sysName + ').' : '.') + remote : 'The recorded voice says the fixed lines (welcome, one moment, standing by). Answers use the browser’s own voice' + (sysName ? ' (' + sysName + ')' : '') + '. Tap a name to hear it.' + remote;
     $('keyNote').textContent = Kin.shared ? Kin.SHARED_TEXT : brain.hasKey() ? 'A key is saved on this device: ' + brain.keyHint() + '. Small talk uses ' + brain.QUICK + ', real questions use ' + brain.MAIN + '.' : 'No key on this device. Kin answers from the pack only.';
-    var dp = Kin.mind.deep(); [].forEach.call(document.querySelectorAll('#deepSeg button'), function (b) { b.setAttribute('aria-pressed', b.dataset.deep === dp); });
     $('webCap').value = Kin.mind.webCap();
-    hfSettings();
+    hfSettings(); gbSettings(); wxSettings();
     var sp = Kin.mind.spendToday();
     $('webNote').textContent = 'Web searches today: ' + Kin.mind.webToday() + ' of ' + Kin.mind.webCap() + '. Each search costs about one US cent, on top of the words. Reading a page has no extra charge. At the limit Kin answers without the web and says so.';
+    var le = brain.lastError && brain.lastError(), leEl = $('lastErr');
+    if (leEl) { leEl.hidden = !le; if (le) leEl.textContent = 'Last error: ' + new Date(le.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' · ' + [le.status ? 'status ' + le.status : '', le.type, le.code, le.model, le.request ? 'request ' + le.request : ''].filter(Boolean).join(' · ') + (le.message ? '\n' + le.message : ''); }
     $('spendNote').textContent = sp.n ? 'Today on this device: ' + sp.n + (sp.n === 1 ? ' answer' : ' answers') + ', about $' + sp.usd.toFixed(2) + '. An estimate from the token counts Anthropic reports; your Console shows the real bill.' : 'Nothing spent today on this device.';
     var mem = Kin.mind.memory(), ml = $('memList'); ml.textContent = '';
     if (!mem.length) { var e0 = document.createElement('p'); e0.className = 'note'; e0.textContent = 'Nothing yet. Say "remember that …", or use the thumbs under an answer.'; ml.appendChild(e0); }
@@ -499,7 +724,6 @@
   $('keyDrop').addEventListener('click', function () { brain.dropKey(); clearTalk(); refreshSettings(); });
   function setLimit(e) { var h = parseInt($('limH').value, 10), d = parseInt($('limD').value, 10); brain.setLimits({ perHour: h, perDay: d }); refreshSettings(); }
   $('limH').addEventListener('change', setLimit); $('limD').addEventListener('change', setLimit);
-  $('deepSeg').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; Kin.mind.setDeep(b.dataset.deep); refreshSettings(); });
   function hfSettings() {
     var on = Kin.hf.connected(), st = Kin.hf.status();
     $('hfConnect').hidden = on; $('hfDrop').hidden = !on;
@@ -510,9 +734,29 @@
     $('hfCapNote').textContent = 'Kin will not approve pictures past this many Higgsfield credits a day. Used today on this device: ' + Kin.hf.used() + ' of ' + Kin.hf.cap() + '.';
   }
   Kin.onHf = function () { refreshSettings(); };
+  $('wxFind').addEventListener('click', wxFind);
+  $('wxTown').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); wxFind(); } });
+  $('wxDrop').addEventListener('click', function () { Kin.chart.dropPlace(); wxSettings(); });
   $('hfConnect').addEventListener('click', function () { gesture(); Kin.hf.connect().catch(function (e) { $('hfNote').textContent = (e && e.message) || 'Could not start the sign-in.'; }); });
   $('hfDrop').addEventListener('click', function () { Kin.hf.disconnect(); refreshSettings(); });
   $('hfCap').addEventListener('change', function () { Kin.hf.setCap($('hfCap').value); refreshSettings(); });
+
+  /* the Grok Bot bridge settings */
+  $('gbSave').addEventListener('click', function () {
+    var r = Kin.bridge.setToken($('gbTok').value, $('gbKeep').checked); $('gbTok').value = ''; refreshSettings();
+    if (!r.ok) $('gbNote').textContent = r.why === 'shared' ? Kin.SHARED_TEXT : r.why === 'storage' ? 'This browser would not save the token. Its storage is blocked or full.' : 'That does not look like a device token. Paste the whole token, with nothing around it.';
+  });
+  $('gbKeep').addEventListener('change', function () { /* moving a saved token between tab-only and kept needs it pasted again, so nothing is copied around */ if (Kin.bridge.hasToken()) { Kin.bridge.dropToken(); $('gbNote').textContent = 'Paste the token again to save it ' + ($('gbKeep').checked ? 'on this device.' : 'for this tab only.'); } });
+  $('gbOn').addEventListener('click', function () {
+    var B = Kin.bridge, b = $('gbOn');
+    if (B.enabled()) { B.setEnabled(false); refreshSettings(); return; }
+    if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Tap again to turn it on'; $('gbNote').textContent = 'Turning it on means a sentence you start with “ask Grok Bot” is sent to your relay and private mailbox, as described above. Nothing else.'; setTimeout(function () { if (b.dataset.sure === '1') { b.dataset.sure = ''; b.textContent = 'Turn on'; } }, 6000); return; }
+    B.setEnabled(true); refreshSettings();
+  });
+  $('gbTest').addEventListener('click', function () { var n = $('gbNote'); n.textContent = 'Checking the relay…'; Kin.bridge.health().then(function (r) { n.textContent = r.ok ? 'The relay is up and answers this page. The token is checked when you ask; if it is refused, Kin says so then.' : 'The relay did not answer from here' + (r.status ? ' (HTTP ' + r.status + ')' : '') + '. It may be down, or not allowing this address.'; }); });
+  $('gbDrop').addEventListener('click', function () { Kin.bridge.stopAll(); Kin.bridge.dropToken(); refreshSettings(); });
+  $('gbUrl').addEventListener('change', function () { var r = Kin.bridge.setRelay($('gbUrl').value); refreshSettings(); if (!r.ok) $('gbNote').textContent = r.why; });
+  $('gbCtx').addEventListener('change', function () { Kin.bridge.setCtx($('gbCtx').checked); refreshSettings(); });
   $('webCap').addEventListener('change', function () { Kin.mind.setWebCap(parseInt($('webCap').value, 10)); refreshSettings(); });
   $('memAll').addEventListener('click', function () { var b = $('memAll'); if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Tap again to forget everything Kin remembers'; setTimeout(function () { b.dataset.sure = ''; b.textContent = 'Forget all'; }, 5000); return; } Kin.mind.forgetAll(); b.dataset.sure = ''; b.textContent = 'Forget all'; refreshSettings(); });
   /* with no pack, one button on the main screen opens the file picker; the two steps sit beside it */
@@ -526,8 +770,8 @@
   $('packFile').addEventListener('change', function (e) { var f = e.target.files && e.target.files[0]; if (!f) return; $('packNote').textContent = 'Reading…'; Kin.pack.importFile(f).then(function () { refreshSettings(); }, function (err) { $('packNote').textContent = (err && err.message) || 'That file could not be read.'; }); e.target.value = ''; });
   $('packDrop').addEventListener('click', function () { clearTalk(); Kin.pack.remove().then(refreshSettings, refreshSettings).then(packCard); });
   $('erase').addEventListener('click', function () {
-    var b = $('erase'); if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Tap again to erase the key, the pack and the conversation'; setTimeout(function () { b.dataset.sure = ''; b.textContent = 'Erase everything on this device'; }, 5000); return; }
-    ears.stop(); voice.stop(); voice.tts.dropKey(); brain.wipe(); Kin.mind.wipe(); if (Kin.hf) { Kin.hf.disconnect(); Kin.hf.wipe(); } try { Object.keys(localStorage).forEach(function (k) { if (/^kin\./.test(k)) localStorage.removeItem(k); }); } catch (e) {}
+    var b = $('erase'); if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Tap again to erase the keys, tokens, the pack and the conversation'; setTimeout(function () { b.dataset.sure = ''; b.textContent = 'Erase everything on this device'; }, 5000); return; }
+    ears.stop(); voice.stop(); voice.tts.dropKey(); brain.wipe(); Kin.mind.wipe(); if (Kin.hf) { Kin.hf.disconnect(); Kin.hf.wipe(); } if (Kin.bridge) Kin.bridge.wipe(); try { Object.keys(sessionStorage).forEach(function (k) { if (/^kin\./.test(k)) sessionStorage.removeItem(k); }); } catch (e) {} try { Object.keys(localStorage).forEach(function (k) { if (/^kin\./.test(k)) localStorage.removeItem(k); }); } catch (e) {}
     Kin.pack.kv.wipe().then(function () { location.reload(); });
   });
 
@@ -545,6 +789,8 @@
     else if (ears.supported) caption(S.autoListen ? 'Tap anywhere and I’ll listen, sir.' : 'Tap the mic and choose Allow.', S.autoListen ? 'This browser wants one tap first' : 'Then say “hey Jarvis”');
     else caption('This browser cannot listen by itself.', 'Type, or use the keyboard’s mic');
     paint(); Kin.ready = true; packCard();
+    /* a Grok Bot question still waiting from before the page was closed: show it, and keep checking if the token is here */
+    if (Kin.bridge) { var gbw = Kin.bridge.restore(); gbw.forEach(gbPaint); if (gbw.length) caption('A Grok Bot question is still waiting, sir.', Kin.bridge.hasToken() && Kin.bridge.enabled() ? 'Checking for the answer' : 'Paste the device token in settings to check'); }
     if (voice.tts.hasKey()) voice.tts.refresh().then(function () { refreshSettings(); });
     if (Kin.shared || (!brain.hasKey() && !Kin.pack.get() && !S.autoListen)) { $('sheet').hidden = false; refreshSettings(); }
     /* said last, so the start-up lines do not cover it */
