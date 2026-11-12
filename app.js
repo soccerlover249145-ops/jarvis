@@ -198,6 +198,7 @@
   function touch() { S.lastEx = Date.now(); S.snooze = 0; clearTimeout(idleT); if (S.talk === 'awake') idleT = setTimeout(drowse, Kin.T.follow); }
   function drowse() {
     if (S.talk !== 'awake') return;
+    if (S.ptt) { idleT = setTimeout(drowse, 3000); return; }
     if (S.busy || S.talking) { idleT = setTimeout(drowse, 3000); return; }
     /* someone is mid-sentence: give them one short extension, once */
     if ((buf || tail) && !S.snooze) { S.snooze = 1; idleT = setTimeout(drowse, 6000); return; }
@@ -233,6 +234,8 @@
   /** some phones repeat the whole phrase so far in each "final": keep the longer one instead of joining them */
   function join(a, b) { var na = ears.norm(a), nb = ears.norm(b); if (!na) return b; if (nb.indexOf(na) === 0) return b; if (na.length >= nb.length && na.slice(-nb.length) === nb) return a; return (a + ' ' + b).trim(); }
   function commit() {
+    /* Space is held: everything said is kept until it is let go */
+    if (S.ptt) { clearTimeout(hearT); return; }
     clearTimeout(hearT); var q = stripKin((buf + ' ' + tail).trim()), n = ears.norm(q); buf = tail = ''; if (!q || S.talk !== 'awake') return;
     /* a yes or no to a question Kin asked before spending: short words like "yeah" count here */
     if (pendingConfirm && !echo(q) && pendingConfirm.answer(q)) { showHeard(''); return; }
@@ -246,9 +249,11 @@
   }
   function heard(text, fin) {
     text = String(text || '').trim(); if (!text || S.talk === 'off') return;
+    /* the browser's own late copy of words just sent by letting go of Space: already sent, so dropped */
+    if (S.pttSent && Date.now() - S.pttSent.at < 4000) { var pn = ears.norm(text); if (pn && (S.pttSent.n.indexOf(pn) >= 0 || pn.indexOf(S.pttSent.n) >= 0)) return; }
     /* while Jarvis speaks, and for a moment after, nothing is taken in except "stop" */
     if (S.talking && ears.stopIn(text) && (fin || loud()) && kinRef().indexOf(' ' + ears.norm(text).split(' ').pop() + ' ') < 0) { hushNow(); if (fin) { tail = buf = ''; clearTimeout(hearT); showHeard(''); caption(null); } return; }
-    if (deaf()) { var b = bargeIn(text, fin); if (!b) return; text = b; }
+    if (!S.ptt && deaf()) { var b = bargeIn(text, fin); if (!b) return; text = b; }
     /* Kin's own words, half-heard or whole: drop them, and drop the half-heard copy that was waiting */
     if (echo(text)) { tail = ''; clearTimeout(hearT); if (buf) hearT = setTimeout(commit, 800); return; }
     bust.beat(1);
@@ -859,8 +864,46 @@
   document.addEventListener('keydown', function (e) {
     var tag = (e.target.tagName || '').toLowerCase(), typing = tag === 'input';
     if (e.key === 'Escape') { if (!$('sheet').hidden) { $('sheet').hidden = true; return; } stopAll(); }
-    else if (e.key === ' ' && !typing && !(e.target.closest && e.target.closest('button,label'))) { e.preventDefault(); $('mic').click(); }
+    else if (e.key === ' ' && spaceOk(e)) { e.preventDefault(); if (e.repeat || ptt.down) return; ptt.down = true; ptt.t = setTimeout(pttStart, 250); }
   });
+  /* Space: a quick tap turns listening on or off, as it always has. Held down, it is push-to-talk: no wake phrase,
+     Jarvis stops talking, everything said while it is held is kept, and it is all sent the moment Space is let go */
+  var ptt = { down: false, on: false, started: false, t: 0 };
+  function spaceOk(e) {
+    var t = e.target, tag = (t.tagName || '').toLowerCase();
+    return !(tag === 'input' || tag === 'textarea' || tag === 'select' || t.isContentEditable) && !(t.closest && t.closest('button,label,[role="menu"],.sheet:not([hidden]),.wl,.dl,.bb'));
+  }
+  function pttStart() {
+    ptt.t = 0;
+    if (!ears.supported || S.micState === 'blocked' || Kin.shared) return;
+    gesture(); ptt.on = true; S.ptt = true; app.dataset.ptt = 'on';
+    if (S.talking) hushNow();
+    pendWake = false; clearTimeout(greetT); buf = tail = ''; clearTimeout(hearT); showHeard('');
+    ptt.started = !ears.wanted();
+    if (ptt.started || ears.paused()) ears.start();
+    if (S.talk !== 'awake') cue(); else touch();
+    caption('Listening. Let go of Space to send.', 'Hold Space to talk', 'you'); paint();
+  }
+  function pttEnd() {
+    ptt.on = false; delete app.dataset.ptt;
+    /* the browser is still finishing the last words: a moment for them, then everything goes at once */
+    setTimeout(function () {
+      if (ptt.on) return;
+      S.ptt = false;
+      var q = stripKin((buf + ' ' + tail).trim());
+      if (q) { S.pttSent = { at: Date.now(), n: ears.norm(q) }; touch(); commit(); }
+      else if (S.micState !== 'blocked') caption(null);
+      if (ptt.started) { ptt.started = false; ears.stop(); }
+      paint();
+    }, 600);
+  }
+  document.addEventListener('keyup', function (e) {
+    if (e.key !== ' ' || !ptt.down) return;
+    ptt.down = false; e.preventDefault();
+    if (ptt.on) { pttEnd(); return; }
+    if (ptt.t) { clearTimeout(ptt.t); ptt.t = 0; $('mic').click(); }
+  });
+  window.addEventListener('blur', function () { if (!ptt.down) return; ptt.down = false; if (ptt.on) pttEnd(); else { clearTimeout(ptt.t); ptt.t = 0; } });
   /* the first tap or key anywhere lets the page speak, and starts the ears where the browser wanted a tap first */
   function first() {
     document.removeEventListener('pointerup', first, true); document.removeEventListener('keydown', first, true);
