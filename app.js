@@ -1128,11 +1128,19 @@
       var sn = document.createElement('p'); sn.className = 'ibsnip'; sn.textContent = m.snippet; mid.appendChild(sn);
       r.appendChild(mid);
       var when = document.createElement('small'); when.className = 'ibwhen'; when.textContent = relTime(m.date); if (m.date) when.title = new Date(m.date).toLocaleString(); r.appendChild(when);
-      r.addEventListener('click', function (e) { if (e.target.closest('button')) return; r.classList.toggle('open'); });
-      r.addEventListener('keydown', function (e) { if ((e.key === 'Enter' || e.key === ' ') && e.target === r) { e.preventDefault(); r.classList.toggle('open'); } });
+      /* opening a row reads that one email in full (read-only, kept on this page only) */
+      var bodyEl = document.createElement('div'); bodyEl.className = 'ibbody'; bodyEl.hidden = true;
+      function readIt() {
+        if (bodyEl.dataset.done) return Promise.resolve(); bodyEl.hidden = false; bodyEl.textContent = 'Opening the email…';
+        return Kin.email.message(m.id).then(function (b) { bodyEl.dataset.done = '1'; bodyEl.textContent = b.text + (b.cut ? '\n…' : ''); m.full = b.text; }, function (err) { bodyEl.textContent = String((err && err.message) || err); });
+      }
+      function toggle() { var on = r.classList.toggle('open'); bodyEl.hidden = !on; if (on) readIt(); }
+      r.addEventListener('click', function (e) { if (e.target.closest('button') || e.target.closest('.ibbody')) return; gesture(); toggle(); });
+      r.addEventListener('keydown', function (e) { if ((e.key === 'Enter' || e.key === ' ') && e.target === r) { e.preventDefault(); toggle(); } });
+      mid.appendChild(bodyEl);
       var acts = document.createElement('div'); acts.className = 'btns ibacts';
       var rep = document.createElement('button'); rep.type = 'button'; rep.className = 'lnk'; rep.textContent = 'Draft reply';
-      rep.addEventListener('click', function () { gesture(); handOff(rep, 'Draft a reply, in my voice, short, to the email between the email tags. Put it in an email draft to the sender, with Re: and that email\'s subject as the subject.\n\n' + fence('email', 'From: ' + m.from + '\nSubject: ' + m.subject + '\n' + m.snippet), 'Draft a reply to ' + nameOf(m.from) + ': ' + m.subject); });
+      rep.addEventListener('click', function () { gesture(); if (S.busy) { handOff(rep, ''); return; } var was = rep.textContent; rep.textContent = 'Reading it…'; rep.disabled = true; readIt().then(function () { rep.textContent = was; rep.disabled = false; handOff(rep, 'Draft a reply, in my voice, short, to the email between the email tags. Put it in an email draft to the sender, with Re: and that email\'s subject as the subject.\n\n' + fence('email', 'From: ' + m.from + '\nSubject: ' + m.subject + '\n\n' + (m.full || m.snippet)), 'Draft a reply to ' + nameOf(m.from) + ': ' + m.subject); }); });
       var op = document.createElement('button'); op.type = 'button'; op.className = 'lnk dim'; op.textContent = 'Open in Gmail';
       op.addEventListener('click', function () { window.open(Kin.email.threadUrl(m), '_blank', 'noopener,noreferrer'); });
       acts.appendChild(rep); acts.appendChild(op); r.appendChild(acts); host.appendChild(r);

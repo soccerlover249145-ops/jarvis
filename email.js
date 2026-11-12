@@ -175,6 +175,29 @@
     return String(x || '').replace(/&#(\d{1,6});/g, function (a, n) { return String.fromCodePoint(Math.min(+n, 0x10FFFF)); }).replace(/&#x([0-9a-f]{1,6});/gi, function (a, h) { return String.fromCodePoint(Math.min(parseInt(h, 16), 0x10FFFF)); })
       .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&');
   }
+  /* ---- one whole email, read on a tap with the read-only token: its plain text only (an HTML-only email is turned
+     into text in an inert document, so nothing in it runs), without the older thread quoted below it, kept in memory ---- */
+  var bodies = {};
+  function b64u(x) { try { var bin = atob(String(x || '').replace(/-/g, '+').replace(/_/g, '/')), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new TextDecoder('utf-8').decode(u); } catch (e) { return ''; } }
+  function partOf(pp, type) { if (!pp) return ''; if (pp.mimeType === type && pp.body && pp.body.data) return b64u(pp.body.data); var ps = pp.parts || []; for (var i = 0; i < ps.length; i++) { var t = partOf(ps[i], type); if (t) return t; } return ''; }
+  function htmlText(h) { if (!h) return ''; try { var d = new DOMParser().parseFromString(String(h), 'text/html'); [].forEach.call(d.querySelectorAll('script,style,head'), function (n) { n.remove(); }); [].forEach.call(d.querySelectorAll('br'), function (n) { n.replaceWith('\n'); }); [].forEach.call(d.querySelectorAll('p,div,li,tr,h1,h2,h3'), function (n) { n.append('\n'); }); return d.body ? d.body.textContent : ''; } catch (e) { return ''; } }
+  function message(id) {
+    if (bodies[id]) return Promise.resolve(bodies[id]);
+    if (Kin.shared) return Promise.reject(new Error(Kin.SHARED_TEXT));
+    return getToken(READ_SCOPE).then(function (tok) {
+      return fetch(LIST_URL + '/' + encodeURIComponent(id) + '?format=full', { credentials: 'omit', referrerPolicy: 'no-referrer', headers: { Authorization: 'Bearer ' + tok } }).then(function (r) {
+        if (!r.ok) return refused(r, READ_SCOPE, 'Gmail would not open that email');
+        return r.json();
+      }).then(function (m) {
+        var t = partOf(m.payload, 'text/plain') || htmlText(partOf(m.payload, 'text/html')) || unent(m.snippet);
+        t = String(t).replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
+        /* the earlier messages quoted under a reply are left out: they were read before */
+        var cut = t.search(/\n(On [^\n]{4,200}wrote:|-{2,} ?Original Message ?-{0,}|From: [^\n]+\n(Sent|Date): )/i); if (cut > 40) t = t.slice(0, cut);
+        t = t.split('\n').filter(function (ln) { return !/^>/.test(ln); }).join('\n').trim();
+        return (bodies[id] = { id: m.id, from: hdr(m, 'from'), to: hdr(m, 'to'), subject: hdr(m, 'subject') || '(no subject)', text: t.slice(0, 8000), cut: t.length > 8000 });
+      });
+    });
+  }
   /** a Gmail link that opens this message in the right account, when several are signed in */
   var mailbox = '';
   function threadUrl(m) { return 'https://mail.google.com/mail/' + (mailbox ? '?authuser=' + encodeURIComponent(mailbox) : 'u/0/') + '#all/' + encodeURIComponent(m.thread || m.id); }
@@ -463,7 +486,7 @@
     return box;
   }
 
-  Kin.email = { eventCard: eventCard, eventUrl: eventUrl, ics: ics, evCheck: evCheck, contacts: contacts, findPeople: findPeople, bareNames: bareNames, composeUrl: composeUrl, raw: raw, check: check, send: send, card: card, clientId: clientId, setClientId: setClientId, cap: cap, setCap: setCap, sentToday: sentToday, loadGis: loadGis,
+  Kin.email = { message: message, eventCard: eventCard, eventUrl: eventUrl, ics: ics, evCheck: evCheck, contacts: contacts, findPeople: findPeople, bareNames: bareNames, composeUrl: composeUrl, raw: raw, check: check, send: send, card: card, clientId: clientId, setClientId: setClientId, cap: cap, setCap: setCap, sentToday: sentToday, loadGis: loadGis,
     outbox: outbox, saveDraft: saveDraft, updateDraft: updateDraft, dropDraft: dropDraft, clearSent: clearSent, waiting: waiting,
     inbox: inbox, threadUrl: threadUrl, calendar: calendar,
     canSend: function () { return !Kin.shared && !!clientId(); },
