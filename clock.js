@@ -42,13 +42,13 @@
     if (!t || t.length > 80) return null;
     var now = new Date(), m;
     if ((m = TIME.exec(t))) {
-      if (!m[1]) return { say: 'It\'s ' + fmtTime(now) + ', sir.', show: fmtTime(now) + ', ' + fmtDay(now) + '.' };
+      if (!m[1]) return { say: 'It\'s ' + fmtTime(now) + ', sir.', show: fmtTime(now) + ', ' + fmtDay(now) + '.', card: { kind: 'clock', tz: '', name: '' } };
       var place = m[1].trim(), tz = zone(place);
       if (!tz) return null;
       var there = fmtTime(now, tz), off = dayOff(now, tz), name = (/^the\s+/.test(place) ? 'the ' : '') + title(place.replace(/^the\s+/, ''));
-      return { say: 'It\'s ' + there + off + ' in ' + name + ', sir.', show: name.replace(/^the /, 'The ') + ': ' + there + ', ' + fmtDay(now, tz) + '. Here: ' + fmtTime(now) + '.' };
+      return { say: 'It\'s ' + there + off + ' in ' + name + ', sir.', show: name.replace(/^the /, 'The ') + ': ' + there + ', ' + fmtDay(now, tz) + '. Here: ' + fmtTime(now) + '.', card: { kind: 'clock', tz: tz, name: name.replace(/^the /, 'The ') } };
     }
-    if (DATE.test(t)) return { say: 'It\'s ' + fmtDay(now) + ', sir.', show: fmtDay(now) + ', ' + now.getFullYear() + '. ' + fmtTime(now) + '.' };
+    if (DATE.test(t)) return { say: 'It\'s ' + fmtDay(now) + ', sir.', show: fmtDay(now) + ', ' + now.getFullYear() + '. ' + fmtTime(now) + '.', card: { kind: 'date' } };
     return null;
   }
   Kin.clock = { instant: instant, zone: zone };

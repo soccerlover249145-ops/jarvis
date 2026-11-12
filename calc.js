@@ -120,7 +120,7 @@
     if ((m = TIP1.exec(t)) || (m = TIP2.exec(t))) {
       var pct = +(m.length === 4 ? m[1] || m[2] : m[2]), amt = +(m.length === 4 ? m[3] : m[1]).replace(/,/g, ''), tip = amt * pct / 100;
       if (!(amt > 0) || !(pct > 0) || pct > 100) return null;
-      return { say: an(pct) + ' ' + said(pct) + ' percent tip on ' + money(amt, 'en-US') + ' is ' + money(tip, 'en-US') + ', sir, so ' + money(amt + tip, 'en-US') + ' in all.', show: fmt(pct) + '% tip on ' + money(amt) + ': ' + money(tip) + ' (total ' + money(amt + tip) + ')' };
+      return { say: an(pct) + ' ' + said(pct) + ' percent tip on ' + money(amt, 'en-US') + ' is ' + money(tip, 'en-US') + ', sir, so ' + money(amt + tip, 'en-US') + ' in all.', show: fmt(pct) + '% tip on ' + money(amt) + ': ' + money(tip) + ' (total ' + money(amt + tip) + ')', card: { kind: 'calc', big: money(tip), sub: fmt(pct) + '% tip on ' + money(amt), extra: 'Total ' + money(amt + tip), copy: (+tip).toFixed(2) } };
     }
     /* conversions: "convert 5 miles to km", "5 miles in km", "how many ounces in a pound", "72 f in c" */
     var cv = /^(?:convert\s+)?(-?\d+(?:\.\d+)?|an?|one)\s*([a-z°"' /.]+?)\s+(?:to|in|into|as)\s+([a-z°"' /.]+)$/.exec(t) || (function () { var h = /^how many\s+([a-z°"' /.]+?)\s+(?:are\s+)?(?:in|to)\s+(?:an?|one|(-?\d+(?:\.\d+)?))\s+([a-z°"' /.]+)$/.exec(t); return h ? [h[0], h[2] || '1', h[3], h[1]] : null; })();
@@ -129,12 +129,12 @@
       if (from && to && from !== to) {
         var v = convert(n, from, to); if (v == null) return null;
         var vr = round(v), fl = label(from, n), tl = label(to, vr);
-        return { say: said(n) + ' ' + fl + ' is ' + said(vr) + ' ' + tl + ', sir.', show: fmt(n) + ' ' + fl + ' = ' + fmt(vr) + ' ' + tl };
+        return { say: said(n) + ' ' + fl + ' is ' + said(vr) + ' ' + tl + ', sir.', show: fmt(n) + ' ' + fl + ' = ' + fmt(vr) + ' ' + tl, card: { kind: 'calc', big: fmt(vr) + ' ' + tl, sub: fmt(n) + ' ' + fl, copy: String(+(+vr).toPrecision(15)) } };
       }
       return null;
     }
     /* "square root of 144" */
-    if ((m = /^(?:the\s+)?square root of\s+(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)$/.exec(t))) { var sq = +m[1].replace(/,/g, ''); if (sq < 0) return null; var r0 = Math.sqrt(sq); return { say: 'The square root of ' + said(sq) + ' is ' + said(round(r0)) + ', sir.', show: '√' + fmt(sq) + ' = ' + fmt(round(r0)) }; }
+    if ((m = /^(?:the\s+)?square root of\s+(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)$/.exec(t))) { var sq = +m[1].replace(/,/g, ''); if (sq < 0) return null; var r0 = Math.sqrt(sq); return { say: 'The square root of ' + said(sq) + ' is ' + said(round(r0)) + ', sir.', show: '√' + fmt(sq) + ' = ' + fmt(round(r0)), card: { kind: 'calc', big: fmt(round(r0)), sub: '√' + fmt(sq), copy: String(+(+r0).toPrecision(15)) } }; }
     /* sums: only digits and operators once the words are swapped */
     if (/\b0x[0-9a-f]/.test(t)) return null;
     var e = words2expr(t);
@@ -145,7 +145,7 @@
     if (/^(?:9\/11|24\/7|50\/50|365\/24\/7|4\/20|7\/11)$/.test(e0)) return null;
     var val = evaluate(e); if (val == null) return null;
     var shown = e.replace(/\s+/g, '').replace(/\*0\.01\*/g, '\u0001').replace(/(\d|\))-/g, '$1\u0002').replace(/\*/g, ' × ').replace(/\//g, ' ÷ ').replace(/\+/g, ' + ').replace(/\u0002/g, ' − ').replace(/\u0001/g, '% of ').replace(/\s+/g, ' ').trim();
-    return { say: 'That is ' + said(val) + ', sir.', show: shown + ' = ' + fmt(val) };
+    return { say: 'That is ' + said(val) + ', sir.', show: shown + ' = ' + fmt(val), card: { kind: 'calc', big: fmt(val), sub: shown, copy: String(+(+val).toPrecision(15)) } };
   }
   Kin.calc = { instant: instant, evaluate: evaluate, convert: convert, unit: unit };
 })();

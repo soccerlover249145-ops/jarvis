@@ -129,7 +129,7 @@
       if (n0 === 0) return { say: 'That’s today, sir.', show: (u.label ? cap(u.label) + ' is ' : '') + 'Today, ' + dayName(when) + '.' };
       var say = unit === 'weeks' ? (n0 < 7 ? n0 + (n0 === 1 ? ' day' : ' days') : weeksText(n0)) : n0 + (n0 === 1 ? ' day' : ' days') + (unit !== 'days' && n0 >= 14 ? ' (' + weeksText(n0) + ')' : '');
       if (unit === 'sleeps') say = n0 + (n0 === 1 ? ' sleep' : ' sleeps');
-      return { say: say.replace(/ \(.*\)$/, '') + ' until ' + lab + ', sir' + (u.label ? ', ' + dayName(when) : '') + '.', show: say + ' until ' + (u.label ? lab + ' (' + dayName(when) + ')' : lab) + '.' };
+      return { say: say.replace(/ \(.*\)$/, '') + ' until ' + lab + ', sir' + (u.label ? ', ' + dayName(when) : '') + '.', show: say + ' until ' + (u.label ? lab + ' (' + dayName(when) + ')' : lab) + '.', card: { kind: 'count', at: u.at, n: n0, unit: unit === 'sleeps' ? 'sleeps' : 'days', label: u.label ? lab : '' } };
     }
     /* which day: "what day is Christmas", "what day of the week is March 3", "what day does Thanksgiving fall on" */
     if ((m = /^what day (?:of the week )?(?:is|will be) (.{2,40})$/.exec(t)) || (m = /^what day (?:does|will) (.{2,40}) (?:fall on|be on|land on|be)$/.exec(t))) {

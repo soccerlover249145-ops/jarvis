@@ -843,10 +843,87 @@
     if (r.remind && remindSet(r.remind, p.parentNode, r.remindMore)) showThread();
     /* a timer's card is the point of asking: the conversation opens on it, the way the weather card does */
     if (r.timers && r.timers.length && Kin.mind.timers) { try { timerCards(r.timers, p.parentNode); showThread(); } catch (e) {} }
+    /* the clock, the date, a countdown or a sum: its card, and the conversation opens on it */
+    if (r.card && r.card.kind) { try { ansCard(r.card, p.parentNode); showThread(); } catch (e) {} }
     if ((r.list || r.undoList) && Kin.lists) listUndo(r, p.parentNode);
     if (r.undoRemind && r.undoRemind.length && Kin.remind) remindUndo(r.undoRemind, p.parentNode);
     try { rmTick(); } catch (e) {}
     refreshMade();
+  }
+  /* ------------------------------------------------------------ answer cards: a live clock (here or a city: its face,
+     its time, its day and how far ahead or behind it is), the date (week and day of the year), a countdown (the day on a
+     calendar tile) and a sum (the answer in large type, with Copy), in the same glass as the weather and timer cards */
+  var CK_FMT = {}, CK_TD = {}, ckIv = 0;
+  /* the time and the day for a zone, formatters made once */
+  function ckFmt(tz) { var k = tz || '-', o = tz ? { timeZone: tz } : {}; return CK_TD[k] || (CK_TD[k] = { t: new Intl.DateTimeFormat(undefined, Object.assign({ hour: 'numeric', minute: '2-digit' }, o)), d: new Intl.DateTimeFormat(undefined, Object.assign({ weekday: 'long', month: 'long', day: 'numeric' }, o)) }); }
+  function ckParts(tz, d) {
+    if (!tz) return { h: d.getHours(), m: d.getMinutes(), s: d.getSeconds() };
+    var f = CK_FMT[tz] || (CK_FMT[tz] = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', hourCycle: 'h23' }));
+    var o = {}; f.formatToParts(d).forEach(function (p) { o[p.type] = +p.value; });
+    return { h: o.hour % 24, m: o.minute, s: o.second, y: o.year, mo: o.month, d: o.day };
+  }
+  /* "17 hours ahead", "3 hours 30 min behind", "the same time as here" */
+  function ckAhead(tz, d) {
+    var p = ckParts(tz, d), diff = Math.round((Date.UTC(p.y, p.mo - 1, p.d, p.h, p.m, p.s) - (d.getTime() - d.getMilliseconds())) / 60000) + d.getTimezoneOffset();
+    if (!diff) return 'the same time as here';
+    var a = Math.abs(diff), h = Math.floor(a / 60), mm = a % 60;
+    return (h ? h + (h === 1 ? ' hour' : ' hours') : '') + (mm ? (h ? ' ' : '') + mm + ' min' : '') + (diff > 0 ? ' ahead' : ' behind');
+  }
+  function ckFace() {
+    var g = svgEl('svg', { viewBox: '0 0 64 64', 'class': 'ckface', 'aria-hidden': 'true' });
+    g.appendChild(svgEl('circle', { 'class': 'ckdial', cx: 32, cy: 32, r: 27 }));
+    for (var i = 0; i < 12; i++) { var q = i % 3 === 0, a = i * Math.PI / 6, r1 = q ? 20.5 : 22.5; g.appendChild(svgEl('line', { 'class': q ? 'cktk q' : 'cktk', x1: (32 + r1 * Math.sin(a)).toFixed(2), y1: (32 - r1 * Math.cos(a)).toFixed(2), x2: (32 + 25 * Math.sin(a)).toFixed(2), y2: (32 - 25 * Math.cos(a)).toFixed(2) })); }
+    g.appendChild(svgEl('line', { 'class': 'ckh', x1: 32, y1: 32, x2: 32, y2: 19 }));
+    g.appendChild(svgEl('line', { 'class': 'ckm', x1: 32, y1: 32, x2: 32, y2: 13 }));
+    g.appendChild(svgEl('line', { 'class': 'cks', x1: 32, y1: 35, x2: 32, y2: 10 }));
+    g.appendChild(svgEl('circle', { 'class': 'ckc', cx: 32, cy: 32, r: 2 }));
+    return g;
+  }
+  function ckPaint(c) {
+    var tz = c.dataset.tz || '', d = new Date(), p = ckParts(tz, d), o = tz ? { timeZone: tz } : {};
+    var rot = function (sel, deg) { var x = c.querySelector(sel); if (x) x.setAttribute('transform', 'rotate(' + deg.toFixed(1) + ' 32 32)'); };
+    rot('.ckh', (p.h % 12) * 30 + p.m * 0.5); rot('.ckm', p.m * 6 + p.s * 0.1); rot('.cks', p.s * 6);
+    c.dataset.night = p.h < 6 || p.h >= 18 ? '1' : '';
+    var F = ckFmt(tz), tt = F.t.format(d), sm = F.d.format(d) + (tz ? ' · ' + ckAhead(tz, d) : '');
+    if (c.querySelector('.tmt').textContent !== tt) c.querySelector('.tmt').textContent = tt;
+    if (c.querySelector('.tml small').textContent !== sm) c.querySelector('.tml small').textContent = sm;
+  }
+  function ckTick() { var cs = document.querySelectorAll('.ckcard'); if (!cs.length) { clearInterval(ckIv); ckIv = 0; return; } if (document.hidden || $('thread').hidden) return; [].forEach.call(cs, function (c) { try { ckPaint(c); } catch (e) {} }); }
+  function isoWeek(d) { var t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())), wd = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - wd); return Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7); }
+  function anTile(top, mid, cls) { var t = el('div', 'antile' + (cls ? ' ' + cls : '')); t.setAttribute('aria-hidden', 'true'); t.appendChild(el('span', 'antop', top)); t.appendChild(el('span', 'anmid', mid)); return t; }
+  function ansCard(c, box) {
+    var d = el('div', 'tmcard ancard'), now = new Date(), tx = el('div', 'tml'), b = el('b', ''), big = el('div', 'tmt'), sm = el('small', ''), mon = function (x) { var o = { month: 'short' }; try { o.calendar = 'gregory'; return new Intl.DateTimeFormat(undefined, o).format(x).replace(/\.$/, '').toUpperCase(); } catch (e) { return x.toLocaleDateString(undefined, { month: 'short' }).replace(/\.$/, '').toUpperCase(); } };
+    tx.appendChild(b); tx.appendChild(big); tx.appendChild(sm); d.setAttribute('role', 'group');
+    if (c.kind === 'clock') {
+      d.classList.add('ckcard'); d.dataset.tz = c.tz || ''; d.appendChild(ckFace()); b.textContent = c.name || 'Here'; d.appendChild(tx); d.setAttribute('aria-label', 'Clock' + (c.name ? ', ' + c.name : ''));
+      box.appendChild(d); ckPaint(d); if (!ckIv) ckIv = setInterval(ckTick, 1000); return;
+    }
+    if (c.kind === 'date') {
+      d.appendChild(anTile(mon(now), String(now.getDate())));
+      var t0 = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()), doy = Math.round((t0 - Date.UTC(now.getFullYear(), 0, 1)) / 864e5) + 1, leap = new Date(now.getFullYear(), 1, 29).getDate() === 29;
+      b.textContent = 'Today'; big.textContent = now.toLocaleDateString(undefined, { weekday: 'long' }); d.setAttribute('aria-label', 'The date');
+      sm.textContent = now.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }) + ' · week ' + isoWeek(now) + ' · day ' + doy + ' of ' + (leap ? 366 : 365);
+    } else if (c.kind === 'count') {
+      var at = new Date(+c.at), n = Math.round(+c.n); if (!isFinite(at.getTime()) || !(n >= 0)) return;
+      d.appendChild(anTile(mon(at), String(at.getDate())));
+      b.textContent = 'Until ' + (c.label || at.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })); d.setAttribute('aria-label', 'Countdown');
+      big.textContent = n + ' ' + (c.unit === 'sleeps' ? (n === 1 ? 'sleep' : 'sleeps') : (n === 1 ? 'day' : 'days'));
+      var dop = { weekday: 'long', month: 'long', day: 'numeric' }; if (at.getFullYear() !== now.getFullYear()) dop.year = 'numeric';
+      sm.textContent = at.toLocaleDateString(undefined, dop) + (n >= 14 ? ' · ' + Math.floor(n / 7) + ' weeks' + (n % 7 ? ' ' + n % 7 + (n % 7 === 1 ? ' day' : ' days') : '') : '');
+    } else if (c.kind === 'calc') {
+      d.appendChild(anTile('', '=', 'calc'));
+      b.textContent = String(c.sub || ''); big.textContent = String(c.big || ''); sm.textContent = String(c.extra || ''); d.setAttribute('aria-label', 'Answer');
+      if (big.textContent.length > 12) big.classList.add('long');
+      d.appendChild(tx);
+      /* Copy puts the number on the clipboard, on a tap only */
+      if (c.copy != null && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        var bx = el('div', 'tmb'), cp = el('button', '', 'Copy'); cp.type = 'button'; cp.setAttribute('aria-label', 'Copy ' + c.copy);
+        cp.addEventListener('click', function () { gesture(); navigator.clipboard.writeText(String(c.copy)).then(function () { cp.textContent = 'Copied'; cp.setAttribute('aria-label', 'Copied ' + c.copy); }, function () { cp.textContent = 'Not copied'; cp.setAttribute('aria-label', 'Not copied ' + c.copy); }); });
+        bx.appendChild(cp); d.appendChild(bx);
+      }
+      box.appendChild(d); return;
+    } else return;
+    d.appendChild(tx); box.appendChild(d);
   }
   /** the weather under its answer: the brief board's icon, the temperature, and high, low and rain */
   function wxCard(c, box) {
