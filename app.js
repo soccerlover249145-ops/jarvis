@@ -662,6 +662,8 @@
     if (k === 'lists') { $('sheet').hidden = true; openShelf('lists'); return; }
     if (k === 'inbox') { $('sheet').hidden = true; openShelf('inbox'); return; }
     if (k === 'quick') { $('sheet').hidden = true; var qq = 'How many days until Christmas?', rq = Kin.quick ? Kin.quick.instant(qq) : null; if (rq) instantly(qq, rq); showThread(); return; }
+    /* the timers running now with their cards, or how to start one: Try it never starts a timer itself */
+    if (k === 'timers') { $('sheet').hidden = true; var tq = 'What timers do I have?', tr = Kin.mind.timers && Kin.mind.timers().length ? Kin.mind.instant(tq) : null; if (tr) instantly(tq, tr); else localReply('Say \u201cset a pasta timer for 10 minutes\u201d, sir. Each timer gets a card with a ring, +1 min and Cancel, and the soonest shows in the status bar.', 'Timers'); showThread(); return; }
     if (k === 'instant') { $('sheet').hidden = true; var qi = 'What time is it in Tokyo?', ri = Kin.clock ? Kin.clock.instant(qi) : null; if (ri) instantly(qi, ri); showThread(); return; }
     if (k === 'ptt') { $('sheet').hidden = true; localReply(window.matchMedia && matchMedia('(pointer: coarse)').matches ? 'Tap the microphone and talk, sir. On a computer you can hold the space bar instead.' : 'Hold the space bar, speak, and let go, sir. Or just start typing.', 'Hold Space to talk'); showThread(); return; }
     if (k === 'mac') { $('sheet').hidden = true; var mp = localReply(Kin.mac && Kin.mac.available() ? 'You are in the Mac app, sir. Ask me to open an app, a file or a site, or to do something on your computer. Your Mac asks you before each one.' : Kin.mac.NEED_TEXT, 'Mac app'); if (Kin.mac && !Kin.mac.available()) mp.parentNode.appendChild(Kin.mac.need()); showThread(); return; }
@@ -837,6 +839,8 @@
     if (speakIt) say(r.say, true).then(function () { if (r.sleep && S.talk === 'awake') sleep(true); }); else { captionFade(7000); if (r.sleep && S.talk === 'awake') sleep(true); }
     if (r.open) openShelf(r.open);
     if (r.remind) remindSet(r.remind, p.parentNode, r.remindMore);
+    /* a timer's card is the point of asking: the conversation opens on it, the way the weather card does */
+    if (r.timers && r.timers.length && Kin.mind.timers) { try { timerCards(r.timers, p.parentNode); showThread(); } catch (e) {} }
     if ((r.list || r.undoList) && Kin.lists) listUndo(r, p.parentNode);
     if (r.undoRemind && r.undoRemind.length && Kin.remind) remindUndo(r.undoRemind, p.parentNode);
     refreshMade();
@@ -852,6 +856,68 @@
     if (num(c.hi)) chip('High', Math.round(c.hi) + '°'); if (num(c.lo)) chip('Low', Math.round(c.lo) + '°'); if (num(c.rain)) chip('Rain', Math.round(c.rain) + '%', c.rain >= 50);
     if (ch.childNodes.length) d.appendChild(ch);
     box.appendChild(d);
+  }
+  /* ------------------------------------------------------------ timer cards: under "set a pasta timer", a ring that
+     empties as the time runs out, the time left, when it ends, a minute more and Cancel; Again once it has gone off */
+  var TM_C = 2 * Math.PI * 27;
+  function tmClock(sec) { var h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60; return (h ? h + ':' + ('0' + m).slice(-2) : m) + ':' + ('0' + s).slice(-2); }
+  function tmHM(t) { try { return new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); } catch (e) { return ''; } }
+  function tmName(l) { return /^(?:timer|rest)(?: \d)?$/i.test(l) ? l.toLowerCase() : l.toLowerCase() + ' timer'; }
+  function svgEl(tag, at) { var x = document.createElementNS('http://www.w3.org/2000/svg', tag); Object.keys(at || {}).forEach(function (k) { x.setAttribute(k, at[k]); }); return x; }
+  function timerCards(ids, box) {
+    var all = Kin.mind.timers();
+    ids.slice(0, 8).forEach(function (id) {
+      var x = all.filter(function (y) { return y.id === id; })[0]; if (!x) return;
+      /* one live card per timer: an older one for the same timer keeps what it showed, without buttons */
+      [].forEach.call(document.querySelectorAll('.tmcard[data-state="run"]'), function (o) { if (o.dataset.id === id) { o.dataset.state = 'dup'; o.querySelector('.tml small').textContent = 'Shown below'; tmButtons(o); } });
+      var c = el('div', 'tmcard'); c.dataset.id = x.id; c.dataset.label = x.label; c.dataset.total = x.total; c.dataset.state = 'run';
+      c.setAttribute('role', 'group'); c.setAttribute('aria-label', x.label + (/^(?:timer|rest)(?: \d)?$/i.test(x.label) ? '' : ' timer'));
+      var g = svgEl('svg', { viewBox: '0 0 64 64', 'class': 'tmring', 'aria-hidden': 'true' });
+      g.appendChild(svgEl('circle', { 'class': 'trk', cx: 32, cy: 32, r: 27 }));
+      g.appendChild(svgEl('circle', { 'class': 'arc', cx: 32, cy: 32, r: 27, 'stroke-dasharray': TM_C.toFixed(2), transform: 'rotate(-90 32 32)' }));
+      g.appendChild(svgEl('path', { 'class': 'tmglyph', d: 'M29 21.5h6M32 21.5v3M32 35.5v-5' })); g.appendChild(svgEl('circle', { 'class': 'tmglyph', cx: 32, cy: 35.5, r: 9 }));
+      c.appendChild(g);
+      var tx = el('div', 'tml'); tx.appendChild(el('b', '', x.label)); var tt = el('div', 'tmt'); tt.setAttribute('role', 'timer'); tx.appendChild(tt); tx.appendChild(el('small', '')); c.appendChild(tx);
+      c.appendChild(el('div', 'tmb')); tmButtons(c); tmPaint(c, x); box.appendChild(c);
+    });
+  }
+  function tmPaint(c, x) {
+    var f = x.total > 0 ? Math.max(0, Math.min(1, x.left / x.total)) : 0;
+    c.querySelector('.arc').style.strokeDashoffset = (TM_C * (1 - f)).toFixed(2);
+    c.querySelector('.tmt').textContent = tmClock(x.left);
+    if (c.dataset.end !== String(x.end)) { c.dataset.end = String(x.end); c.querySelector('.tml small').textContent = 'Ends at ' + tmHM(x.end); }
+  }
+  function tmButtons(c) {
+    var bx = c.querySelector('.tmb'), st = c.dataset.state, nm = tmName(c.dataset.label), had = bx.contains(document.activeElement); bx.textContent = '';
+    var b = function (txt, fn) { var x = el('button', '', txt); x.type = 'button'; x.setAttribute('aria-label', txt + ', ' + nm); x.addEventListener('click', function () { gesture(); fn(); }); bx.appendChild(x); };
+    var tell = function (text) { caption(text, 'Timer'); captionFade(4000); };
+    if (st === 'run') {
+      b('+1 min', function () { var ok = Kin.mind.timerAdd(c.dataset.id, 60); tmTick(null); tell(ok ? 'A minute more on the ' + nm + ', sir.' : 'Timers go up to four hours, sir.'); });
+      b('Cancel', function () { if (Kin.mind.timerCancel(c.dataset.id)) tell(cap1w(nm) + ' cancelled, sir.'); });
+    } else if (st === 'done' || st === 'off') {
+      b('Again', function () { var nid = Kin.mind.timerStart(+c.dataset.total || 60, c.dataset.label); if (!nid) { c.querySelector('.tml small').textContent = 'Eight timers are running. Cancel one first.'; tell('You have eight timers running, sir. Cancel one first.'); return; } c.dataset.id = nid; c.dataset.state = 'run'; delete c.dataset.end; tmButtons(c); tmTick(null); tell(cap1w(nm) + ' started again, sir.'); });
+    }
+    /* the cursor was on a button that went away: it moves to the new first button, or to the card */
+    if (had) { if (bx.firstChild) bx.firstChild.focus({ preventScroll: true }); else { c.tabIndex = -1; c.focus({ preventScroll: true }); } }
+  }
+  function cap1w(s) { s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1); }
+  /* done, cancelled, or started again under the same name from somewhere else (the newer card has it) */
+  function tmState(c, st) {
+    c.dataset.state = st; var tt = c.querySelector('.tmt'), sm = c.querySelector('.tml small'), arc = c.querySelector('.arc');
+    arc.style.strokeDashoffset = st === 'done' ? '0' : arc.style.strokeDashoffset;
+    tt.textContent = st === 'done' ? 'Done' : st === 'off' ? 'Cancelled' : 'Restarted';
+    sm.textContent = st === 'done' ? 'Went off at ' + tmHM(Date.now()) : st === 'off' ? 'Cancelled at ' + tmHM(Date.now()) : 'The newer card has it';
+    tmButtons(c);
+  }
+  /** every running card follows its timer (mind.js calls the status line four times a second while any run) */
+  function tmTick(ev) {
+    var cards = document.querySelectorAll('.tmcard[data-state="run"]'); if (!cards.length) return;
+    var all = Kin.mind.timers ? Kin.mind.timers() : [], by = {}; all.forEach(function (x) { by[x.id] = x; });
+    [].forEach.call(cards, function (c) {
+      var x = by[c.dataset.id]; if (x) { tmPaint(c, x); return; }
+      if ((ev && ev.done && (ev.ids || []).indexOf(c.dataset.id) >= 0) || (Kin.mind.timerDone && Kin.mind.timerDone(c.dataset.id))) tmState(c, 'done');
+      else tmState(c, all.some(function (y) { return y.label === c.dataset.label; }) ? 'moved' : 'off');
+    });
   }
   /** under reminders just cancelled: Undo puts them back */
   function remindUndo(rs, box) {
@@ -1472,9 +1538,21 @@
   $('thread').addEventListener('click', function (e) { var b = e.target.closest('[data-made]'); if (b) openShelf('made', b.dataset.made); });
   Kin.mind.onTimer(function (t) {
     var el = $('stT');
-    if (t && t.done) { el.hidden = true; flare(); voice.chime('wake'); caption(t.label + ' is up, sir.', 'Timer'); if (S.unlocked) say(voice.CLIPS.done, true); captionFade(8000); return; }
-    if (!t) { el.hidden = true; return; }
-    el.hidden = false; el.textContent = t.label + ' ' + Math.floor(t.left / 60) + ':' + ('0' + t.left % 60).slice(-2);
+    try { tmTick(t); } catch (e) {}
+    if (t && t.done) {
+      /* "Timer is up" plays the recorded "Done, sir."; a named one is said in words; out of sight, a notification too */
+      var words = t.words || t.label + ' is up';
+      el.hidden = true; el.title = ''; flare(); voice.chime('wake'); caption(words + ', sir.', 'Timer');
+      if (S.unlocked) say(/^(?:Timer|Rest) is up$/.test(words) ? voice.CLIPS.done : words + ', sir.', true);
+      captionFade(8000);
+      if (Kin.desk && Kin.desk.notify) { try { Kin.desk.notify.done('Timer', words); } catch (x) {} }
+      return;
+    }
+    if (!t) { el.hidden = true; el.title = ''; return; }
+    /* the soonest timer, h:mm:ss past an hour, and how many more are running */
+    var tl = t.left, th = Math.floor(tl / 3600), tm = Math.floor(tl % 3600 / 60), lab = t.label.length > 14 ? t.label.slice(0, 13) + '\u2026' : t.label;
+    el.hidden = false; el.textContent = lab + ' ' + (th ? th + ':' + ('0' + tm).slice(-2) : tm) + ':' + ('0' + tl % 60).slice(-2) + (t.more ? ' +' + t.more : '');
+    el.title = t.more ? 'Timers: ' + Kin.mind.timers().map(function (x) { return x.label; }).join(', ') : '';
   });
 
   /* a running stopwatch shows in the status line like a timer (a running timer comes first) */

@@ -380,34 +380,230 @@
   }
 
   /* ---------------------------------------------------------------- timers: instant, no model */
-  var timer = null, timerSubs = [];
-  function onTimer(f) { timerSubs.push(f); }
-  function tick() { timerSubs.forEach(function (f) { try { f(timer ? { left: Math.max(0, Math.ceil((timer.end - Date.now()) / 1000)), label: timer.label } : null); } catch (e) {} }); }
+  /* timers: several at once, each with a name ("Pasta", "Eggs", "Rest", "Timer 2"); the soonest shows in the status line.
+     They are kept in this browser (kin.timers), so a reload or a sleeping laptop does not lose them, and other tabs
+     follow them (one tab says each one); at an address shared with other pages they live in memory only */
+  var timers = [], timerSubs = [], tiv = 0, tto = 0, ttoEnd = 0, MAX_TIMERS = 8, TKEY = 'kin.timers', trestored = false, tseq = 0, doneIds = {};
+  function tid() { return 't' + (++tseq) + Date.now().toString(36); }
+  function onTimer(f) { timerSubs.push(f); if (!trestored) { trestored = true; tload(true); } }
+  function leftOf(x) { return Math.max(0, Math.ceil((x.end - Date.now()) / 1000)); }
+  function bySoon(a, b) { return a.end - b.end; }
+  function soonest() { return timers.slice().sort(bySoon)[0] || null; }
+  function sameName(a, b) { return String(a).toLowerCase() === String(b).toLowerCase(); }
+  function tstate() { var s = soonest(); return s ? { left: leftOf(s), label: s.label, more: timers.length - 1 } : null; }
+  function temit(st) { timerSubs.forEach(function (f) { try { f(st); } catch (e) {} }); }
+  function tick() { temit(tstate()); }
+  function tsave() { if (Kin.shared) return; try { if (timers.length) localStorage.setItem(TKEY, JSON.stringify(timers.map(function (x) { return { end: x.end, label: x.label, total: x.total }; }))); else localStorage.removeItem(TKEY); } catch (e) {} }
+  /* what this browser keeps: read on the first listener (after a reload) and whenever another tab changes it. A timer
+     that is no longer there is let go here too, and one that went off is marked so its card says Done */
+  function tload(first) {
+    if (Kin.shared) return;
+    var a = null, now = Date.now(); try { a = JSON.parse(localStorage.getItem(TKEY) || 'null'); } catch (e) {}
+    if (!Array.isArray(a)) { if (first) return; a = []; }
+    var next = [];
+    a.slice(0, MAX_TIMERS).forEach(function (x) {
+      var end = x ? +x.end : NaN, label = x && typeof x.label === 'string' ? x.label.replace(/[^\p{L}\p{N} ]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 24) : '';
+      /* nothing longer than four hours; one that went off more than half an hour ago is let go; one name once */
+      if (!label || !isFinite(end) || end > now + 4 * 3600000 + 60000 || end < now - 30 * 60000 || next.some(function (y) { return sameName(y.label, label); })) return;
+      var total = x && +x.total > 0 && +x.total <= 4 * 3600 ? +x.total : Math.max(1, Math.min(4 * 3600, Math.ceil((end - now) / 1000)));
+      var had = timers.filter(function (y) { return sameName(y.label, label) && y.end === end; })[0];
+      if (had) { had.total = total; next.push(had); } else next.push({ id: tid(), end: end, label: label, total: total });
+    });
+    if (!first) timers.forEach(function (y) { if (next.indexOf(y) < 0 && y.end <= now + 1000) doneIds[y.id] = y.end; });
+    timers = next; if (first) tsave();
+    if (timers.length) loop(); else if (tiv) { clearInterval(tiv); tiv = 0; }
+    tick(); tarm();
+  }
+  try { window.addEventListener('storage', function (e) { if (e.key === TKEY && trestored) tload(false); }); } catch (e) {}
+  /* "Timer", "Rest" and "Timer 2" stand alone; any other name is "the pasta timer" */
+  function plainLabel(l) { return /^(?:timer|rest)(?: \d)?$/i.test(l); }
+  function phrase(l) { return plainLabel(l) ? l : 'the ' + l.toLowerCase() + ' timer'; }
+  /* in a list "the rest timer" reads better than "Rest"; "cancel timer 1" names the plain one when there are more */
+  function listName(l) { return /^rest$/i.test(l) ? 'the rest timer' : phrase(l); }
+  function sayCancel(l) { return 'cancel ' + (/^rest$/i.test(l) ? 'the rest timer' : /^timer$/i.test(l) ? 'timer 1' : plainLabel(l) ? l.toLowerCase() : phrase(l)); }
+  function stillRunning() { var a = timers.slice().sort(bySoon).map(function (x) { return listName(x.label); }); return a.length ? ' ' + cap1(andList(a)) + (a.length > 1 ? ' are' : ' is') + ' still running.' : ''; }
+  function andList(a) { return a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]; }
+  function cap1(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+  /* "Timer is up", "The pasta timer is up", "The pasta timer and the eggs timer are up", "The pasta timer went off 12
+     minutes ago" (or 3 hours ago, after a laptop slept with the page open) */
+  function upWords(list, now) {
+    var subj = cap1(andList(list.map(function (x) { return phrase(x.label); })));
+    if (!now) return subj + (list.length > 1 ? ' are up' : ' is up');
+    var mins = Math.round((now - list[0].end) / 60000), hrs = Math.round(mins / 60);
+    return subj + ' went off ' + (list.length > 1 ? 'while you were away' : mins <= 1 ? 'a minute ago' : mins < 60 ? mins + ' minutes ago' : hrs <= 1 ? 'an hour ago' : hrs + ' hours ago');
+  }
+  /* one tab says each one: the first to reach it marks it in kin.timers.rung (under a lock where the browser has them) */
+  function ring(ev, done) {
+    if (Kin.shared) { temit(ev); return; }
+    var sig = done.map(function (x) { return x.label.toLowerCase() + '@' + x.end; }).sort().join('|'), RK = TKEY + '.rung';
+    var go = function () {
+      var r = [], now = Date.now(); try { r = JSON.parse(localStorage.getItem(RK) || '[]'); } catch (e) {}
+      if (!Array.isArray(r)) r = [];
+      r = r.filter(function (x) { return x && typeof x.sig === 'string' && now - x.at < 10 * 60000; });
+      if (r.some(function (x) { return x.sig === sig; })) return;
+      r.push({ sig: sig, at: now }); try { localStorage.setItem(RK, JSON.stringify(r.slice(-20))); } catch (e) {}
+      temit(ev);
+    };
+    try { if (typeof navigator !== 'undefined' && navigator.locks && typeof navigator.locks.request === 'function') { navigator.locks.request(RK, go).catch(go); return; } } catch (e) {}
+    go();
+  }
+  function tcheck() {
+    var now = Date.now(), done = timers.filter(function (x) { return now >= x.end; });
+    if (done.length) {
+      timers = timers.filter(function (x) { return now < x.end; }); tsave();
+      Object.keys(doneIds).forEach(function (k) { if (now - doneIds[k] > 3600000) delete doneIds[k]; }); done.forEach(function (x) { doneIds[x.id] = x.end; });
+      /* a hidden tab can run a minute behind; only a timer that went off well before now (a closed page, a sleeping laptop) is "late" */
+      var late = done.filter(function (x) { return now - x.end > 120000; }).sort(bySoon), fresh = done.filter(function (x) { return now - x.end <= 120000; });
+      var words = [fresh.length ? upWords(fresh) : '', late.length ? upWords(late, now) : ''].filter(Boolean).join('. ');
+      ring({ done: true, label: done[0].label, labels: done.map(function (x) { return x.label; }), ids: done.map(function (x) { return x.id; }), words: words, late: !fresh.length, more: timers.length }, done);
+    }
+    if (!timers.length && tiv) { clearInterval(tiv); tiv = 0; }
+    tick(); tarm();
+  }
+  function loop() { if (!tiv) tiv = setInterval(tcheck, 250); }
+  /* a one-off wake at the soonest end as well: a background tab runs the 250 ms loop only about once a minute */
+  function tarm() { var s = soonest(), e = s ? s.end : 0; if (e === ttoEnd) return; clearTimeout(tto); tto = 0; ttoEnd = e; if (s) tto = setTimeout(function () { ttoEnd = 0; tcheck(); }, Math.max(0, e - Date.now()) + 30); }
+  /* finds a timer by name: exactly, then without a plural "s", then by a word of its name when only one has it */
+  function findTimer(name) {
+    var n = String(name || '').toLowerCase().trim(), sing = function (w) { return w.replace(/(?:es|s)$/, ''); };
+    if (!n) return null;
+    var hit = timers.filter(function (x) { return x.label.toLowerCase() === n; })[0] || timers.filter(function (x) { return sing(x.label.toLowerCase()) === sing(n); })[0];
+    if (hit) return hit;
+    var words = timers.filter(function (x) { return (' ' + x.label.toLowerCase() + ' ').indexOf(' ' + n + ' ') >= 0 || (' ' + sing(x.label.toLowerCase()) + ' ').indexOf(' ' + sing(n) + ' ') >= 0; });
+    return words.length === 1 ? words[0] : null;
+  }
+  /** starts a timer; one of the same name starts again. Returns { id, again }, or null when eight already run */
   function startTimer(sec, label) {
-    stopTimer(true); var end = Date.now() + sec * 1000;
-    timer = { end: end, label: label, iv: setInterval(function () { if (!timer) return; if (Date.now() >= timer.end) { var l = timer.label; stopTimer(true); timerSubs.forEach(function (f) { try { f({ done: true, label: l }); } catch (e) {} }); } else tick(); }, 250) };
-    tick();
+    label = label || 'Timer'; sec = Math.max(1, Math.min(4 * 3600, Math.round(sec)));
+    var had = timers.length; timers = timers.filter(function (x) { return !sameName(x.label, label); });
+    var again = timers.length < had;
+    if (timers.length >= MAX_TIMERS) { tick(); return null; }
+    var x = { id: tid(), end: Date.now() + sec * 1000, label: label, total: sec };
+    timers.push(x); tsave(); loop(); tick(); tarm(); return { id: x.id, again: again };
   }
-  function stopTimer(quiet) { if (timer) clearInterval(timer.iv); timer = null; if (!quiet) tick(); else tick(); }
+  /** the card under a timer's answer (app.js): a minute more (never past four hours), cancel, or the same again */
+  function timerAdd(id, sec) {
+    var x = timers.filter(function (y) { return y.id === id; })[0]; if (!x) return false;
+    var add = Math.max(0, Math.min(sec, 4 * 3600 - leftOf(x))); x.end += add * 1000; x.total = Math.min(4 * 3600, x.total + add); tsave(); tick(); tarm(); return add > 0;
+  }
+  function timerCancel(id) { var n = timers.length; timers = timers.filter(function (y) { return y.id !== id; }); if (timers.length === n) return false; tchanged(); return true; }
+  /** stops one timer by its name, or all of them */
+  function stopTimer(quiet, label) {
+    if (label) timers = timers.filter(function (x) { return !sameName(x.label, label); }); else timers = [];
+    tchanged();
+  }
+  /* after a timer stops: kept, the loop ends with the last one, and the status line hears */
+  function tchanged() { tsave(); if (!timers.length && tiv) { clearInterval(tiv); tiv = 0; } tick(); tarm(); }
   function fmt(sec) {
-    var h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
-    if (h) return h + (h === 1 ? ' hour' : ' hours') + (m ? ' ' + m + (m === 1 ? ' minute' : ' minutes') : '') + (s ? ' ' + s + ' seconds' : '');
-    return m ? m + (m === 1 ? ' minute' : ' minutes') + (s ? ' ' + s + ' seconds' : '') : s + ' seconds';
+    var h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60, ss = s + (s === 1 ? ' second' : ' seconds');
+    if (h) return h + (h === 1 ? ' hour' : ' hours') + (m ? ' ' + m + (m === 1 ? ' minute' : ' minutes') : '') + (s ? ' ' + ss : '');
+    return m ? m + (m === 1 ? ' minute' : ' minutes') + (s ? ' ' + ss : '') : ss;
   }
+  function clockText(sec) { var h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60; return (h ? h + ':' + ('0' + m).slice(-2) : m) + ':' + ('0' + s).slice(-2); }
+  function timerList() { return timers.slice().sort(bySoon).map(function (x) { return x.label + ' ' + clockText(leftOf(x)); }); }
+  /* words that are not a timer's name ("is there a timer", "a good timer") */
+  var NOT_NAME = /\b(?:is|are|was|were|be|there|what|whats|how|why|when|where|which|who|can|could|would|should|will|do|does|did|i|you|we|it|its|this|that|these|those|a|an|the|for|of|to|in|on|at|with|and|or|not|no|please|set|start|make|put|need|want|get|give|me|my|just|some|good|best|any|timer|timers|alarm|countdown|stopwatch|reminder|clock|minute|minutes|second|seconds|hour|hours)\b/;
+  /* "another", "a second", "a new" timer is one more unnamed timer */
+  var MORE_WORDS = /^(?:new|another|other|second|extra|one more|quick|short)\b ?/;
+  /* a timer's name, from "set a pasta timer", "a timer for the eggs": up to three plain words */
+  function timerName(w) {
+    w = String(w || '').trim().replace(/^(?:the|my|a|an)\s+/, '');
+    while (MORE_WORDS.test(w)) w = w.replace(MORE_WORDS, '');
+    if (!w || w.length > 24 || /\d/.test(w) || w.split(' ').length > 3 || NOT_NAME.test(w)) return '';
+    return cap1(w);
+  }
+  /* words that point at a timer without naming it: "that timer", "the running timer", "stop the timer for me" */
+  var POINT = /^(?:that|this|it|the other|other|running|current|active|last|latest|one|me|for me)$/;
+  /* the timer a request means: by name ("pasta", "rest", "timer 2", "the second timer"), or the only one */
+  function whichTimer(w) {
+    w = String(w || '').trim().replace(/^(?:the|my)\s+/, '').replace(/\s+timer$/, '');
+    var m = /^(?:timer )?(\d)$/.exec(w) || /^(second|third|fourth|fifth)$/.exec(w);
+    if (m) { var n = +m[1] || { second: 2, third: 3, fourth: 4, fifth: 5 }[m[1]]; return { name: n === 1 ? 'Timer' : 'Timer ' + n, hit: findTimer(n === 1 ? 'Timer' : 'Timer ' + n) }; }
+    if (w === 'first') return { name: 'Timer', hit: findTimer('Timer') || timers.slice().sort(bySoon)[0] || null };
+    if (!w || POINT.test(w)) return { name: '', hit: timers.length === 1 ? timers[0] : null };
+    if (w === 'timer') return { name: '', hit: timers.length === 1 ? timers[0] : findTimer('Timer') };
+    if (w === 'rest') return { name: 'Rest', hit: findTimer('Rest') };
+    var nm = timerName(w);
+    if (!nm) return { name: '', hit: timers.length === 1 ? timers[0] : null };
+    return { name: nm, hit: findTimer(nm) };
+  }
+  function noSuch(name) { return { say: 'There is no ' + phrase(name).replace(/^the /, '') + ' running, sir.', show: 'No ' + phrase(name).replace(/^the /, '') + '. Running: ' + timerList().join(', ') + '.' }; }
+  var T_VERB = '(?:cancel|stop|clear|kill|end|delete|remove|turn off|switch off)', T_NAME = '([a-z][a-z ]{0,23}?(?: \\d)?)';
+  var T_ALL = new RegExp('^' + T_VERB + ' (?:(?:all|both)(?: (?:of )?(?:the|my))? timers|every timer|(?:the |my )?timers)$');
+  var T_ONE = new RegExp('^' + T_VERB + '(?: the| my)?(?: ' + T_NAME + ')? timer(?: (\\d))?(?: for (?:the |my )?' + T_NAME + ')?$');
+  /* "cancel the eggs": only when a running timer has that name */
+  var T_BARE = new RegExp('^' + T_VERB + ' (?:the |my )?([a-z][a-z ]{0,23})$');
+  var T_LEFT = new RegExp('^(?:how (?:long|much time)(?: is| do i have| have i got)? left|time left|how long on the timer|how long is left|how much longer|how much time|what(?:\'?s| is) left)(?: (?:on|for) (?:the |my )?' + T_NAME + '(?: timer)?)?$');
+  var T_UNTIL = new RegExp('^how (?:long|much longer) (?:until|till|before) (?:the |my )?' + T_NAME + '(?: timer)? (?:is |are |goes |go |will be |will |comes |gets? )?(?:done|ready|up|finished|off|out)$');
+  var T_IT = /^how (?:long|much longer) (?:until|till|before) (?:it'?s|it is|it will be|it'?ll be|it goes off) ?(?:done|ready|up|finished|off)?$/;
+  var T_LIST = /^(?:(?:what|which) timers (?:are (?:running|going|set|on)|do i have(?: running| going| set)?|have i got)|(?:list|show)(?: me)?(?: all)?(?: of)? (?:my |the )?timers|(?:are there |do i have |have i got )?any timers(?: running| going| set| on)?|(?:my )?timers)$/;
+  var T_UNIT = '(seconds?|secs?|s|minutes?|mins?|m)';
+  var T_SET1 = new RegExp('^(?:(?:set|start|put on|make)(?: me)? )?(?:a |an |the |my |another |one more )?(?:' + T_NAME + ' )?(rest timer|timer|rest)(?: (?:called|named) ' + T_NAME + ')?(?: for (?:the |my )?' + T_NAME + ')?(?: for)? (\\d+(?:\\.\\d+)?) ?' + T_UNIT + '(?: for (?:the |my )?' + T_NAME + ')?(?: (?:called|named) ' + T_NAME + ')?$');
+  var T_SET2 = new RegExp('^(?:(?:set|start|put on|make)(?: me)? )?(?:a |an |another |one more )?(\\d+(?:\\.\\d+)?)[ -]?(seconds?|secs?|minutes?|mins?)(?: (rest))?(?: ' + T_NAME + ')?( timer)?(?: for (?:the |my )?' + T_NAME + ')?(?: (?:called|named) ' + T_NAME + ')?$');
   function instantTimer(raw) {
-    var t = numify(String(raw || '').trim().toLowerCase()).replace(/[.!?]+$/, '').replace(/^(?:(?:hey|ok|okay) )?(?:jarvis|kin)[,!.]? /, '').replace(/^(?:(?:please|can you|could you) )+/, '').replace(/,? please$/, '')
-      /* "an hour", "half an hour", "an hour and a half", "1 hour 30 minutes" become minutes the pattern below reads */
+    var t = numify(String(raw || '').trim().toLowerCase()).replace(/[.!?]+$/, '').replace(/^(?:(?:hey|ok|okay) )?(?:jarvis|kin)[,!.]? /, '').replace(/^(?:(?:please|can you|could you|would you) )+/, '').replace(/,? please$/, '').replace(/,\s+/g, ' ').replace(/\s+/g, ' ')
+      .replace(/\b1st\b/g, 'first').replace(/\b2nd\b/g, 'second').replace(/\b3rd\b/g, 'third').replace(/\b4th\b/g, 'fourth').replace(/\b5th\b/g, 'fifth')
+      /* "an hour", "half an hour", "an hour and a half", "1 hour 30 minutes" become minutes the patterns below read */
       .replace(/\b(?:an|one|1) hour and a half\b/, '90 minutes').replace(/\bhalf an hour\b/, '30 minutes').replace(/\b(?:an|one) hour\b/, '1 hour')
       .replace(/(\d+(?:\.\d+)?) ?(?:hours?|hrs?|h)(?:,? and)? (\d+) ?(?:minutes?|mins?|m)\b/, function (x, h, mi) { return (Math.round(+h * 60) + +mi) + ' minutes'; })
-      .replace(/(\d+(?:\.\d+)?) ?(?:hours?|hrs?)\b/, function (x, h) { return Math.round(+h * 60) + ' minutes'; });
-    if (/^(cancel|stop|clear|kill) (the )?timer$/.test(t)) { if (!timer) return { say: 'There is no timer running, sir.', show: 'No timer running.' }; stopTimer(); return { say: 'Timer cancelled, sir.', show: 'Timer cancelled.' }; }
-    if (/^(how (long|much time)( is)? left|time left|how long on the timer)$/.test(t)) { if (!timer) return { say: 'There is no timer running, sir.', show: 'No timer running.' }; var l = Math.ceil((timer.end - Date.now()) / 1000); return { say: fmt(l) + ' left, sir.', show: fmt(l) + ' left.' }; }
-    var m = /^(?:(?:set|start) (?:a |an )?)?(?:(rest|timer|rest timer)(?: for)? (\d+(?:\.\d+)?) ?(seconds?|secs?|s|minutes?|mins?|m)|(\d+(?:\.\d+)?) ?(seconds?|secs?|minutes?|mins?)(?: rest)?(?: timer)?)$/.exec(t);
-    if (!m) return null;
-    var n = +(m[2] || m[4]), unit = m[3] || m[5], sec = Math.round(/^m/.test(unit) ? n * 60 : n);
-    if (!(sec >= 1 && sec <= 4 * 3600)) return null;
-    var label = m[1] === 'rest' || /rest/.test(t) ? 'Rest' : 'Timer';
-    startTimer(sec, label); return { say: label + ', ' + fmt(sec) + '. Starting now, sir.', show: label + ': ' + fmt(sec) + '.' };
+      .replace(/(\d+(?:\.\d+)?) ?(?:hours?|hrs?)\b/, function (x, h) { return Math.round(+h * 60) + ' minutes'; })
+      .replace(/\bfor a minute$/, 'for 1 minute');
+    var m, w, none = { say: 'There is no timer running, sir.', show: 'No timer running.' };
+    /* cancel all of them */
+    if (T_ALL.test(t)) { if (!timers.length) return none; var nAll = timers.length, only = timers[0].label; stopTimer(); return { say: nAll === 1 ? cap1(phrase(only)) + ' is cancelled, sir.' : 'All ' + nAll + ' timers cancelled, sir.', show: nAll === 1 ? 'Cancelled: ' + only + '.' : 'Cancelled all ' + nAll + ' timers.' }; }
+    /* cancel one: by name, the one meant, or the only one */
+    if ((m = T_ONE.exec(t))) {
+      if (!timers.length) return none;
+      w = whichTimer(m[2] ? 'timer ' + m[2] : m[1] || m[3] || '');
+      if (w.hit) { stopTimer(true, w.hit.label); return { say: cap1(phrase(w.hit.label)) + ' is cancelled, sir.' + stillRunning(), show: 'Cancelled: ' + w.hit.label + '.' + (timers.length ? ' Still running: ' + timerList().join(', ') + '.' : '') }; }
+      if (w.name) return noSuch(w.name);
+      return { say: 'You have ' + timers.length + ' timers, sir: ' + andList(timers.slice().sort(bySoon).map(function (x) { return listName(x.label); })) + '. Which one?', show: 'Running: ' + timerList().join(', ') + '. Say "' + sayCancel(soonest().label) + '" or "cancel all timers".' };
+    }
+    if ((m = T_BARE.exec(t)) && timers.length) {
+      var bn = timerName(m[1]), bh = bn ? findTimer(bn) : null;
+      if (bh) { stopTimer(true, bh.label); return { say: cap1(phrase(bh.label)) + ' is cancelled, sir.' + stillRunning(), show: 'Cancelled: ' + bh.label + '.' + (timers.length ? ' Still running: ' + timerList().join(', ') + '.' : '') }; }
+    }
+    /* how long is left: on one by name, the only one, or all of them */
+    if ((m = T_LEFT.exec(t) || T_UNTIL.exec(t)) || T_LIST.test(t) || T_IT.test(t)) {
+      /* "how long left on the lease", "how much longer for the delivery", "how long until the turkey is done": questions for
+         Claude unless they say "timer" or name a timer that is running */
+      var said = /\btimers?\b/.test(t), bare = /^(?:how (?:long|much time)(?: is)? left|time left|how long is left)$/.test(t);
+      if (!timers.length) return said || bare ? none : null;
+      w = m ? whichTimer(m[1] || '') : { name: '', hit: T_IT.test(t) && timers.length === 1 ? timers[0] : null };
+      if (w.name && !w.hit) return said ? noSuch(w.name) : null;
+      if (w.hit) { var l = leftOf(w.hit), on = timers.length > 1 || !plainLabel(w.hit.label) ? ' on ' + phrase(w.hit.label) : ''; return { say: fmt(l) + ' left' + on + ', sir.', show: w.hit.label + ': ' + fmt(l) + ' left.', timers: [w.hit.id] }; }
+      var srt = timers.slice().sort(bySoon);
+      return { say: (srt.length === 1 ? 'One timer, sir: ' : srt.length + ' timers, sir: ') + srt.map(function (x) { return x.label.toLowerCase() + ', ' + fmt(leftOf(x)); }).join('; ') + '.', show: 'Running: ' + timerList().join(', ') + '.', timers: srt.map(function (x) { return x.id; }) };
+    }
+    /* set: "set a timer for 10 minutes", "set a pasta timer for 10 minutes", "10 minute timer for the eggs", "rest 90 seconds",
+       "another timer for 5 minutes", "a timer for the rice for 10 minutes", "a timer for 10 minutes called rice" */
+    var name = '', n, unit, rest = false, worded = true;
+    if ((m = T_SET1.exec(t))) { name = m[1] || m[3] || m[4] || m[7] || m[8] || ''; rest = /rest/.test(m[2]); n = +m[5]; unit = m[6]; }
+    else if ((m = T_SET2.exec(t))) {
+      n = +m[1]; unit = m[2]; rest = !!m[3]; worded = !!m[5] || rest;
+      /* "a 5 minute timer for the eggs": the name pattern can take the word timer itself */
+      var nm4 = m[4] || ''; if (/(?:^| )timer$/.test(nm4)) { worded = true; nm4 = nm4.replace(/ ?timer$/, ''); }
+      name = nm4 || m[6] || m[7] || '';
+    }
+    /* "time the eggs for 4 minutes", "time it for 5 minutes" */
+    else if ((m = /^time (?:the |my |a )?([a-z][a-z ]{0,23}?) for (\d+(?:\.\d+)?) ?(seconds?|secs?|minutes?|mins?)$/.exec(t))) { name = /^(?:it|this|that)$/.test(m[1]) ? '' : m[1]; n = +m[2]; unit = m[3]; }
+    else return null;
+    if (/^rest$/.test(name.trim())) { rest = true; name = ''; }
+    var sec = Math.round(/^m/.test(unit) ? n * 60 : n);
+    if (!(sec >= 1)) return null;
+    if (sec > 4 * 3600) return !worded ? null : { say: 'Timers go up to four hours, sir. For longer, ask me to remind you.', show: 'Timers go up to 4 hours. For longer, say "remind me in 5 hours to ...".' };
+    var label = timerName(name), more = /\b(?:another|one more|extra|new)\b|\bsecond timer\b|\bother timer\b/.test(t);
+    if (name && !label && !MORE_WORDS.test(name.trim().replace(/^(?:the|my|a|an) /, ''))) return null;
+    if (label && !worded) return null;   /* "10 minutes for the eggs" without the word timer is left to Claude */
+    if (!label) label = rest ? 'Rest' : 'Timer';
+    /* "another timer" while one runs is Timer 2, Timer 3 ... */
+    if (label === 'Timer' && more && findTimer('Timer')) { for (var k = 2; k < 10 && findTimer('Timer ' + k); k++); label = 'Timer ' + k; }
+    var st = startTimer(sec, label);
+    if (!st) return { say: 'You have eight timers running, sir. Cancel one first.', show: 'Eight timers are running: ' + timerList().join(', ') + '. Cancel one first.' };
+    var nameT = plainLabel(label) ? label : label + ' timer', others = timers.filter(function (x) { return x.label !== label; });
+    var also = others.length ? ' Also running: ' + others.slice().sort(bySoon).map(function (x) { return x.label + ' ' + clockText(leftOf(x)); }).join(', ') + '.' : '';
+    if (st.again && label !== 'Rest') return { say: nameT + ' restarted, ' + fmt(sec) + ', sir.', show: nameT + ' restarted: ' + fmt(sec) + '.' + also, timers: [st.id] };
+    return { say: nameT + ', ' + fmt(sec) + '. Starting now, sir.', show: nameT + ': ' + fmt(sec) + '.' + also, timers: [st.id] };
   }
 
   /* ---------------------------------------------------------------- protocols: named routines, instant, from what is on this device */
@@ -447,7 +643,7 @@
   }
   function instantHelp(raw) {
     if (!/^(help|what can (you|i) (do|say)|what do you do|commands)[?.! ]*$/i.test(String(raw || '').trim())) return null;
-    var show = 'Things you can say:\n- "hey Jarvis", "go to sleep", "stop"\n- "What is due this week?", "brief me", "what is the latest on ..."\n- "Design a poster for ...", "Write a plan for ...", "Make a table of ..."\n- "bench, 135 for 8", "log that I changed the brake pads", "rest 90 seconds", "set a timer for an hour"\n- "flip a coin", "roll two dice", "pick a number between 1 and 10", "start a stopwatch", "how many days until Christmas"\n- "what time is it in Tokyo", "what\'s the date", "is it going to rain", "weather tomorrow"\n- "what\'s 15% of 240", "20% tip on 85", "convert 5 miles to km"\n- "run the morning protocol", "shutdown", "focus"\n- "remind me at 3pm to call Sam", "remind me every weekday at 8 to stretch", "remind me on the 1st of every month to pay rent", "what are my reminders"\n- "add eggs and milk to my shopping list", "what\'s on my to-do list", "tick off eggs"\n- "ask Grok Bot ..." (when the Grok Bot bridge is on in settings)\n- "remember that ...", and the thumbs under each answer teach me what works.';
+    var show = 'Things you can say:\n- "hey Jarvis", "go to sleep", "stop"\n- "What is due this week?", "brief me", "what is the latest on ..."\n- "Design a poster for ...", "Write a plan for ...", "Make a table of ..."\n- "bench, 135 for 8", "log that I changed the brake pads", "rest 90 seconds", "set a timer for an hour", "set a pasta timer for 10 minutes", "how long left on the pasta"\n- "flip a coin", "roll two dice", "pick a number between 1 and 10", "start a stopwatch", "how many days until Christmas"\n- "what time is it in Tokyo", "what\'s the date", "is it going to rain", "weather tomorrow"\n- "what\'s 15% of 240", "20% tip on 85", "convert 5 miles to km"\n- "run the morning protocol", "shutdown", "focus"\n- "remind me at 3pm to call Sam", "remind me every weekday at 8 to stretch", "remind me on the 1st of every month to pay rent", "what are my reminders"\n- "add eggs and milk to my shopping list", "what\'s on my to-do list", "tick off eggs"\n- "ask Grok Bot ..." (when the Grok Bot bridge is on in settings)\n- "remember that ...", and the thumbs under each answer teach me what works.';
     return { say: 'It is on screen now, sir.', show: show };
   }
   /** Phrases Kin handles on this device at once, without Claude. Returns { say, show, clip?, sleep?, open? } or null. */
@@ -557,7 +753,7 @@
     made: function () { return data.made.slice(); }, addMade: addMade, getMade: getMade, dropMade: dropMade, cleanSvg: cleanSvg, svgUrl: svgUrl, svgToPng: svgToPng, download: download, fileName: fileName,
     withFonts: withFonts, measure: measure, wordProblems: wordProblems, banned: banned,
     log: function () { return data.log.slice(); }, addLog: addLog, dropLog: dropLog,
-    instant: instant, numify: numify, onTimer: onTimer, timer: function () { return timer ? { left: Math.ceil((timer.end - Date.now()) / 1000), label: timer.label } : null }, stopTimer: stopTimer, fmt: fmt,
+    instant: instant, numify: numify, onTimer: onTimer, timer: function () { var s = soonest(); return s ? { left: leftOf(s), label: s.label } : null; }, timers: function () { return timers.slice().sort(bySoon).map(function (x) { return { id: x.id, label: x.label, left: leftOf(x), end: x.end, total: x.total }; }); }, timerAdd: timerAdd, timerCancel: timerCancel, timerDone: function (id) { return !!doneIds[id]; }, timerStart: function (sec, label) { var st = startTimer(sec, label); return st ? st.id : ''; }, stopTimer: stopTimer, fmt: fmt,
     md: md,
     costOf: costOf, partialCost: partialCost, addSpend: addSpend, spendToday: spendToday, webCap: webCap, setWebCap: setWebCap, webToday: webToday, addWeb: addWeb, webLeft: webLeft,
     mergeIn: mergeIn, flush: flush,

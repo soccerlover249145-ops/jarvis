@@ -1026,6 +1026,30 @@ body:has(.sheet.win:not([hidden])) .app::after { content: ""; position: fixed; i
 .thread .msg .wxcard .wxchip { padding: 4px 10px; border-radius: 999px; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .07); font: 500 12px/1.3 var(--f-ui); color: rgba(255, 255, 255, .7); }
 .thread .msg .wxcard .wxchip b { color: #fff; font-weight: 600; }
 .thread .msg .wxcard .wxchip.hot { border-color: rgba(111, 227, 255, .45); background: rgba(111, 227, 255, .1); }
+/* the timer card under "set a timer": a ring that empties, the time left, a minute more and Cancel */
+.thread .msg .tmcard { display: grid; grid-template-columns: 60px minmax(0, 1fr) auto; align-items: center; column-gap: 14px; max-width: 460px; margin: 12px 0 2px; padding: 12px 14px 12px 12px; border-radius: 18px; border: 1px solid rgba(111, 227, 255, .2); background: linear-gradient(135deg, rgba(63, 182, 255, .11), rgba(255, 200, 112, .05) 70%), rgba(10, 14, 20, .6); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05); }
+.thread .msg .tmcard .tmring { width: 60px; height: 60px; display: block; overflow: visible; }
+.thread .msg .tmcard .trk { fill: none; stroke: rgba(255, 255, 255, .08); stroke-width: 4; }
+.thread .msg .tmcard .arc { fill: none; stroke: #6FE3FF; stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset .25s linear, stroke .3s; filter: drop-shadow(0 0 5px rgba(111, 227, 255, .5)); }
+.thread .msg .tmcard .tmglyph { fill: none; stroke: rgba(255, 255, 255, .5); stroke-width: 2; stroke-linecap: round; }
+.thread .msg .tmcard .tml { min-width: 0; }
+.thread .msg .tmcard .tml b { display: block; font: 600 14px/1.3 var(--f-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thread .msg .tmcard .tmt { font: 300 34px/1.1 var(--f-ui); letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--text, #fff); }
+.thread .msg .tmcard .tml small { display: block; font: 400 12.5px/1.35 var(--f-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thread .msg .tmcard .tmb { display: flex; flex-direction: column; gap: 6px; }
+.thread .msg .tmcard .tmb button { min-height: 34px; padding: 5px 14px; border-radius: 999px; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .1); font: 500 12.5px/1.2 var(--f-ui); color: rgba(255, 255, 255, .88); cursor: pointer; white-space: nowrap; }
+.thread .msg .tmcard .tmb button:hover { border-color: rgba(111, 227, 255, .45); color: #fff; }
+.thread .msg .tmcard .tmb button:focus-visible { outline: 2px solid #6FE3FF; outline-offset: 2px; }
+.thread .msg .tmcard[data-state="done"] { border-color: rgba(255, 200, 112, .45); animation: tmpulse 1.2s ease-in-out 3; }
+.thread .msg .tmcard[data-state="done"] .arc { stroke: var(--warm, #FFC870); filter: drop-shadow(0 0 6px rgba(255, 200, 112, .55)); }
+.thread .msg .tmcard[data-state="done"] .tmt { color: var(--warm, #FFC870); }
+.thread .msg .tmcard[data-state="off"] .arc, .thread .msg .tmcard[data-state="moved"] .arc { stroke: rgba(255, 255, 255, .22); filter: none; }
+.thread .msg .tmcard[data-state="off"] .tmt, .thread .msg .tmcard[data-state="moved"] .tmt, .thread .msg .tmcard[data-state="dup"] .tmt { color: var(--fg2, #B6BCC9); }
+.thread .msg .tmcard[data-state="dup"] .arc { stroke: rgba(255, 255, 255, .22); filter: none; }
+@keyframes tmpulse { 50% { box-shadow: 0 0 0 4px rgba(255, 200, 112, .14), inset 0 1px 0 rgba(255, 255, 255, .05); } }
+@media (prefers-reduced-motion: reduce) { .thread .msg .tmcard[data-state="done"] { animation: none; } .thread .msg .tmcard .arc { transition: none; } }
+@media (pointer: coarse) { .thread .msg .tmcard .tmb button { min-height: 44px; } }
+@media (max-width: 420px) { .thread .msg .tmcard { grid-template-columns: 50px minmax(0, 1fr) auto; column-gap: 12px; padding: 10px 12px 10px 10px; } .thread .msg .tmcard .tmring { width: 50px; height: 50px; } .thread .msg .tmcard .tmt { font-size: 28px; } }
 @media (max-width: 420px) { .thread .msg .wxcard { grid-template-columns: 48px auto minmax(0, 1fr); padding: 12px 14px; } .thread .msg .wxcard .wxicon { width: 48px; height: 48px; } .thread .msg .wxcard .wxt { font-size: 36px; } }
 
 /* ---------- lists: the Lists tab ---------- */
