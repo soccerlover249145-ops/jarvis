@@ -81,4 +81,30 @@ function makeEars(binPath, opts) {
   };
 }
 
-module.exports = { makeEars, parseLine };
+/* what the live Jarvis page in the full window is sent for one event from the helper: every event on 'desk:ears'
+   (pages that know jarvisDesk version 3 read the state and the words from it), and each finished phrase also on
+   'desk:heard' (pages written for versions 1 and 2). The page itself decides what is a wake phrase or a question. */
+function forLivePage(ev) {
+  if (!ev || typeof ev !== 'object') return [];
+  const out = [['desk:ears', ev]];
+  if (ev.type === 'final' && ev.text) out.push(['desk:heard', { text: ev.text }]);
+  return out;
+}
+
+/* why the helper cannot listen, in plain words, and which System Settings pane fixes it (null: none does) */
+const BLOCKED = {
+  'mic-denied': { pane: 'microphone', body: 'macOS is not letting Jarvis use the microphone. Switch Jarvis on in System Settings, Privacy & Security, Microphone, then quit and reopen Jarvis.' },
+  'speech-denied': { pane: 'speech', body: 'Speech recognition is off for Jarvis. Switch Jarvis on in System Settings, Privacy & Security, Speech Recognition, then quit and reopen Jarvis.' },
+  'speech-not-allowed': { pane: 'speech', body: 'Speech recognition is not allowed for Jarvis yet. Switch Jarvis on in System Settings, Privacy & Security, Speech Recognition, then quit and reopen Jarvis.' },
+  'speech-restricted': { pane: null, body: 'Speech recognition is restricted on this Mac (Screen Time or a management profile), so Jarvis cannot listen. You can still type.' },
+  'no-on-device': { pane: null, body: 'This Mac cannot turn speech into text on the Mac itself for this language. In Jarvis Settings, Mac, you can let Apple\'s servers do it instead. You can still type.' },
+  'no-microphone': { pane: 'microphone', body: 'Jarvis found no microphone. Plug one in, or pick an input in System Settings, Sound.' },
+  'helper-missing': { pane: null, body: 'The listening helper is missing from this install. Run install-mac.sh again, then reopen Jarvis.' },
+  'no-recognizer': { pane: null, body: 'This Mac has no speech recognizer for this language, so Jarvis cannot listen. You can still type.' }
+};
+function blockedHelp(reason) {
+  const b = Object.prototype.hasOwnProperty.call(BLOCKED, String(reason)) ? BLOCKED[reason] : null;
+  return { title: 'Jarvis cannot hear you', body: b ? b.body : 'Jarvis cannot listen right now. Check System Settings, Privacy & Security, Microphone and Speech Recognition.', pane: b ? b.pane : 'microphone' };
+}
+
+module.exports = { makeEars, parseLine, forLivePage, blockedHelp };

@@ -10,7 +10,7 @@ function call(ch) { return function (arg) { return ipcRenderer.invoke(ch, arg &&
 function sub(ch) { return function (cb) { if (typeof cb !== 'function') return function () {}; const f = function (_e, d) { cb(d); }; ipcRenderer.on(ch, f); return function () { ipcRenderer.removeListener(ch, f); }; }; }
 
 contextBridge.exposeInMainWorld('jarvisDesk', Object.freeze({
-  version: 2,
+  version: 3,
   capabilities: call('desk:capabilities'),
   openUrl: function (url) { return ipcRenderer.invoke('desk:openUrl', { url: String(url || '') }); },
   openApp: function (name) { return ipcRenderer.invoke('desk:openApp', { name: String(name || '') }); },
@@ -40,5 +40,21 @@ contextBridge.exposeInMainWorld('jarvisDesk', Object.freeze({
     saveFromPage: function (kind, value) { return ipcRenderer.invoke('desk:keys:save', { kind: String(kind || ''), value: String(value || '') }); }
   }),
   onTaskDone: sub('control:done'),
-  onHeard: sub('desk:heard')
+  onHeard: sub('desk:heard'),
+  /* ---- version 3: hearing through the Mac's own listener (JarvisEars), with its state, and the pill ---- */
+  ears: Object.freeze({
+    start: call('desk:ears:start'),
+    stop: call('desk:ears:stop'),
+    hold: function (on) { return ipcRenderer.invoke('desk:ears:hold', { on: !!on }); },
+    state: call('desk:ears:state'),
+    onEvent: sub('desk:ears')
+  }),
+  /* what the owner typed in the floating pill or picked from the menu bar, the pill's mic button, and the shortcut */
+  onAsk: sub('desktop:ask'),
+  onMic: sub('desktop:mic'),
+  onSummon: sub('desktop:summon'),
+  /* the page tells the pill what Jarvis is doing and the caption it shows */
+  ui: Object.freeze({
+    state: function (s) { s = s && typeof s === 'object' ? s : {}; return ipcRenderer.invoke('desk:ui:state', { state: String(s.state || ''), caption: String(s.caption || ''), small: String(s.small || ''), answered: !!s.answered }); }
+  })
 }));

@@ -25,7 +25,7 @@ const { resolveDir, move: moveFile } = require('./fileops');
 const { makeMac } = require('./mac');
 const { makeScreen } = require('./screen');
 const { makeConfig } = require('./config');
-const { makeEars } = require('./ears');
+const { makeEars, forLivePage, blockedHelp } = require('./ears');
 const { makeHands } = require('./control/hands');
 const { makeSession } = require('./control/session');
 const { makeDesk, makeDeskKeys, senderAllowed, keysSenderAllowed } = require('./desk');
@@ -44,7 +44,7 @@ if (!app.requestSingleInstanceLock()) { app.quit(); }
 let cfg, keychain, actions, screenCap, ears, hands, control, desk, deskKeys, macOps;
 let mainLive = false, settingsWin = null;
 let mainWin = null, compactWin = null, overlayWin = null, tray = null;
-let unseen = 0, quitting = false, earsState = 'off';
+let unseen = 0, quitting = false, earsState = 'off', earsReason = '', earsOnDevice = null, earsToldBlocked = '';
 
 /* ---------- serving the UI from inside the app ---------- */
 function serve() {
@@ -196,7 +196,8 @@ function rebuildTray() {
     { label: 'Talk to Jarvis', accelerator: c.hotkey, click: function () { toggleCompact(true); } },
     { label: 'Open Jarvis', click: showMain },
     { type: 'separator' },
-    { label: earsState === 'listening' ? 'Listening for "hey Jarvis"' : 'Not listening', enabled: false },
+    { label: earsState === 'listening' ? 'Listening for "hey Jarvis"' : earsState === 'blocked' ? 'Cannot listen: see below' : 'Not listening', enabled: false },
+    earsState === 'blocked' && blockedHelp(earsReason).pane ? { label: 'Fix in System Settings…', click: function () { const pane = blockedHelp(earsReason).pane; shell.openExternal('x-apple.systempreferences:com.apple.preference.security?' + (pane === 'speech' ? 'Privacy_SpeechRecognition' : 'Privacy_Microphone')).catch(function () {}); } } : null,
     { label: ears && ears.wanted() ? 'Stop listening' : 'Start listening', click: function () { if (ears.wanted()) ears.stop(); else ears.start(); rebuildTray(); } },
     { type: 'separator' },
     { label: 'Look at my screen…', click: function () { showMain(); send(mainWin, 'desktop:ask', { text: 'Look at my screen and tell me what you see.' }); } },
@@ -208,7 +209,7 @@ function rebuildTray() {
     { label: 'Open at login', type: 'checkbox', checked: c.launchAtLogin, click: function (i) { cfg.set({ launchAtLogin: i.checked }); loginItem(); } },
     { type: 'separator' },
     { label: 'Quit Jarvis', accelerator: 'Cmd+Q', click: function () { quitting = true; app.quit(); } }
-  ]));
+  ].filter(Boolean)));
   tray.setToolTip('Jarvis' + (busy ? ' (has control)' : '') + ' · ' + hk);
 }
 function loginItem() { applyLogin(app, cfg.get()); }
@@ -285,6 +286,21 @@ function wireIpc() {
   handle('ears:stop', async function () { ears.stop(); return { ok: true }; });
   handle('ears:hold', async function (a) { ears.hold(!!a.on); return { ok: true }; });
   handle('ears:state', async function () { return { state: earsState, wanted: ears.wanted() }; });
+  /* the same listener for the live Jarvis page (window.jarvisDesk.ears, version 3): only from the full window's top
+     frame on the live address or the app's own pages (deskHandle checks), and only when the owner acts on the page */
+  function earsNow() { return { state: earsState, reason: earsReason, wanted: ears.wanted(), auto: !!cfg.get().alwaysListen, onDevice: earsOnDevice }; }
+  deskHandle('desk:ears:start', async function () { ears.start(); return Object.assign({ ok: true }, earsNow()); });
+  deskHandle('desk:ears:stop', async function () { ears.stop(); return { ok: true }; });
+  deskHandle('desk:ears:hold', async function (a) { ears.hold(!!a.on); return { ok: true }; });
+  deskHandle('desk:ears:state', async function () { return earsNow(); });
+  /* the live page tells the floating pill what Jarvis is doing */
+  const UI_STATES = ['off', 'asleep', 'idle', 'listening', 'thinking', 'speaking'];
+  deskHandle('desk:ui:state', async function (a) {
+    const s = { state: UI_STATES.indexOf(a.state) >= 0 ? a.state : 'off', caption: String(a.caption || '').slice(0, 400), small: String(a.small || '').slice(0, 160), answered: !!a.answered };
+    send(compactWin, 'ui:state', s);
+    if (s.answered && !(mainWin.isVisible() && mainWin.isFocused()) && !(compactWin && compactWin.isVisible())) { unseen++; badge(); }
+    return { ok: true };
+  });
 
   handle('act:openUrl', function (a) { return actions.openUrl(a); });
   handle('act:search', function (a) { return actions.searchWeb(a); });
@@ -447,9 +463,14 @@ app.whenReady().then(async function () {
   ears = makeEars(path.join(BIN, 'JarvisEars'), { onDeviceOnly: function () { return cfg.get().onDeviceOnly; } });
   hands = makeHands(path.join(BIN, 'JarvisHands'));
   ears.on(function (ev) {
-    if (ev.type === 'state') { earsState = ev.state; rebuildTray(); }
+    if (ev.type === 'state') {
+      earsState = ev.state; earsReason = ev.reason || ''; if (typeof ev.onDevice === 'boolean') earsOnDevice = ev.onDevice; rebuildTray();
+      /* said once per reason while Jarvis runs, so a refusal never goes unexplained and is never nagged about */
+      if (ev.state === 'blocked' && earsToldBlocked !== earsReason) { earsToldBlocked = earsReason; const h = blockedHelp(earsReason); toast(h.title, h.body); }
+      if (ev.state === 'listening') earsToldBlocked = '';
+    }
     if (!mainLive) send(mainWin, 'ears:event', ev);
-    else if (ev.type === 'final' && ev.text) send(mainWin, 'desk:heard', { text: ev.text });   /* the live page gets only finished phrases */
+    else forLivePage(ev).forEach(function (m) { send(mainWin, m[0], m[1]); });   /* the live page: state and words, and finished phrases for older pages */
     send(compactWin, 'ears:event', ev);
   });
 

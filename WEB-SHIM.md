@@ -1,4 +1,4 @@
-# window.jarvisDesk: the web page's door to the Mac (version 1)
+# window.jarvisDesk: the web page's door to the Mac (versions 1 to 3)
 
 When the Jarvis page runs inside the Jarvis Mac app (the live site at https://jarvis.unwebbed.app in the full
 window, or the copy bundled in the app), it gets `window.jarvisDesk`. In any normal browser it is `undefined`,
@@ -145,3 +145,26 @@ shaped, length-capped objects. An app the owner has not authorized yet returns `
 Add them to the brain only when `jarvisDesk` is present and `version >= 2`; in a normal browser keep the current
 behaviour. The web app never needs to draw a confirm — macOS draws every dialog itself, and the page cannot
 click it. `runTask` is unchanged (its own step/spend/time caps, Stop bar, and the `ask_owner` gate still apply).
+
+## Version 3: hearing through the Mac, with its state, and the pill
+
+Inside an Electron window the browser's own speech recognition (Web Speech) does not work: every session dies at once.
+The live page must hear through the Mac's listener (JarvisEars, Apple's speech recognizer) instead. Version 1 and 2
+pages get finished phrases on `onHeard`; `jarvisDesk.version >= 3` adds the listener's state and the words as they
+come, and the floating pill:
+
+| Call | Answer | Notes |
+| --- | --- | --- |
+| `ears.state()` | `{ state, reason, wanted, auto, onDevice }` | `state`: starting, listening, off, blocked; `reason` says why it is off or blocked (mic-denied, speech-denied, speech-not-allowed, speech-restricted, no-on-device, no-microphone, helper-missing, stalled, stopped); `auto`: the app listens from launch |
+| `ears.start()` / `ears.stop()` | `{ ok, ... }` | only from something the owner did on the page (the mic button, "start listening") |
+| `ears.hold(on)` | `{ ok }` | pauses the helper (not used by the page today) |
+| `ears.onEvent(cb)` | `cb({ type: 'state', state, reason, onDevice })`, `cb({ type: 'partial', text })`, `cb({ type: 'final', text })` | every event of the helper; each final also arrives on `onHeard`, so a page reads one or the other, never both |
+| `onAsk(cb)` | `cb({ text })` | what the owner typed in the floating pill, or a menu-bar item such as "Look at my screen…": ask it as if typed |
+| `onMic(cb)` / `onSummon(cb)` | `cb({})` | the pill's mic button; the shortcut (wake Jarvis if asleep) |
+| `ui.state({ state, caption, small, answered })` | `{ ok }` | the page tells the pill what Jarvis is doing; `state` is one of off, asleep, idle, listening, thinking, speaking; text is cut to 400 and 160 characters |
+
+The main process answers every `desk:ears:*` and `desk:ui:state` call only from the full window's top frame on the
+live address or the app's own pages (`deskHandle`). The page (mac.js in the web app) replaces `Kin.ears` with this
+listener before app.js reads it, keeps the wake, sleep and stop phrases and every echo check of the browser path, and
+never opens a microphone of its own. When macOS refuses (microphone or speech recognition not allowed, no on-device
+recognizer), the menu bar says so, offers "Fix in System Settings…", and a notification gives the reason once.
