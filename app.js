@@ -529,7 +529,8 @@
         onEmail: function (d) { lastSign = Date.now(); if (!Kin.email) return; var id = Kin.email.saveDraft(d), box = p && p.parentNode; if (box) box.appendChild(Kin.email.card(d, { id: id, onChange: outboxCount, onSay: function (t) { if (S.unlocked && voice.canSpeak()) say(t, true); } })); outboxCount(); showThread(); },
         /* an event Jarvis prepared: a card under the answer; it goes on a calendar only when the founder taps */
         onList: function (r) { lastSign = Date.now(); var box = p && p.parentNode; if (!box || !r || !r.added.length) return; var c = el('div', 'remnote lnote'); c.appendChild(el('small', '', 'Added to your ' + Kin.lists.title(r.list.name).toLowerCase() + ' list')); c.appendChild(el('b', '', r.added.map(function (x) { return x.text; }).join(', '))); box.appendChild(c); listUndo({ list: { name: r.list.name }, undoList: { name: r.list.name, drop: r.fresh || [], retick: r.reopened || [] } }, box); refreshMade(); showThread(); },
-        onRemind: function (r) { lastSign = Date.now(); var box = p && p.parentNode; if (!box) return; var c = el('div', 'remnote'); c.appendChild(el('small', '', 'Reminder set')); c.appendChild(el('b', '', r.text)); c.appendChild(el('span', '', Kin.remind.describe(r))); box.appendChild(c); remindSet(r, box); refreshCal(); showThread(); },
+        /* a reminder Claude set: its card (the plain note only if the card could not be drawn) */
+        onRemind: function (r) { lastSign = Date.now(); var box = p && p.parentNode; if (!box) return; if (!remindSet(r, box)) { var c = el('div', 'remnote'); c.appendChild(el('small', '', 'Reminder set')); c.appendChild(el('b', '', r.text)); c.appendChild(el('span', '', Kin.remind.describe(r))); box.insertBefore(c, box.lastChild); } refreshCal(); showThread(); },
         onRemindCancel: function (r) { lastSign = Date.now(); var box = p && p.parentNode; if (!box || !r) return; var c = el('div', 'remnote'); c.appendChild(el('small', '', 'Reminder cancelled')); c.appendChild(el('b', '', r.text)); c.appendChild(el('span', '', Kin.remind.describe(r))); box.appendChild(c); remindUndo([r], box); refreshCal(); showThread(); },
         onEvent: function (e) { lastSign = Date.now(); if (!Kin.email || !Kin.email.eventCard) return; var box = p && p.parentNode; if (box) box.appendChild(Kin.email.eventCard(e, { onSay: function (t) { if (S.unlocked && voice.canSpeak()) say(t, true); } })); showThread(); },
         /* a computer action inside the Mac app: a small card under the answer saying what was asked and what the Mac answered */
@@ -838,11 +839,13 @@
     caption(r.say, r.protocol || 'Done here, no call needed');
     if (speakIt) say(r.say, true).then(function () { if (r.sleep && S.talk === 'awake') sleep(true); }); else { captionFade(7000); if (r.sleep && S.talk === 'awake') sleep(true); }
     if (r.open) openShelf(r.open);
-    if (r.remind) remindSet(r.remind, p.parentNode, r.remindMore);
+    /* a reminder's card opens the conversation, as a timer's and the weather's do */
+    if (r.remind && remindSet(r.remind, p.parentNode, r.remindMore)) showThread();
     /* a timer's card is the point of asking: the conversation opens on it, the way the weather card does */
     if (r.timers && r.timers.length && Kin.mind.timers) { try { timerCards(r.timers, p.parentNode); showThread(); } catch (e) {} }
     if ((r.list || r.undoList) && Kin.lists) listUndo(r, p.parentNode);
     if (r.undoRemind && r.undoRemind.length && Kin.remind) remindUndo(r.undoRemind, p.parentNode);
+    try { rmTick(); } catch (e) {}
     refreshMade();
   }
   /** the weather under its answer: the brief board's icon, the temperature, and high, low and rain */
@@ -926,7 +929,72 @@
     row.appendChild(un); box.appendChild(row);
   }
   /* the Calendar panel shows reminders: redrawn only when it is the one open, so nothing else loses what is typed in it */
-  function refreshCal() { if (!$('shelf').hidden && shelfTab === 'cal') refreshMade(); }
+  function refreshCal() { try { rmTick(); } catch (e) {} if (!$('shelf').hidden && shelfTab === 'cal') refreshMade(); }
+  /* ------------------------------------------------------------ reminder cards: under "remind me at 3pm to call Sam",
+     the time in large type, the day and how long until it, how it repeats (the ring empties over its last hour); it
+     says when it went off, or that it was cancelled. Undo and the rest stay in the row under it */
+  var rmIv = 0;
+  function rmCap(s) { s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1); }
+  function rmClock(at) { try { return new Date(at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); } catch (e) { return ''; } }
+  function rmIn(ms) {
+    var m = Math.round(ms / 60000); if (m < 1) return 'in less than a minute'; if (m < 60) return 'in ' + m + (m === 1 ? ' minute' : ' minutes');
+    var h = Math.floor(m / 60), mm = m % 60; if (h < 24) return 'in ' + h + (h === 1 ? ' hour' : ' hours') + (mm ? ' ' + mm + ' min' : '');
+    return '';
+  }
+  function rmCards(rems, box) {
+    rems.slice(0, 7).forEach(function (rem) {
+      if (!rem || !rem.id || !isFinite(rem.at)) return;
+      var c = el('div', 'tmcard rmcard'); c.dataset.rid = rem.id; c.dataset.state = 'wait'; c.setAttribute('role', 'group'); c.setAttribute('aria-label', 'Reminder: ' + rem.text);
+      var g = svgEl('svg', { viewBox: '0 0 64 64', 'class': 'tmring', 'aria-hidden': 'true' });
+      g.appendChild(svgEl('circle', { 'class': 'trk', cx: 32, cy: 32, r: 27 }));
+      g.appendChild(svgEl('circle', { 'class': 'arc', cx: 32, cy: 32, r: 27, 'stroke-dasharray': TM_C.toFixed(2), transform: 'rotate(-90 32 32)' }));
+      g.appendChild(svgEl('path', { 'class': 'tmglyph', d: 'M32 21.5c-4.6 0-7.8 3.4-7.8 8v5l-2.4 3.4h20.4l-2.4-3.4v-5c0-4.6-3.2-8-7.8-8zM29.4 41.5a2.7 2.7 0 0 0 5.2 0' }));
+      c.appendChild(g);
+      var tx = el('div', 'tml'); tx.appendChild(el('b', '', rem.text)); tx.appendChild(el('div', 'tmt')); tx.appendChild(el('small', '')); c.appendChild(tx);
+      box.appendChild(c); rmPaint(c, rem);
+    });
+    if (!rmIv) rmIv = setInterval(rmTick, 15000);
+  }
+  function rmPaint(c, r) {
+    var left = r.at - Date.now(), f = Math.max(0, Math.min(1, left / 3600000)), day = Kin.remind.when(r.at).replace(/ at .*$/, ''), rep = '';
+    c.querySelector('.arc').style.strokeDashoffset = (TM_C * (1 - f)).toFixed(2);
+    c.querySelector('.tmt').textContent = rmClock(r.at);
+    /* "Every weekday · next today, in 2 hours 5 min"; a one-off: "Tomorrow, in 18 hours" */
+    if (r.repeat || r.every) { var ds = Kin.remind.describe(r).replace(/, from .*$/, '').replace(/ \(the last day in a shorter month\)$/, ''), tail = ' at ' + rmClock(r.at); rep = ds.slice(-tail.length) === tail ? ds.slice(0, -tail.length) : ds; }
+    var inw = rmIn(left);
+    c.querySelector('.tml small').textContent = (rep ? rmCap(rep) + ' · next ' + day : rmCap(day)) + (inw ? ', ' + inw : '');
+  }
+  /** each waiting card follows its reminder: a repeating one moves on, a fired one says when, a cancelled one says so
+      (and one put back with Undo waits again) */
+  function rmTick() {
+    var cards = document.querySelectorAll('.rmcard[data-state="wait"], .rmcard[data-state="off"], .rmcard[data-state="done"]');
+    if (!document.querySelector('.rmcard[data-state="wait"]') && rmIv) { clearInterval(rmIv); rmIv = 0; }
+    if (!cards.length || !Kin.remind) return;
+    var by = {}; Kin.remind.list().forEach(function (r) { by[r.id] = r; });
+    [].forEach.call(cards, function (c) {
+      var r = by[c.dataset.rid], sm = c.querySelector('.tml small');
+      if (r && !r.done) { var was = c.dataset.state; c.dataset.state = 'wait'; rmPaint(c, r); if (was === 'done') rmUndo(c, true); if (!rmIv) rmIv = setInterval(rmTick, 15000); return; }
+      /* gone off and kept as it is (snoozed, it waits again above); cancelled stays cancelled */
+      if (c.dataset.state === 'done' || (c.dataset.state === 'off' && !r)) return;
+      c.dataset.state = r ? 'done' : 'off';
+      if (r) {
+        c.querySelector('.arc').style.strokeDashoffset = '0'; sm.textContent = 'Went off at ' + rmClock(r.fired || r.done || r.at);
+        rmUndo(c, false);
+      }
+      else sm.textContent = 'Cancelled';
+    });
+  }
+  /* the Undo under a reminder's own cards (its row names their ids): off once none of them still waits, back when one does */
+  function rmUndo(c, on) {
+    var id = c.dataset.rid, bx = c.parentNode; if (!bx) return;
+    [].forEach.call(bx.querySelectorAll('.btns.remset[data-rids]'), function (row) {
+      var ids = row.dataset.rids.split(' '); if (ids.indexOf(id) < 0) return;
+      var waiting = ids.some(function (x) { return !!bx.querySelector('.rmcard[data-rid="' + x.replace(/[^\w-]/g, '') + '"][data-state="wait"]'); });
+      var u = row.querySelector('.lnk.dim'); if (!u) return;
+      if (!on && !waiting && !u.disabled && u.textContent === 'Undo') { u.disabled = true; u.textContent = 'Went off'; }
+      else if (on && waiting && u.disabled && u.textContent === 'Went off') { u.disabled = false; u.textContent = 'Undo'; }
+    });
+  }
   /** under a list change: Undo puts back only that change (new items off again, a reopened one ticked again, cleared or
       removed ones back, a tick undone), and leaves anything added since */
   function listUndo(r, box) {
@@ -941,9 +1009,12 @@
   }
   /** under a reminder just set (by a phrase or by Claude): Undo, and once, an offer to notify when Jarvis is in the background
      (the browser asks only on that tap) */
+  /** returns true when the reminder's card was drawn */
   function remindSet(rem, box, more) {
-    if (!box || !Kin.remind) return;
+    if (!box || !Kin.remind) return false;
+    var carded = false; try { rmCards([rem].concat(more || []), box); carded = !!box.querySelector('.rmcard[data-rid="' + String(rem.id).replace(/[^\w-]/g, '') + '"]'); } catch (e) {}
     var row = el('div', 'btns remset'), un = el('button', 'lnk dim', 'Undo'); un.type = 'button';
+    row.dataset.rids = [rem].concat(more || []).map(function (m) { return String(m.id); }).join(' ');
     un.addEventListener('click', function () { gesture(); Kin.remind.cancel(rem.id); (more || []).forEach(function (m) { Kin.remind.cancel(m.id); }); un.disabled = true; un.textContent = 'Cancelled'; if (nb) nb.remove(); refreshCal(); });
     row.appendChild(un);
     /* inside the Jarvis Mac app: also into Apple Reminders, so the iPhone and Watch say it when Jarvis is closed (one-offs only) */
@@ -967,6 +1038,7 @@
       row.appendChild(nb);
     }
     box.appendChild(row);
+    return carded;
   }
   /* a reminder that is due: a card with Done and Snooze (and Stop for a repeating one), the chime, the words, and a
      notification when the page is in the background */
@@ -1420,7 +1492,7 @@
       var m = document.createElement('small'); m.textContent = Kin.remind.describe(r).replace(/^./, function (c) { return c.toUpperCase(); }); body.appendChild(m);
       var acts = document.createElement('div'), cx = document.createElement('button'); acts.className = 'btns'; cx.type = 'button'; cx.className = 'lnk dim'; cx.textContent = rep ? 'Stop' : 'Cancel';
       cx.setAttribute('aria-label', (rep ? 'Stop the reminder: ' : 'Cancel the reminder: ') + r.text);
-      cx.addEventListener('click', function () { gesture(); Kin.remind.cancel(r.id); refreshMade(); });
+      cx.addEventListener('click', function () { gesture(); Kin.remind.cancel(r.id); refreshCal(); });
       acts.appendChild(cx); row.appendChild(body); row.appendChild(acts); host.appendChild(row);
     });
     if (p.length > 40) { var more = document.createElement('p'); more.className = 'note'; more.textContent = (p.length - 40) + ' more. Say "what are my reminders" to hear them.'; host.appendChild(more); }

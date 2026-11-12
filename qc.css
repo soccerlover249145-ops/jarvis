@@ -1047,6 +1047,11 @@ body:has(.sheet.win:not([hidden])) .app::after { content: ""; position: fixed; i
 .thread .msg .tmcard[data-state="off"] .tmt, .thread .msg .tmcard[data-state="moved"] .tmt, .thread .msg .tmcard[data-state="dup"] .tmt { color: var(--fg2, #B6BCC9); }
 .thread .msg .tmcard[data-state="dup"] .arc { stroke: rgba(255, 255, 255, .22); filter: none; }
 @keyframes tmpulse { 50% { box-shadow: 0 0 0 4px rgba(255, 200, 112, .14), inset 0 1px 0 rgba(255, 255, 255, .05); } }
+/* the reminder card is a timer card: the text may run to two lines, the time is a little smaller */
+.thread .msg .rmcard .tml b { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.thread .msg .rmcard .tmt { font-size: 30px; }
+.thread .msg .rmcard .tml small { white-space: normal; }
+.thread .msg .rmcard[data-state="off"] .tml b { text-decoration: line-through; text-decoration-color: rgba(255, 255, 255, .35); }
 @media (prefers-reduced-motion: reduce) { .thread .msg .tmcard[data-state="done"] { animation: none; } .thread .msg .tmcard .arc { transition: none; } }
 @media (pointer: coarse) { .thread .msg .tmcard .tmb button { min-height: 44px; } }
 @media (max-width: 420px) { .thread .msg .tmcard { grid-template-columns: 50px minmax(0, 1fr) auto; column-gap: 12px; padding: 10px 12px 10px 10px; } .thread .msg .tmcard .tmring { width: 50px; height: 50px; } .thread .msg .tmcard .tmt { font-size: 28px; } }
