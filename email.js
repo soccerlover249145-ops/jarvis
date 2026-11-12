@@ -142,7 +142,8 @@
     opts = opts || {};
     if (Kin.shared) return Promise.reject(new Error(Kin.SHARED_TEXT));
     if (!clientId()) return Promise.reject(new Error('Reading your inbox needs a Google Client ID in Settings, Email.'));
-    var q = opts.all ? 'in:inbox' : 'in:inbox is:unread', n = Math.min(25, opts.max || 15);
+    /* a search uses Gmail's own search words (from:lee invoice), across all mail; otherwise the inbox */
+    var q = opts.q ? String(opts.q).slice(0, 300) : opts.all ? 'in:inbox' : 'in:inbox is:unread', n = Math.min(25, opts.max || 15);
     return getToken(READ_SCOPE).then(function (tok) {
       var auth = { credentials: 'omit', referrerPolicy: 'no-referrer', headers: { Authorization: 'Bearer ' + tok } };
       if (!mailbox) fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', auth).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { if (j && j.emailAddress) mailbox = String(j.emailAddress); }).catch(function () {});

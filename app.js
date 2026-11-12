@@ -432,6 +432,12 @@
     if (Kin.mac && !Kin.mac.available() && Kin.mac.needsMac(text)) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); var mq = localReply(Kin.mac.NEED_TEXT, 'Mac app only'); mq.parentNode.appendChild(Kin.mac.need()); showThread(); return; }
     /* "check my inbox", "what's on my calendar", "show my drafts": their panels, no model call. Only when that is the
        whole request: "check my email for typos" or "the schedule for the game" go to Claude as usual */
+    var mq = mailSearchAsk(text);
+    if (mq) {
+      inp.value = ''; lastLen = 0; touch(); addMsg('you', text); inboxQ = mq; openShelf('inbox');
+      var ml = Kin.email.canRead() ? 'Your mail search, sir: ' + mq + '. Tap Search and I will look.' : 'To search your mail I need your Google Client ID in Settings, Email, sir.';
+      addMsg('kin', ml); if (S.unlocked && voice.canSpeak() && !S.busy && !S.talking) say(ml, true); return;
+    }
     var pn = panelAsk(text);
     if (pn) {
       inp.value = ''; lastLen = 0; touch(); addMsg('you', text); openShelf(pn);
@@ -1023,6 +1029,30 @@
     return '';
   }
   Kin.panelAsk = panelAsk;
+  /* "find the email from Lee about the invoice", "search my email for the delta kite quote": Gmail search words.
+     Only when it is clearly a search of the founder's mail; anything else goes to Claude */
+  var MSEARCH = [new RegExp(PLEAD + '(?:find|search for|look for|look up|pull up|dig up)(?: me)? (?:the |my |an |a |any |that )?(?:e ?mails?|mail|messages?) ((?:from|to|about|regarding|with|mentioning|containing) .+?)' + PTAIL),
+    new RegExp(PLEAD + 'search (?:my |the )?(?:e ?mails?|mail|inbox|gmail) for (.+?)' + PTAIL)];
+  var MSTOP = /^(the|a|an|my|our|some|any|that|this|e|email|emails|mail|message|messages|and|of|please|me|it|them)$/;
+  function mailSearchAsk(text) {
+    if (!Kin.email) return '';
+    var n = ears.norm ? ears.norm(text) : String(text).toLowerCase(), m = null;
+    for (var i = 0; i < MSEARCH.length && !m; i++) m = MSEARCH[i].exec(n);
+    if (!m) return '';
+    var w = m[1].split(' '), out = [];
+    for (var k = 0; k < w.length; k++) {
+      var t = w[k], nx = w[k + 1];
+      if (t === 'from' || t === 'to') { var j = k + 1; while (j < w.length && MSTOP.test(w[j])) j++; if (j < w.length && !/^(about|regarding|with|today|yesterday|this|last|past)$/.test(w[j])) { out.push(t + ':' + w[j]); k = j; } continue; }
+      if (t === 'with' && /^attachments?$/.test(nx || '')) { out.push('has:attachment'); k++; continue; }
+      if ((t === 'this' || t === 'last' || t === 'past') && nx === 'week') { out.push('newer_than:7d'); k++; continue; }
+      if (t === 'today') { out.push('newer_than:1d'); continue; }
+      if (t === 'yesterday') { out.push('newer_than:2d'); continue; }
+      if (/^(about|regarding|mentioning|containing|with|from|to|on|re|for)$/.test(t) || MSTOP.test(t)) continue;
+      out.push(t);
+    }
+    return out.join(' ').trim();
+  }
+  Kin.mailSearchAsk = mailSearchAsk;
   /* panel buttons that hand a job to Jarvis: while an answer is still running, say so on the button instead of dropping the tap */
   function handOff(btn, q, label) {
     if (S.busy) { var lab = btn.querySelector('.pl') || btn, was = lab.textContent; if (was.indexOf('Still') === 0) return; lab.textContent = 'Still answering, one moment'; setTimeout(function () { lab.textContent = was; }, 2500); return; }
@@ -1030,7 +1060,7 @@
   }
   /** mail or calendar text, fenced off as data: a closing tag inside it cannot end the fence early */
   function fence(tag, body) { return '<' + tag + '>\n' + String(body).replace(/<\/?\s*(emails?|calendar)\b[^>]*>/gi, '') + '\n</' + tag + '>'; }
-  var inboxCache = null, inboxBusy = false, inboxErr = '';
+  var inboxCache = null, inboxBusy = false, inboxErr = '', inboxQ = '';
   function nameOf(from) { var m = /^\s*"?([^"<]+?)"?\s*</.exec(from || ''); return m ? m[1].trim() : String(from || '').replace(/[<>]/g, ''); }
   function inboxShelf(host) {
     if (!Kin.email) return;
@@ -1044,22 +1074,29 @@
     Kin.email.loadGis();
     var bt = el('div', 'btns pills'); host.appendChild(bt);
     function pb(label, cls, fn) { var b = el('button', 'pill sm ' + cls); b.type = 'button'; b.appendChild(el('span', 'pl', label)); b.addEventListener('click', function () { gesture(); fn(b); }); bt.appendChild(b); return b; }
-    function load(all) {
+    function load(mode) {
       if (inboxBusy) return; inboxBusy = true; inboxErr = ''; refreshMade();
-      Kin.email.loadGis().then(function () { return Kin.email.inbox({ all: all }); }).then(function (list) { inboxCache = { list: list, all: all, at: Date.now() }; }, function (err) { inboxErr = String((err && err.message) || err); })
+      Kin.email.loadGis().then(function () { return Kin.email.inbox(mode); }).then(function (list) { inboxCache = { list: list, all: !!mode.all, q: mode.q || '', at: Date.now() }; }, function (err) { inboxErr = String((err && err.message) || err); })
         .then(function () { inboxBusy = false; refreshMade(); });
     }
-    pb(inboxCache ? 'Check again' : 'Check inbox', 'go', function () { load(false); });
-    pb('Recent, read or not', 'alt', function () { load(true); });
+    pb(inboxCache && !inboxCache.q ? 'Check again' : 'Check inbox', 'go', function () { inboxQ = ''; load({ all: false }); });
+    pb('Recent, read or not', 'alt', function () { inboxQ = ''; load({ all: true }); });
+    /* search with Gmail's own words; read on the tap, like the rest */
+    var sf = document.createElement('form'); sf.className = 'ibsearch'; sf.setAttribute('role', 'search');
+    var si = document.createElement('input'); si.type = 'search'; si.className = 'ibq'; si.placeholder = 'Search mail, like from:lee invoice'; si.setAttribute('aria-label', 'Search mail'); si.value = inboxQ || (inboxCache && inboxCache.q) || ''; si.autocomplete = 'off'; si.spellcheck = false;
+    var sb = el('button', 'pill sm alt'); sb.type = 'submit'; sb.appendChild(el('span', 'pl', 'Search'));
+    sf.appendChild(si); sf.appendChild(sb); host.appendChild(sf);
+    sf.addEventListener('submit', function (e) { e.preventDefault(); gesture(); var v = si.value.trim(); if (!v) { si.focus(); return; } inboxQ = v; load({ q: v }); });
+    if (inboxQ && !inboxBusy && !(inboxCache && inboxCache.q === inboxQ)) setTimeout(function () { try { si.focus(); si.setSelectionRange(si.value.length, si.value.length); } catch (x) {} }, 50);
     if (inboxBusy) { note('Reading your inbox…'); return; }
     if (inboxErr) { note(inboxErr); return; }
-    if (!inboxCache) { note('Tap Check inbox. Google asks once for read-only access; the messages stay on this page and are not stored.'); return; }
+    if (!inboxCache) { note(inboxQ ? 'Tap Search. Google asks once for read-only access; the messages stay on this page and are not stored.' : 'Tap Check inbox. Google asks once for read-only access; the messages stay on this page and are not stored.'); return; }
     var list = inboxCache.list;
-    if (!list.length) { note(inboxCache.all ? 'Your inbox is empty.' : 'Nothing unread, sir.'); return; }
-    note(list.length + (inboxCache.all ? ' recent' : ' unread') + (list.length === 1 ? ' email' : ' emails') + ', checked ' + new Date(inboxCache.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) + '.');
+    if (!list.length) { note(inboxCache.q ? 'No email matches \u201c' + inboxCache.q + '\u201d.' : inboxCache.all ? 'Your inbox is empty.' : 'Nothing unread, sir.'); return; }
+    note(inboxCache.q ? list.length + (list.length === 1 ? ' email matches \u201c' : ' emails match \u201c') + inboxCache.q + '\u201d.' : list.length + (inboxCache.all ? ' recent' : ' unread') + (list.length === 1 ? ' email' : ' emails') + ', checked ' + new Date(inboxCache.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) + '.');
     pb('Summarize these', 'alt', function (b) {
-      handOff(b, 'Here are my ' + (inboxCache.all ? 'recent' : 'unread') + ' emails (From, Subject, the start of each), between the emails tags:\n\n' + fence('emails', list.map(function (m, i) { return (i + 1) + '. ' + nameOf(m.from) + ' | ' + m.subject + ' | ' + m.snippet; }).join('\n')) + '\n\nTell me what needs me, most urgent first, in a few short lines, and which deserve a reply.',
-        'Sum up my ' + list.length + (inboxCache.all ? ' recent' : ' unread') + (list.length === 1 ? ' email' : ' emails'));
+      handOff(b, 'Here are my ' + (inboxCache.q ? 'emails matching the search ' + inboxCache.q : inboxCache.all ? 'recent emails' : 'unread emails') + ' (From, Subject, the start of each), between the emails tags:\n\n' + fence('emails', list.map(function (m, i) { return (i + 1) + '. ' + nameOf(m.from) + ' | ' + m.subject + ' | ' + m.snippet; }).join('\n')) + '\n\nTell me what needs me, most urgent first, in a few short lines, and which deserve a reply.',
+        inboxCache.q ? 'Sum up the ' + list.length + (list.length === 1 ? ' email' : ' emails') + ' matching \u201c' + inboxCache.q + '\u201d' : 'Sum up my ' + list.length + (inboxCache.all ? ' recent' : ' unread') + (list.length === 1 ? ' email' : ' emails'));
     });
     list.forEach(function (m) {
       var r = document.createElement('div'); r.className = 'ibrow' + (m.unread ? ' unread' : ''); r.tabIndex = 0; r.setAttribute('role', 'button');
