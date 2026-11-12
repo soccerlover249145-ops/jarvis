@@ -52,7 +52,9 @@
   ];
   var DEF = { order: ['weather', 'calendar', 'todo', 'nok', 'start', 'today', 'priorities', 'market', 'footer'], on: { weather: true, calendar: true, todo: true, nok: true, start: true, today: true, priorities: true, market: true, footer: false }, units: 'F', owner: '', autoSmall: true, autoCap: 0.25, autoDay: 1 };
   var settings = {
-    get: function () { var v = ls.get('kin.bb.settings', null) || {}; var order = (v.order || []).filter(function (id) { return DEF.order.indexOf(id) >= 0; }); DEF.order.forEach(function (id) { if (order.indexOf(id) < 0) order.push(id); }); return { order: order, on: Object.assign({}, DEF.on, v.on || {}), units: v.units === 'C' ? 'C' : 'F', owner: typeof v.owner === 'string' ? v.owner.slice(0, 60) : '', autoSmall: v.autoSmall !== false, autoCap: isFinite(v.autoCap) && v.autoCap >= 0 && v.autoCap <= 2 ? +v.autoCap : DEF.autoCap, autoDay: v.autoDay != null && isFinite(v.autoDay) && v.autoDay >= 0 && v.autoDay <= 20 ? +v.autoDay : DEF.autoDay }; },
+    get: function () { var v = ls.get('kin.bb.settings', null) || {}; var order = (Array.isArray(v.order) ? v.order : []).filter(function (id, i, a) { return DEF.order.indexOf(id) >= 0 && a.indexOf(id) === i; });
+      /* a card added since the order was saved goes in after its neighbour in the default order, not at the end */
+      DEF.order.forEach(function (id, i) { if (order.indexOf(id) >= 0) return; var prev = DEF.order.slice(0, i).reverse().filter(function (q) { return order.indexOf(q) >= 0; })[0]; order.splice(prev ? order.indexOf(prev) + 1 : 0, 0, id); }); return { order: order, on: (function () { var on = {}, src = v.on && typeof v.on === 'object' ? v.on : {}; Object.keys(DEF.on).forEach(function (k) { on[k] = typeof src[k] === 'boolean' ? src[k] : DEF.on[k]; }); return on; })(), units: v.units === 'C' ? 'C' : 'F', owner: typeof v.owner === 'string' ? v.owner.slice(0, 60) : '', autoSmall: v.autoSmall !== false, autoCap: isFinite(v.autoCap) && v.autoCap >= 0 && v.autoCap <= 2 ? +v.autoCap : DEF.autoCap, autoDay: v.autoDay != null && isFinite(v.autoDay) && v.autoDay >= 0 && v.autoDay <= 20 ? +v.autoDay : DEF.autoDay }; },
     set: function (patch) { var v = Object.assign(settings.get(), patch || {}); ls.set('kin.bb.settings', v); return v; },
     cards: CARDS,
     /* the town and the units are the page's single weather setting, kept by chart.js (Settings, under Weather) */
@@ -348,7 +350,7 @@
       var w = d.weather;
       head(c, 'Weather', w && w.place ? w.place + (w.place ? ' · today' : '') : 'Today');
       var b = h('div', 'bb-body'); c.appendChild(b);
-      if (!w || w.error === 'noplace') { c.classList.add('bb-slim'); empty(b, 'No town set yet. Use your location (only rounded coordinates go to Open-Meteo), or set a town in Settings.');
+      if (!w || w.error === 'noplace') { c.classList.add('bb-slim'); empty(b, 'No town set yet. Use your location (only rounded coordinates go to Open-Meteo), or set a town in Settings (its name goes to Open-Meteo once, to find it).');
         if (window.Kin && Kin.chart && Kin.chart.locate) { var lr = h('div', 'bb-chips'), lb = h('button', 'bb-pill bb-go', 'Use my location'); lb.type = 'button';
           lb.addEventListener('click', function (e) { if (!e.isTrusted) return; lb.disabled = true; lb.textContent = 'Finding you…'; Kin.chart.locate().then(function () { if (ctx && ctx.refresh) ctx.refresh(); else lb.textContent = 'Saved. Tap Refresh.'; }, function (er) { lb.disabled = false; lb.textContent = 'Use my location'; var p2 = b.querySelector('.bb-empty'); if (p2) p2.textContent = er.message; }); });
           lr.appendChild(lb); b.appendChild(lr); }
@@ -434,11 +436,20 @@
     todo: function (c, d) {
       var td = d.todo; head(c, 'Your to-do list', td.open.length + ' to go · kept on this device'); var b = h('div', 'bb-body'); c.appendChild(b);
       var ul = h('ul', 'bb-list');
+      /* the count in the heading follows the ticks: the rows still open here, and the ones the board does not show */
+      var recount = function () { var left = ul.querySelectorAll('.bb-task:not(.bb-done):not(.bb-gone)').length + Math.max(0, td.open.length - 7), sub = c.querySelector('.bb-sub'); if (sub) sub.textContent = (left ? left + ' to go' : ul.querySelector('.bb-task.bb-done') ? 'All done' : 'Nothing left') + ' · kept on this device'; };
       td.open.slice(0, 7).forEach(function (x) {
         var li = h('li', 'bb-task'), bt = h('button', 'bb-check'); bt.type = 'button'; bt.setAttribute('role', 'checkbox'); bt.setAttribute('aria-checked', 'false'); bt.setAttribute('aria-label', 'Tick off: ' + x.text);
         bt.appendChild(s('svg', { viewBox: '0 0 16 16', 'aria-hidden': 'true' }, [s('path', { d: 'M3.5 8.5l3 3 6-7' })]));
         /* ticked here is ticked on the list (and back again) */
-        bt.addEventListener('click', function () { if (!window.Kin || !Kin.lists) return; var it = Kin.lists.toggle(td.name, x.id); var on = !!(it && it.done); bt.setAttribute('aria-checked', on ? 'true' : 'false'); li.classList.toggle('bb-done', on); });
+        bt.addEventListener('click', function () {
+          if (!window.Kin || !Kin.lists) return;
+          /* the list as it is now: ticked elsewhere since the board opened stays ticked; gone from the list, the row goes */
+          var l = Kin.lists.get(td.name), cur = l && l.items.filter(function (y) { return String(y.id) === x.id; })[0], want = bt.getAttribute('aria-checked') !== 'true';
+          if (!cur) { li.classList.add('bb-gone'); bt.disabled = true; setTimeout(function () { li.remove(); recount(); }, 260); return; }
+          if (!!cur.done !== want) Kin.lists.toggle(td.name, cur.id);
+          bt.setAttribute('aria-checked', want ? 'true' : 'false'); li.classList.toggle('bb-done', want); recount();
+        });
         li.appendChild(bt); var r = h('div'); r.appendChild(h('div', 'bb-rt', x.text)); li.appendChild(r); ul.appendChild(li);
       });
       b.appendChild(ul); if (td.open.length > 7) b.appendChild(h('p', 'bb-empty', (td.open.length - 7) + ' more in the Lists tab.'));

@@ -22,6 +22,9 @@
     c = +c; return c === 0 ? 'Clear' : c === 1 ? 'Mostly clear' : c === 2 ? 'Partly cloudy' : c === 3 ? 'Overcast' : c === 45 || c === 48 ? 'Fog' : c >= 51 && c <= 57 ? 'Drizzle' : c >= 61 && c <= 67 ? (c >= 65 ? 'Heavy rain' : 'Rain') : c >= 71 && c <= 77 ? 'Snow' : c >= 80 && c <= 82 ? 'Showers' : c === 85 || c === 86 ? 'Snow showers' : c >= 95 ? 'Thunderstorms' : 'Cloudy';
   }
   function r0(x) { return Math.round(+x); }
+  /* a number Open-Meteo actually sent: it sends null for what it lacks, and isFinite(null) is true */
+  function num(v) { return typeof v === 'number' && isFinite(v); }
+  function cap1(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
   function hourName(t) { var h = +String(t).slice(11, 13); return (h % 12 || 12) + (h < 12 ? ' AM' : ' PM'); }
   /** the words for one answer, from the raw Open-Meteo forecast: { say, show } */
   function words(f, ask) {
@@ -31,7 +34,7 @@
     var nowH = String(cur.time || '').slice(0, 13), w = String(ask.when || ''), hNow = +nowH.slice(11, 13), tomorrow = /tomorrow/.test(w) || (w === 'in the morning' && hNow >= 12) || (w === 'in the afternoon' && hNow >= 18) || (w === 'in the evening' && hNow >= 22), di = tomorrow ? 1 : 0;
     var pk = /morning/.test(w) ? 'morning' : /afternoon/.test(w) ? 'afternoon' : /evening/.test(w) ? 'evening' : /night/.test(w) ? 'night' : '';
     var day = String((D.time || [])[di] || (cur.time || '')).slice(0, 10);
-    var hi = (D.temperature_2m_max || [])[di], lo = (D.temperature_2m_min || [])[di];
+    var hi = (D.temperature_2m_max || [])[di], lo = (D.temperature_2m_min || [])[di]; hi = num(hi) ? hi : null; lo = num(lo) ? lo : null;
     if (tomorrow && hi == null && lo == null) return { say: 'I have no forecast for tomorrow yet, sir.', show: 'Open-Meteo sent no forecast for tomorrow yet.' };
     /* the hours asked about: the rest of today, a part of the day ("this afternoon", "tomorrow morning"), or tomorrow.
        The chance of rain is the most of those hours, never a morning shower that has already passed */
@@ -40,31 +43,44 @@
     var hrs = pick(span[0], span[1]);
     /* "this morning" asked in the afternoon: the rest of today instead */
     if (!hrs.length && !tomorrow && pk) { hrs = pick(0, 24); when = 'the rest of today'; }
-    var known = hrs.filter(function (x) { return x.p != null && isFinite(x.p); });
+    var known = hrs.filter(function (x) { return num(x.p); });
     var wet = known.filter(function (x) { return x.p >= 40; }), peak = known.reduce(function (a, x) { return a == null || x.p > a.p ? x : a; }, null);
-    var pmax = peak ? peak.p : (!pk && (D.precipitation_probability_max || [])[di] != null && tomorrow ? (D.precipitation_probability_max || [])[di] : null);
+    var pmax = peak ? peak.p : (!pk && tomorrow && num((D.precipitation_probability_max || [])[di]) ? (D.precipitation_probability_max || [])[di] : null);
     var rainLine = pmax == null ? 'Open-Meteo sent no chance of rain for ' + when + '.' : pmax >= 60 ? 'Rain is likely ' + when + (peak ? ', about ' + peak.p + ' percent around ' + hourName(peak.t) : '') + '.' : pmax >= 30 ? 'There is a ' + pmax + ' percent chance of rain ' + when + (peak && peak.p >= 30 ? ', most likely around ' + hourName(peak.t) : '') + '.' : 'No rain to speak of ' + when + (pmax > 0 ? ' (' + pmax + ' percent at most)' : '') + '.';
-    var sky = tomorrow ? (hrs.length ? wmo(mode(hrs.map(function (x) { return x.c; }))) : '') : wmo(cur.weather_code);
-    var say, show;
+    /* the hours asked about as numbers: their sky (the commonest code; none when none was sent) and their temperatures */
+    var codes = hrs.map(function (x) { return x.c; }).filter(num), ptemps = hrs.map(function (x) { return x.temp; }).filter(num);
+    var part = !!(pk && hrs.length && when !== 'the rest of today' && ptemps.length), pmin = ptemps.length ? Math.min.apply(null, ptemps) : null, pmx = ptemps.length ? Math.max.apply(null, ptemps) : null;
+    var code = tomorrow || part ? (codes.length ? mode(codes) : null) : num(cur.weather_code) ? cur.weather_code : null;
+    var sky = code == null ? '' : wmo(code);
+    var say, show, hilo = num(hi) && num(lo) ? 'a high of ' + r0(hi) + ' and a low of ' + r0(lo) + ' degrees' : num(hi) ? 'a high of ' + r0(hi) + ' degrees' : num(lo) ? 'a low of ' + r0(lo) + ' degrees' : '';
+    /* a part of the day in degrees: "between 49 and 58 degrees", or "around 50 degrees" */
+    var range = part ? (r0(pmin) === r0(pmx) ? 'around ' + r0(pmx) + ' degrees' : 'between ' + r0(pmin) + ' and ' + r0(pmx) + ' degrees') : '';
     if (ask.kind === 'rain') {
       say = (pmax == null ? 'I can\'t tell, sir. ' : pmax >= 60 ? 'Yes, sir. ' : pmax >= 30 ? 'Possibly, sir. ' : 'No, sir. ') + rainLine + (pmax >= 40 ? ' Take an umbrella.' : '');
       show = (tomorrow ? 'Tomorrow' : 'Today') + name + ': ' + rainLine + (wet.length ? ' Wettest hours: ' + wet.slice(0, 4).map(function (x) { return hourName(x.t) + ' ' + x.p + '%'; }).join(', ') + '.' : '');
     } else if (ask.kind === 'coat') {
-      var feels = tomorrow ? lo : (cur.apparent_temperature != null ? cur.apparent_temperature : cur.temperature_2m), cold = unit === 'F' ? 60 : 15, chilly = unit === 'F' ? 68 : 20;
-      say = (feels < cold ? 'Yes, sir. ' : feels < chilly ? 'A light one, sir. ' : 'No, sir. ') + (tomorrow ? 'Tomorrow runs from ' + r0(lo) + ' to ' + r0(hi) + ' degrees.' : 'It feels like ' + r0(feels) + ' degrees' + name + ', with a low of ' + r0(lo) + '.') + (pmax >= 40 ? ' ' + rainLine : '');
-      show = say.replace(/^(Yes|No|A light one), sir\. /, '');
+      /* the coldest of the hours asked about, tomorrow's low, or how it feels now */
+      var feels = part ? pmin : tomorrow ? (num(lo) ? lo : hi) : (num(cur.apparent_temperature) ? cur.apparent_temperature : cur.temperature_2m), cold = unit === 'F' ? 60 : 15, chilly = unit === 'F' ? 68 : 20;
+      if (!num(feels)) say = 'I can\'t tell, sir. Open-Meteo sent no temperature for ' + (tomorrow || part ? when : 'right now') + '.';
+      else say = (feels < cold ? 'Yes, sir. ' : feels < chilly ? 'A light one, sir. ' : 'No, sir. ') + (part ? cap1(when) + name + ' gets down to ' + r0(pmin) + ' degrees.' : tomorrow ? (num(hi) && num(lo) ? 'Tomorrow runs from ' + r0(lo) + ' to ' + r0(hi) + ' degrees.' : 'Tomorrow has ' + hilo + '.') : 'It feels like ' + r0(feels) + ' degrees' + name + (num(lo) ? ', with a low of ' + r0(lo) : '') + '.') + (pmax >= 40 ? ' ' + rainLine : '');
+      show = say.replace(/^(Yes|No|A light one|I can't tell), sir\. /, '');
+    } else if (part) {
+      say = cap1(when) + name + ': ' + (sky ? sky.toLowerCase() + ', ' : '') + range + '. ' + rainLine;
+      show = say;
     } else if (tomorrow) {
-      say = 'Tomorrow' + name + ': ' + (sky ? sky.toLowerCase() + ', ' : '') + 'a high of ' + r0(hi) + ' and a low of ' + r0(lo) + ' degrees. ' + rainLine;
+      say = 'Tomorrow' + name + ': ' + (sky ? sky.toLowerCase() + (hilo ? ', ' : '. ') : '') + (hilo ? hilo + '. ' : '') + rainLine;
       show = say;
     } else {
-      var t = cur.temperature_2m;
-      say = 'It\'s ' + r0(t) + ' degrees and ' + wmo(cur.weather_code).toLowerCase() + name + ', sir' + (ask.kind === 'temp' && cur.apparent_temperature != null && Math.abs(cur.apparent_temperature - t) >= 3 ? ', feeling like ' + r0(cur.apparent_temperature) : '') + '. ' + (hi != null ? 'High of ' + r0(hi) + ', low of ' + r0(lo) + '. ' : '') + rainLine;
+      var t = cur.temperature_2m, dayLine = num(hi) && num(lo) ? 'High of ' + r0(hi) + ', low of ' + r0(lo) + '. ' : num(hi) ? 'High of ' + r0(hi) + '. ' : num(lo) ? 'Low of ' + r0(lo) + '. ' : '';
+      say = (num(t) ? 'It\'s ' + r0(t) + ' degrees' + (sky ? ' and ' + sky.toLowerCase() : '') + name + ', sir' + (ask.kind === 'temp' && num(cur.apparent_temperature) && Math.abs(cur.apparent_temperature - t) >= 3 ? ', feeling like ' + r0(cur.apparent_temperature) : '') + '. '
+        : 'Open-Meteo sent no reading for right now' + name + ', sir. ' + (sky ? 'The sky: ' + sky.toLowerCase() + '. ' : '')) + dayLine + rainLine;
       show = say.replace(', sir', '');
     }
-    /* the numbers for the card under the answer (app.js) */
-    var cw = Kin.briefBoard && Kin.briefBoard._wmo ? Kin.briefBoard._wmo(tomorrow ? mode(hrs.map(function (x) { return x.c; })) : cur.weather_code) : null;
-    var card = { temp: tomorrow ? hi : cur.temperature_2m, unit: unit, cond: tomorrow ? (sky || '') : wmo(cur.weather_code), icon: cw ? cw.k : '', day: tomorrow ? true : cur.is_day !== 0, hi: hi, lo: lo, rain: pmax, place: name ? name.replace(/^ in /, '') : '', when: tomorrow ? 'Tomorrow' + (pk ? ' ' + pk : '') : 'Now' };
-    return { say: say.trim(), show: (show.trim() + ' (Open-Meteo, ' + unit + ')'), card: isFinite(card.temp) ? card : null };
+    /* the numbers for the card under the answer (app.js): the hours asked about ("Tomorrow night" is the coldest of
+       those hours, under a moon), tomorrow, or now */
+    var cw = code != null && Kin.briefBoard && Kin.briefBoard._wmo ? Kin.briefBoard._wmo(code) : null, night = /night|evening/.test(pk);
+    var card = { temp: part ? (night ? pmin : pmx) : tomorrow ? hi : cur.temperature_2m, unit: unit, cond: sky, icon: cw ? cw.k : '', day: part ? !night : tomorrow ? true : cur.is_day !== 0, hi: hi, lo: lo, rain: num(pmax) ? pmax : null, place: name ? name.replace(/^ in /, '') : '', when: part ? cap1(when) : tomorrow ? 'Tomorrow' : 'Now' };
+    return { say: say.trim(), show: (show.trim() + ' (Open-Meteo, ' + unit + ')'), card: num(card.temp) ? card : null };
   }
   function mode(a) { var n = {}, best = null; a.forEach(function (x) { n[x] = (n[x] || 0) + 1; if (best == null || n[x] > n[best]) best = x; }); return best; }
   function instant(raw) { try { return answer(raw); } catch (e) { return null; } }

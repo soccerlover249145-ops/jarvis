@@ -826,7 +826,7 @@
     if (r.pending && typeof r.pending.then === 'function') {
       caption(r.show, r.label || 'One moment', 'kin');
       r.pending.then(function (res) {
-        if (!res) return; p.textContent = ''; Kin.mind.md(res.show, p); if (res.card) wxCard(res.card, p.parentNode);
+        if (!res) return; p.textContent = ''; Kin.mind.md(res.show, p); if (res.card) { try { wxCard(res.card, p.parentNode); } catch (e) {} }
         caption(res.say, (r.label || 'Done here') + ', no call to Claude');
         if (speakIt && !S.busy) say(res.say, true); else captionFade(9000);
         showThread();
@@ -848,7 +848,8 @@
     var t = el('div', 'wxt'); t.appendChild(document.createTextNode(Math.round(c.temp))); t.appendChild(el('sup', '', '°' + c.unit)); d.appendChild(t);
     var w = el('div', 'wxc'); w.appendChild(el('b', '', c.cond || '')); w.appendChild(el('small', '', c.when + (c.place ? ' · ' + c.place : ''))); d.appendChild(w);
     var ch = el('div', 'wxchips'), chip = function (k, v, hot) { var x = el('span', 'wxchip' + (hot ? ' hot' : '')); x.appendChild(document.createTextNode(k + ' ')); x.appendChild(el('b', '', v)); ch.appendChild(x); };
-    if (isFinite(c.hi)) chip('High', Math.round(c.hi) + '°'); if (isFinite(c.lo)) chip('Low', Math.round(c.lo) + '°'); if (c.rain != null && isFinite(c.rain)) chip('Rain', c.rain + '%', c.rain >= 50);
+    var num = function (v) { return typeof v === 'number' && isFinite(v); };
+    if (num(c.hi)) chip('High', Math.round(c.hi) + '°'); if (num(c.lo)) chip('Low', Math.round(c.lo) + '°'); if (num(c.rain)) chip('Rain', Math.round(c.rain) + '%', c.rain >= 50);
     if (ch.childNodes.length) d.appendChild(ch);
     box.appendChild(d);
   }
@@ -1064,8 +1065,12 @@
     if (ms > 0 && ms < 6 * 864e5) return d.toLocaleDateString(undefined, { weekday: 'short' });
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
+  var madeTab = '';
   function refreshMade() {
     var el = $('shelfbody'); if (!el || $('shelf').hidden) return;
+    /* redrawing the open Lists tab keeps where it was scrolled to: a tick in a long list no longer jumps to the top */
+    var shSc = el.closest('.sheetbody'), shKeep = shSc && madeTab === 'lists' && shelfTab === 'lists' ? shSc.scrollTop : 0; madeTab = shelfTab;
+    if (shKeep) Promise.resolve().then(function () { shSc.scrollTop = shKeep; });
     /* a list field with the cursor in it: its place, so the Lists tab can put the cursor back after the redraw */
     var fa = document.activeElement; listRefocus = fa && el.contains(fa) && fa.dataset && fa.dataset.draft != null ? { k: fa.dataset.draft, a: fa.selectionStart, b: fa.selectionEnd } : null;
     el.textContent = '';
@@ -1276,6 +1281,22 @@
   /** the Lists tab: each list with its items; tap to tick off, the cross to remove, a field to add, Clear ticked.
       What is being typed in a field is kept when the tab is drawn again (a change by voice, or in another tab) */
   var listDraft = {}, listRefocus = null;
+  /* a list changed somewhere else (the brief board, a phrase, Claude, another tab): the open Lists tab redraws after the
+     change's own redraw (refreshMade keeps where it was scrolled to); never in the middle of a word being composed (an IME, a phone
+     keyboard's suggestion), and not under the brief board, whose closing puts the cursor back in its field first */
+  var listsT = 0, listsComposing = false, listsPending = false;
+  function listsRedraw() {
+    clearTimeout(listsT);
+    listsT = setTimeout(function () {
+      if (shelfTab !== 'lists' || $('shelf').hidden) { listsPending = false; return; }
+      if (listsComposing) { listsPending = true; return; }
+      if (Kin.briefBoard && Kin.briefBoard.isOpen && Kin.briefBoard.isOpen()) { listsT = setTimeout(listsRedraw, 400); return; }
+      listsPending = false; refreshMade();
+    }, 0);
+  }
+  if (Kin.lists && Kin.lists.onChange) Kin.lists.onChange(listsRedraw);
+  document.addEventListener('compositionstart', function () { listsComposing = true; }, true);
+  document.addEventListener('compositionend', function () { listsComposing = false; if (listsPending) listsRedraw(); }, true);
   function listsShelf(host) {
     if (!Kin.lists) return;
     /* where the cursor was before the redraw (refreshMade notes it before it empties the panel) */
