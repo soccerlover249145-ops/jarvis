@@ -40,22 +40,29 @@
   var SENT_MAX = 30, SENT_DAYS = 7;
   function outbox() { try { var a = JSON.parse(ls.get(K.box) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
   /* drafts still waiting are never dropped; sent ones are kept for a week, thirty at most */
+  var BOX_CAP = 200;
   function saveBox(a) {
-    var old = Date.now() - SENT_DAYS * 864e5, sent = 0;
-    ls.set(K.box, JSON.stringify(a.filter(function (m) { if (m.status !== 'sent') return true; sent++; return sent <= SENT_MAX && (m.sentAt || m.at || 0) >= old; })));
+    var old = Date.now() - SENT_DAYS * 864e5;
+    /* sent ones: the newest sends first, a week at most, thirty at most */
+    var keepSent = a.filter(function (m) { return m.status === 'sent' && (m.sentAt || m.at || 0) >= old; }).sort(function (x, y) { return (y.sentAt || y.at || 0) - (x.sentAt || x.at || 0); }).slice(0, SENT_MAX);
+    var out = a.filter(function (m) { return m.status !== 'sent' || keepSent.indexOf(m) >= 0; });
+    /* a hard ceiling so storage cannot grow forever: the oldest drafts already opened in Gmail go first */
+    while (out.length > BOX_CAP) { var gone = out.filter(function (m) { return m.status === 'opened'; }).pop() || out[out.length - 1]; out.splice(out.indexOf(gone), 1); }
+    ls.set(K.box, JSON.stringify(out));
   }
   function same(x, y) { return String(x || '').replace(/\s+/g, ' ').trim().toLowerCase() === String(y || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
-  /** a new draft; a rewrite of one still waiting (same To and Subject, not yet opened or sent) replaces it instead of piling up */
-  function saveDraft(d) {
-    var a = outbox(), to = String(d.to || ''), su = String(d.subject || ''), x = a.filter(function (m) { return m.status === 'draft' && same(m.to, to) && same(m.subject, su); })[0];
-    if (x) { a = a.filter(function (m) { return m !== x; }); x.body = String(d.body || ''); x.at = Date.now(); a.unshift(x); saveBox(a); tell(x.id, { body: x.body }); return x.id; }
+  /** a new draft. A rewrite from a later answer ("make it shorter") replaces the one still waiting with the same To and
+      Subject, as long as it has an address and the founder has not edited it; drafts written in the same answer never merge */
+  function saveDraft(d, ask) {
+    var a = outbox(), to = String(d.to || ''), su = String(d.subject || ''), x = /@/.test(to) ? a.filter(function (m) { return m.status === 'draft' && !m.edited && m.ask !== ask && same(m.to, to) && same(m.subject, su); })[0] : null;
+    if (x) { a = a.filter(function (m) { return m !== x; }); x.body = String(d.body || ''); x.at = Date.now(); x.ask = ask; a.unshift(x); saveBox(a); tell(x.id, { body: x.body }); return x.id; }
     var id = 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    a.unshift({ id: id, to: to, subject: su, body: String(d.body || ''), at: Date.now(), status: 'draft' });
+    a.unshift({ id: id, to: to, subject: su, body: String(d.body || ''), at: Date.now(), status: 'draft', ask: ask });
     saveBox(a); return id;
   }
   function getDraft(id) { return outbox().filter(function (m) { return m.id === id; })[0] || null; }
   /* every card showing the same draft (in the conversation and in the Outbox) hears about a change */
-  function tell(id, patch) { try { window.dispatchEvent(new CustomEvent('kin:draft', { detail: { id: id, patch: patch } })); } catch (e) {} }
+  function tell(id, patch) { [].forEach.call(document.querySelectorAll('.mailcard[data-draft]'), function (c) { if (c.dataset.draft === id) { try { c.dispatchEvent(new CustomEvent('kin:draft', { detail: { id: id, patch: patch } })); } catch (e) {} } }); }
   function updateDraft(id, patch) {
     var a = outbox(), x = a.filter(function (m) { return m.id === id; })[0]; if (!x) return;
     Object.keys(patch).forEach(function (k) { x[k] = patch[k]; }); if (patch.status === 'sent') x.sentAt = Date.now(); saveBox(a);
@@ -222,7 +229,9 @@
       return page('', 1).then(function () { people = { at: Date.now(), list: out }; return out; });
     });
   }
-  function fold(x) { return String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+  function fold(x) { return String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim(); }
+  /** the name asked for is a whole word of this person's name or address, not just the start of one */
+  function exactPerson(q, pp) { var hay = ' ' + fold(pp.name) + ' ' + fold(pp.email.split('@')[0]) + ' '; return fold(q).split(' ').filter(Boolean).every(function (w) { return hay.indexOf(' ' + w + ' ') >= 0; }); }
   /** everyone whose name (or the part of the address before the @) has every word asked for */
   function findPeople(q, list) {
     var words = fold(q).split(' ').filter(Boolean); if (!words.length) return [];
@@ -270,15 +279,14 @@
       var cur = getDraft(opts.id); if (!cur || cur.status !== 'sent') return false;
       sentHere(); msg.textContent = 'Already sent, from the Outbox or the conversation.'; return true;
     }
-    function sentHere() { st.sent = true; show('sent'); [to, su, bo].forEach(function (i) { i.readOnly = true; }); if (box.sendBtn) { box.sendBtn.disabled = true; box.sendBtn.querySelector('.pl').textContent = 'Sent'; } fr.hidden = true; }
+    function sentHere() { if (box.disarm) box.disarm(); st.sent = true; show('sent'); [to, su, bo].forEach(function (i) { i.readOnly = true; }); if (box.sendBtn) { box.sendBtn.disabled = true; box.sendBtn.querySelector('.pl').textContent = 'Sent'; } fr.hidden = true; }
     if (opts.id) {
-      var hear = function (ev) {
-        if (!box.isConnected) { window.removeEventListener('kin:draft', hear); return; }
-        var d0 = ev.detail || {}; if (d0.id !== opts.id || !d0.patch) return;
+      box.dataset.draft = opts.id;
+      box.addEventListener('kin:draft', function (ev) {
+        var d0 = ev.detail || {}; if (!d0.patch) return;
         if (d0.patch.status === 'sent') sentHere(); else if (d0.patch.status && !st.sent) show(d0.patch.status);
-        if (typeof d0.patch.body === 'string' && document.activeElement !== bo && !st.sent) bo.value = d0.patch.body;
-      };
-      window.addEventListener('kin:draft', hear);
+        if (typeof d0.patch.body === 'string' && document.activeElement !== bo && !st.sent) { bo.value = d0.patch.body; if (box.disarm) box.disarm(); }
+      });
     }
     function field(lbl, val, multi) {
       var w = el('label', 'mrow'); w.appendChild(el('span', 'mlbl', lbl));
@@ -291,7 +299,9 @@
     var acts = el('div', 'mact'); box.appendChild(acts);
     function draft() { return { to: to.value, subject: su.value, body: bo.value }; }
     /* edits are kept in the outbox, so a fixed address or a reworded line survives a reload */
-    if (opts.id) { var saveT = 0; [to, su, bo].forEach(function (i) { i.addEventListener('input', function () { clearTimeout(saveT); saveT = setTimeout(function () { updateDraft(opts.id, draft()); }, 400); }); }); }
+    if (opts.id) { var saveT = 0; [to, su, bo].forEach(function (i) { i.addEventListener('input', function () { clearTimeout(saveT); saveT = setTimeout(function () { var x = draft(); x.edited = true; updateDraft(opts.id, x); }, 400); }); }); }
+    /* a change after the read-back means the next tap must read it back again */
+    [to, su, bo].forEach(function (i) { i.addEventListener('input', function () { if (box.disarm && box.armedNow && box.armedNow()) { box.disarm(); msg.textContent = 'Changed. Tap Send now again to read it back first.'; } }); });
     if (!st.sent && opts.id) { var c0 = getDraft(opts.id); if (c0 && c0.status === 'sent') { st.sent = true; status = 'sent'; head.firstChild.textContent = CHIP.sent[0]; head.firstChild.className = CHIP.sent[1]; } }
     if (st.sent) [to, su, bo].forEach(function (i) { i.readOnly = true; });
     /* a name in To instead of an address: one tap looks it up in Google Contacts (read-only, on this page only) */
@@ -303,10 +313,10 @@
         fb.disabled = true; fb.textContent = 'Looking in your contacts…';
         loadGis().then(function () { return contacts(); }).then(function (list) {
           var hits = findPeople(names[0], list);
-          if (hits.length === 1) { use(names[0], hits[0]); return; }
+          if (hits.length === 1 && exactPerson(names[0], hits[0])) { use(names[0], hits[0]); return; }
           fr.textContent = '';
           if (!hits.length) { fr.appendChild(el('span', 'mfnote', 'No one called ' + names[0] + ' in your contacts. Type the address instead.')); return; }
-          fr.appendChild(el('span', 'mfnote', 'Which ' + names[0] + '?'));
+          fr.appendChild(el('span', 'mfnote', hits.length === 1 ? 'Do you mean' : 'Which ' + names[0] + '?'));
           hits.forEach(function (h) { var b = el('button', 'mfpick'); b.type = 'button'; b.appendChild(el('b', '', h.name)); b.appendChild(el('span', '', h.email)); b.addEventListener('click', function () { use(names[0], h); }); fr.appendChild(b); });
         }, function (err) { fb.disabled = false; fb.textContent = 'Find ' + names[0] + ' in Contacts'; msg.textContent = String((err && err.message) || err); });
       });
@@ -318,7 +328,7 @@
     to.addEventListener('input', function () { var n = bareNames(to.value)[0] || ''; if (n !== fr.dataset.n) { fr.dataset.n = n; findRow(); } });
     fr.dataset.n = bareNames(to.value)[0] || ''; findRow();
     var gm = pill('Open in Gmail', 'go'), cp = pill('Copy', 'alt');
-    gm.addEventListener('click', function () { if (stale()) return; var w = check(draft()); if (w && !/subject|empty/i.test(w)) { msg.textContent = w; return; } window.open(composeUrl(draft()), '_blank', 'noopener,noreferrer'); msg.textContent = 'Opened in Gmail. Press Send there when it looks right.'; if (!st.sent) mark('opened'); });
+    gm.addEventListener('click', function () { if (st.sent) { msg.textContent = 'Already sent. Use Copy if you need the words again.'; return; } if (stale()) return; var w = check(draft()); if (w && !/subject|empty/i.test(w)) { msg.textContent = w; return; } window.open(composeUrl(draft()), '_blank', 'noopener,noreferrer'); msg.textContent = 'Opened in Gmail. Press Send there when it looks right.'; if (!st.sent) mark('opened'); });
     box.openInGmail = function () { gm.click(); };
     cp.addEventListener('click', function () { var x = draft(), t = 'To: ' + x.to + '\nSubject: ' + x.subject + '\n\n' + x.body; (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { msg.textContent = 'Copied.'; }, function () { msg.textContent = 'This browser would not copy it; select the text instead.'; }); });
     acts.appendChild(gm); acts.appendChild(cp);
@@ -326,6 +336,8 @@
       loadGis();
       var sn = pill('Send now', 'warn'), armed = false, armT = 0;
       box.sendBtn = sn;
+      box.disarm = function () { armed = false; clearTimeout(armT); if (!st.sent) sn.querySelector('.pl').textContent = 'Send now'; };
+      box.armedNow = function () { return armed; };
       sn.addEventListener('click', function (e) {
         if (!e.isTrusted || st.sent || stale()) return;
         var x = draft(), w = check(x); if (w) { msg.textContent = w; return; }
@@ -359,16 +371,20 @@
     if (!e.allDay) {
       if (!/^\d{2}:\d{2}$/.test(e.start || '')) return 'Add a start time, or make it all day.';
       if (e.end && !/^\d{2}:\d{2}$/.test(e.end)) return 'The end time is not a time.';
-      if (e.end && e.end <= e.start) return 'It ends before it starts.';
+      if (e.end && e.end === e.start) return 'It ends when it starts: change the end time.';
     }
     return '';
   }
   function stampLocal(d) { return d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + 'T' + pad2(d.getHours()) + pad2(d.getMinutes()) + '00'; }
   /** start and end in calendar form: YYYYMMDD for all day (the end is the next day), else local YYYYMMDDTHHMMSS */
+  /* clock arithmetic, not milliseconds: an hour later and the next day stay right across a daylight-saving change */
   function evTimes(e) {
-    if (e.allDay) { var nx = new Date(Date.parse(e.date + 'T12:00:00') + 864e5); return { allDay: true, s: e.date.replace(/-/g, ''), t: nx.getFullYear() + pad2(nx.getMonth() + 1) + pad2(nx.getDate()) }; }
-    var a = new Date(e.date + 'T' + e.start + ':00'), b = e.end ? new Date(e.date + 'T' + e.end + ':00') : new Date(a.getTime() + 3600e3);
-    return { allDay: false, s: stampLocal(a), t: stampLocal(b) };
+    var y = +e.date.slice(0, 4), mo = +e.date.slice(5, 7) - 1, d = +e.date.slice(8, 10);
+    if (e.allDay) { var nx = new Date(y, mo, d + 1); return { allDay: true, s: e.date.replace(/-/g, ''), t: nx.getFullYear() + pad2(nx.getMonth() + 1) + pad2(nx.getDate()) }; }
+    var sh = +e.start.slice(0, 2), sm = +e.start.slice(3, 5), a = new Date(y, mo, d, sh, sm), b;
+    if (!e.end) b = new Date(y, mo, d, sh + 1, sm);
+    else { var eh = +e.end.slice(0, 2), em = +e.end.slice(3, 5); b = new Date(y, mo, e.end < e.start ? d + 1 : d, eh, em); }
+    return { allDay: false, s: stampLocal(a), t: stampLocal(b), overnight: !!(e.end && e.end < e.start) };
   }
   function eventUrl(e) {
     var t = evTimes(e), q = 'action=TEMPLATE&text=' + encodeURIComponent(String(e.title).trim()) + '&dates=' + t.s + '/' + t.t, tz = '';
@@ -381,7 +397,16 @@
     return 'https://calendar.google.com/calendar/render?' + q;
   }
   function icsText(x) { return String(x || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n'); }
-  function icsFold(line) { var out = [], s = line; while (s.length > 74) { out.push(s.slice(0, 74)); s = ' ' + s.slice(74); } out.push(s); return out.join('\r\n'); }
+  /* lines of at most 75 bytes of UTF-8, broken between characters, never inside one (an emoji or a Korean letter) */
+  function icsFold(line) {
+    var out = [], cur = '', n = 0, max = 75;
+    Array.from(line).forEach(function (ch) {
+      var c = ch.codePointAt(0), b = c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4;
+      if (n + b > max) { out.push(cur); cur = ' '; n = 1; }
+      cur += ch; n += b;
+    });
+    out.push(cur); return out.join('\r\n');
+  }
   /** an iCalendar file for Apple Calendar, Outlook or a phone. Times are local ("floating"); guests are listed in
       the notes rather than invited, so opening the file never sends anyone an invitation. */
   function ics(e) {
@@ -411,6 +436,7 @@
     tb.appendChild(st); tb.appendChild(el('span', 'evto', 'to')); tb.appendChild(en); al.appendChild(ad); al.appendChild(document.createTextNode('All day')); tb.appendChild(al); tr.appendChild(tb); box.appendChild(tr);
     function syncAll() { st.disabled = en.disabled = ad.checked; tr.classList.toggle('isall', ad.checked); }
     ad.addEventListener('change', syncAll); syncAll();
+    [st, en].forEach(function (i) { i.addEventListener('input', function () { if (!ad.checked && st.value && en.value && en.value < st.value) msg.textContent = 'It runs past midnight and ends the next day.'; }); });
     var wh = row('Where', inp('text', e0.location)), gu = row('Guests', inp('text', e0.guests)); gu.placeholder = 'Email addresses, comma separated';
     var no = el('textarea', 'minput'); no.rows = 3; no.value = e0.details || ''; var nw = el('label', 'mrow'); nw.appendChild(el('span', 'mlbl', 'Notes')); nw.appendChild(no); box.appendChild(nw);
     var msg = el('p', 'note mnote'), acts = el('div', 'mact'); box.appendChild(msg); box.appendChild(acts);

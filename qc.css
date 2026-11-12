@@ -978,3 +978,14 @@ body:has(.sheet.win:not([hidden])) .app::after { content: ""; position: fixed; i
 .sheet.win .ibsearch .ibq { flex: 1; min-width: 0; height: 34px; padding: 0 12px; border-radius: 9px; border: 1px solid rgba(255, 255, 255, .1); background: rgba(0, 0, 0, .3); color: #F4F5F7; font: 400 14px/1 var(--f-ui); letter-spacing: 0; outline: none; color-scheme: dark; }
 .sheet.win .ibsearch .ibq::placeholder { color: #6E727B; }
 .sheet.win .ibsearch .ibq:focus { border-color: #4C8DF6; box-shadow: 0 0 0 3px rgba(76, 141, 246, .2); }
+
+/* ---------- tap targets: the 44 px rule holds in the window look too ---------- */
+.wl .wl-pill, .dl .dl-pill { height: var(--tap, 44px); padding: 0 18px; font-size: 14px; }
+.wl .wl-small, .dl .dl-small { height: 36px; }
+.wl .wl-head .wl-icon, .dl .dl-head .dl-icon, .sheet.win .sheethead .icon { overflow: visible; }
+.wl .wl-head .wl-icon::after, .dl .dl-head .dl-icon::after, .sheet.win .sheethead .icon::after { content: ""; position: absolute; inset: -7px; border-radius: 50%; }
+@media (pointer: coarse) {
+  .sheet.win .pill, .sheet.win .lnk, .sheet.win #shelftabs button, #sheet.win .snav button, #sheet.win .row .seg button, .bmenu button, .mailcard .mact .pill, .mailcard .mfind .lnk, .mailcard .mfpick { min-height: 44px; }
+  .bplus { width: 44px; height: 44px; }
+  .sheet.win .ibsearch .ibq { height: 44px; }
+}

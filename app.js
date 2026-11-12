@@ -75,7 +75,7 @@
       if (r.checked === 'ok') bits.push('checked'); else if (r.checked === 'revised') bits.push('checked and corrected');
       if (r.cost) bits.push('about $' + (r.cost < 0.01 ? r.cost.toFixed(3) : r.cost.toFixed(2)));
       var mt = document.createElement('span'); mt.textContent = bits.join(' · '); meta.appendChild(mt);
-      ['Good', 'Not right'].forEach(function (lab, k) { var b = document.createElement('button'); b.type = 'button'; b.className = 'thumb'; b.textContent = lab; b.addEventListener('click', function () { if (meta.dataset.rated) return; meta.dataset.rated = '1'; Kin.mind.rate(q, text, k === 0); b.setAttribute('aria-pressed', 'true'); mt.textContent = bits.join(' · ') + (k === 0 ? ' · noted, sir' : ' · noted; I will do better, sir'); }); meta.appendChild(b); });
+      if (q) ['Good', 'Not right'].forEach(function (lab, k) { var b = document.createElement('button'); b.type = 'button'; b.className = 'thumb'; b.textContent = lab; b.addEventListener('click', function () { if (meta.dataset.rated) return; meta.dataset.rated = '1'; Kin.mind.rate(q, text, k === 0); b.setAttribute('aria-pressed', 'true'); mt.textContent = bits.join(' · ') + (k === 0 ? ' · noted, sir' : ' · noted; I will do better, sir'); }); meta.appendChild(b); });
       d.appendChild(meta);
     }
     var t = $('thread'); t.scrollTop = t.scrollHeight;
@@ -230,12 +230,15 @@
   }
 
   /* ------------------------------------------------------------ hearing */
-  function showHeard(t) { inp.value = t; if (t) caption(t.length > 150 ? '…' + t.slice(-147) : t, 'Listening', 'you'); }
+  /* while the founder is typing, the box is theirs: what the mic hears is not written over it */
+  function typingNow() { return S.typeOpen && document.activeElement === inp && !!inp.value.trim(); }
+  function showHeard(t) { if (typingNow()) return; inp.value = t; if (t) caption(t.length > 150 ? '…' + t.slice(-147) : t, 'Listening', 'you'); }
   /** some phones repeat the whole phrase so far in each "final": keep the longer one instead of joining them */
   function join(a, b) { var na = ears.norm(a), nb = ears.norm(b); if (!na) return b; if (nb.indexOf(na) === 0) return b; if (na.length >= nb.length && na.slice(-nb.length) === nb) return a; return (a + ' ' + b).trim(); }
   function commit() {
     /* Space is held: everything said is kept until it is let go */
     if (S.ptt) { clearTimeout(hearT); return; }
+    if (typingNow()) { clearTimeout(hearT); buf = tail = ''; return; }
     clearTimeout(hearT); var q = stripKin((buf + ' ' + tail).trim()), n = ears.norm(q); buf = tail = ''; if (!q || S.talk !== 'awake') return;
     /* a yes or no to a question Kin asked before spending: short words like "yeah" count here */
     if (pendingConfirm && !echo(q) && pendingConfirm.answer(q)) { showHeard(''); return; }
@@ -481,10 +484,10 @@
       if (r.source === 'local' && !S.toldLocal && !brain.hasKey()) { S.toldLocal = true; out = 'No Claude key on this device yet, sir, so this is only what I hold here. ' + out; }
       /* the detail of an error is for the eye only: it is never spoken and never sent to a voice service */
       var box = p.parentNode;
-      if (r.detail) p.textContent = out + '\n' + r.detail; else settle(p, out, r, text);
+      if (r.detail) p.textContent = out + '\n' + r.detail; else settle(p, out, r, o.untrusted || r.priv ? '' : text);
       if (r.todo && !job && box) box.appendChild(el('p', 'note todo', r.todo));
       if ((r.stalled || /^(busy|api|network|timeout)$/.test(r.code || '')) && !job) { var rb = el('button', 'pill alt retry'); rb.type = 'button'; rb.appendChild(el('span', 'pl', 'Retry')); rb.addEventListener('click', function () { gesture(); rb.disabled = true; if (!S.busy) ask(text, o); }); if (box) box.appendChild(rb); }
-      if (r.canContinue && !job && box) { var cb = el('button', 'pill go cont'); cb.type = 'button'; cb.appendChild(el('span', 'pl', 'Continue')); cb.addEventListener('click', function () { gesture(); cb.disabled = true; ask('Carry on with that from where you stopped, and finish it.'); }); box.appendChild(cb); }
+      if (r.canContinue && !job && box) { var cb = el('button', 'pill go cont'); cb.type = 'button'; cb.appendChild(el('span', 'pl', 'Continue')); cb.addEventListener('click', function () { gesture(); cb.disabled = true; ask('Carry on with that from where you stopped, and finish it.', o.untrusted ? { direct: true, untrusted: true, label: 'Carry on' } : undefined); }); box.appendChild(cb); }
       if (r.code === 'limit') { S.queued = ''; if (S.talk === 'awake') sleep(true); caption(out, 'Change the limit in settings'); if (speakIt) say(out, true); else captionFade(9000); refreshSettings(); return; }
       /* talked over: the rest of this answer stays on screen and is not read out; a new question goes next */
       if (r.code === 'stopped' && !stalled && hushed()) brain.keepTurn(text, got ? plain(p.textContent) + ' [interrupted by the founder]' : '[interrupted by the founder before the answer]', !!o.untrusted);
@@ -871,10 +874,10 @@
   document.addEventListener('keydown', function (e) {
     var tag = (e.target.tagName || '').toLowerCase(), typing = tag === 'input';
     /* Escape closes what is open first (Settings, then Made, Inbox, Outbox or Calendar); only then does it stop Jarvis */
-    if (e.key === 'Escape') { if (!$('sheet').hidden) { $('sheet').hidden = true; return; } if (!$('shelf').hidden) { $('shelf').hidden = true; return; } stopAll(); }
+    if (e.key === 'Escape') { var ft = e.target; if (ft && ft.closest && ft.closest('#sheet, #shelf') && /^(input|textarea|select)$/i.test(ft.tagName || '')) { ft.blur(); return; } if (!$('sheet').hidden) { $('sheet').hidden = true; return; } if (!$('shelf').hidden) { $('shelf').hidden = true; return; } stopAll(); }
     else if (e.key === ' ' && spaceOk(e)) { e.preventDefault(); if (e.repeat || ptt.down) return; ptt.down = true; ptt.t = setTimeout(pttStart, 250); }
     /* just start typing: while listening hides the text box, a letter brings it back with that letter in it */
-    else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && app.dataset.composer === 'hide' && spaceOk(e)) { S.typeOpen = true; paint(); inp.focus(); }
+    else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing && app.dataset.composer === 'hide' && spaceOk(e) && $('sheet').hidden && $('shelf').hidden && !document.querySelector('.wl, .dl, .bb')) { S.typeOpen = true; paint(); inp.focus(); }
   });
   inp.addEventListener('blur', function () { if (S.typeOpen && !inp.value.trim()) { S.typeOpen = false; paint(); } });
   /* Space: a quick tap turns listening on or off, as it always has. Held down, it is push-to-talk: no wake phrase,
@@ -1016,7 +1019,7 @@
   }
   /** the inbox: unread Gmail, read on a tap with a read-only permission, held in memory for this visit only.
       Nothing from it goes to Claude unless the founder taps Draft reply or Summarize these. */
-  var PLEAD = '^(?:(?:hey |ok |okay )?(?:jarvis|kin) )?(?:(?:can|could|would|will) you |please )?', PTAIL = '(?: (?:please|now|for me|sir|thanks|thank you))*$';
+  var PLEAD = '^(?:(?:hey |ok |okay )?(?:jarvis|kin) )?(?:(?:can|could|would|will) you (?:please )?|please )?', PTAIL = '(?: (?:please|now|for me|sir|thanks|thank you))*$';
   var PANEL_RE = {
     inbox: new RegExp(PLEAD + '(?:(?:open|show|check|read)(?: me)? (?:my |the )?(?:inbox|e ?mails?|mail)|(?:do i have|have i got|is there|are there) (?:any )?(?:new |unread )?(?:e ?mails?|mail)|whats in my inbox)(?: (?:today|this morning))?' + PTAIL),
     cal: new RegExp(PLEAD + '(?:(?:open|show|check|read)(?: me)? (?:my |the )?(?:calendar|schedule|agenda)|(?:whats|what is|what do i have|what have i got) on (?:my |the )?(?:calendar|schedule|agenda)|whats my (?:schedule|agenda))(?: (?:for )?(?:today|tomorrow|this week|the week))?' + PTAIL),
@@ -1030,24 +1033,41 @@
   }
   Kin.panelAsk = panelAsk;
   /* "find the email from Lee about the invoice", "search my email for the delta kite quote": Gmail search words.
-     Only when it is clearly a search of the founder's mail; anything else goes to Claude */
-  var MSEARCH = [new RegExp(PLEAD + '(?:find|search for|look for|look up|pull up|dig up)(?: me)? (?:the |my |an |a |any |that )?(?:e ?mails?|mail|messages?) ((?:from|to|about|regarding|with|mentioning|containing) .+?)' + PTAIL),
-    new RegExp(PLEAD + 'search (?:my |the )?(?:e ?mails?|mail|inbox|gmail) for (.+?)' + PTAIL)];
-  var MSTOP = /^(the|a|an|my|our|some|any|that|this|e|email|emails|mail|message|messages|and|of|please|me|it|them)$/;
+     Only when it is clearly a search of the founder's mail; anything else goes to Claude. from: and to: only right
+     after the mail word; the request ends at "and" or "then" (what to do with the mail is Claude's job, not a search word) */
+  var SLEAD = '^(?:(?:hey |ok |okay )?(?:jarvis|kin) )?(?:(?:can|could|would|will) you (?:please )?|please )?';
+  var MSEARCH = [new RegExp(SLEAD + '(?:find|search for|look for|look up|pull up|dig up|show me|get me|bring up)(?: me)? (?:the |my |an |a |any |that |all )?(e ?mails?|mail|messages?) (from|to|about|regarding|mentioning|containing|with) (.+)$', 'u'),
+    new RegExp(SLEAD + 'search (?:my |the )?(?:e ?mails?|mail|inbox|gmail) for (.+)$', 'u')];
+  var MSTOP = /^(the|a|an|my|our|some|any|that|this|these|those|e|email|emails|mail|message|messages|of|please|me|it|them|thanks|sir)$/;
+  var MVERB = /^(send|write|reply|tell|ask|say|book|get|make|give|share|forward|buy|call|invite|thank)$/;
+  function snorm(t) { return String(t || '').toLowerCase().normalize('NFC').replace(/[‘’']/g, '').replace(/[^\p{L}\p{N}@._+-]+/gu, ' ').replace(/[.]+(\s|$)/g, ' ').trim(); }
   function mailSearchAsk(text) {
     if (!Kin.email) return '';
-    var n = ears.norm ? ears.norm(text) : String(text).toLowerCase(), m = null;
-    for (var i = 0; i < MSEARCH.length && !m; i++) m = MSEARCH[i].exec(n);
-    if (!m) return '';
-    var w = m[1].split(' '), out = [];
+    var n = snorm(text), m = MSEARCH[0].exec(n), out = [], w;
+    if (m) {
+      if (/^messages?$/.test(m[1]) && m[2] !== 'from') return '';
+      w = (m[2] + ' ' + m[3]).split(' ');
+    } else { m = MSEARCH[1].exec(n); if (!m) return ''; w = m[1].split(' '); w.first = 'none'; }
+    var cut = w.indexOf('and'), cut2 = w.indexOf('then'); [cut, cut2].forEach(function (c) { if (c > 0) w = w.slice(0, Math.min(c, w.length)); });
     for (var k = 0; k < w.length; k++) {
-      var t = w[k], nx = w[k + 1];
-      if (t === 'from' || t === 'to') { var j = k + 1; while (j < w.length && MSTOP.test(w[j])) j++; if (j < w.length && !/^(about|regarding|with|today|yesterday|this|last|past)$/.test(w[j])) { out.push(t + ':' + w[j]); k = j; } continue; }
-      if (t === 'with' && /^attachments?$/.test(nx || '')) { out.push('has:attachment'); k++; continue; }
+      var t = w[k], nx = w[k + 1] || '';
       if ((t === 'this' || t === 'last' || t === 'past') && nx === 'week') { out.push('newer_than:7d'); k++; continue; }
+      if ((t === 'this' || t === 'last' || t === 'past') && nx === 'month') { out.push('newer_than:31d'); k++; continue; }
       if (t === 'today') { out.push('newer_than:1d'); continue; }
       if (t === 'yesterday') { out.push('newer_than:2d'); continue; }
-      if (/^(about|regarding|mentioning|containing|with|from|to|on|re|for)$/.test(t) || MSTOP.test(t)) continue;
+      if (t === 'with' && /^(an? |the )?attachments?$/.test(nx)) { out.push('has:attachment'); k++; continue; }
+      if (t === 'with' && /^(an?|the)$/.test(nx) && /^attachments?$/.test(w[k + 2] || '')) { out.push('has:attachment'); k += 2; continue; }
+      /* from: and to: only as the first words after the mail word, and never before a verb ("a message to send …") */
+      if ((t === 'from' || t === 'to') && k === 0 && w.first !== 'none') {
+        /* "emails from this week": a time, not a person */
+        if ((/^(this|last|past)$/.test(nx) && /^(week|month)$/.test(w[k + 2] || '')) || /^(today|yesterday)$/.test(nx)) continue;
+        var j = k + 1; while (j < w.length && MSTOP.test(w[j])) j++;
+        var who = w[j] || '';
+        if (who && !MVERB.test(who) && !/^(this|last|past|today|yesterday)$/.test(who)) { out.push(t + ':' + who); k = j; continue; }
+        if (MVERB.test(who)) return '';
+        continue;
+      }
+      if (/^(about|regarding|mentioning|containing|on|re|for|from|to|with)$/.test(t) || MSTOP.test(t)) continue;
       out.push(t);
     }
     return out.join(' ').trim();
@@ -1087,6 +1107,7 @@
     var sb = el('button', 'pill sm alt'); sb.type = 'submit'; sb.appendChild(el('span', 'pl', 'Search'));
     sf.appendChild(si); sf.appendChild(sb); host.appendChild(sf);
     sf.addEventListener('submit', function (e) { e.preventDefault(); gesture(); var v = si.value.trim(); if (!v) { si.focus(); return; } inboxQ = v; load({ q: v }); });
+    si.addEventListener('input', function () { inboxQ = si.value; });
     if (inboxQ && !inboxBusy && !(inboxCache && inboxCache.q === inboxQ)) setTimeout(function () { try { si.focus(); si.setSelectionRange(si.value.length, si.value.length); } catch (x) {} }, 50);
     if (inboxBusy) { note('Reading your inbox…'); return; }
     if (inboxErr) { note(inboxErr); return; }
@@ -1111,7 +1132,7 @@
       r.addEventListener('keydown', function (e) { if ((e.key === 'Enter' || e.key === ' ') && e.target === r) { e.preventDefault(); r.classList.toggle('open'); } });
       var acts = document.createElement('div'); acts.className = 'btns ibacts';
       var rep = document.createElement('button'); rep.type = 'button'; rep.className = 'lnk'; rep.textContent = 'Draft reply';
-      rep.addEventListener('click', function () { gesture(); handOff(rep, 'Draft a reply, in my voice, short, to the email between the email tags. Put it in an email draft to the sender with "Re: ' + m.subject.replace(/^re:\s*/i, '') + '" as the subject.\n\n' + fence('email', 'From: ' + m.from + '\nSubject: ' + m.subject + '\n' + m.snippet), 'Draft a reply to ' + nameOf(m.from) + ': ' + m.subject); });
+      rep.addEventListener('click', function () { gesture(); handOff(rep, 'Draft a reply, in my voice, short, to the email between the email tags. Put it in an email draft to the sender, with Re: and that email\'s subject as the subject.\n\n' + fence('email', 'From: ' + m.from + '\nSubject: ' + m.subject + '\n' + m.snippet), 'Draft a reply to ' + nameOf(m.from) + ': ' + m.subject); });
       var op = document.createElement('button'); op.type = 'button'; op.className = 'lnk dim'; op.textContent = 'Open in Gmail';
       op.addEventListener('click', function () { window.open(Kin.email.threadUrl(m), '_blank', 'noopener,noreferrer'); });
       acts.appendChild(rep); acts.appendChild(op); r.appendChild(acts); host.appendChild(r);
@@ -1146,7 +1167,7 @@
     function dshort(t) { return new Date(t).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }); }
     function span(e) {
       /* all-day ends are the next morning (exclusive); a timed event that crosses midnight shows both days */
-      if (e.allDay) return e.end && e.end - e.start > 864e5 + 36e5 ? 'All day, until ' + dshort(e.end - 864e5) : 'All day';
+      if (e.allDay) { if (!e.end || Math.round((e.end - e.start) / 864e5) <= 1) return 'All day'; var u = new Date(e.end); u.setDate(u.getDate() - 1); return 'All day, until ' + dshort(u.getTime()); }
       if (e.end && new Date(e.end).toDateString() !== new Date(e.start).toDateString()) return hm(e.start) + ' – ' + dshort(e.end) + ', ' + hm(e.end);
       var a = hm(e.start), b = e.end ? hm(e.end) : '', ma = /\s?[AP]M$/i.exec(a), mb = /\s?[AP]M$/i.exec(b);
       if (ma && mb && ma[0].trim() === mb[0].trim()) a = a.slice(0, ma.index);
