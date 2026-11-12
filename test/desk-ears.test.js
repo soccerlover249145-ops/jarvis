@@ -71,3 +71,9 @@ test('a refusal stays the last word: no "off, stopped" when the helper exits aft
   assert.ok(!seen.includes('off:stopped'), seen.join(' '));
   ears.stop(); assert.equal(seen[seen.length - 1], 'off:stopped');
 });
+
+test('a state line without onDevice does not claim speech leaves the Mac', () => {
+  const { parseLine } = require('../src/main/ears');
+  assert.equal(parseLine(JSON.stringify({ type: 'state', state: 'paused' })).onDevice, undefined);
+  assert.equal(parseLine(JSON.stringify({ type: 'state', state: 'listening', onDevice: true })).onDevice, true);
+});

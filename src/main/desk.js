@@ -237,7 +237,11 @@ function makeDeskKeys(deps) {
       for (const kind of Object.keys(KEY_KINDS)) {
         const n = KEY_KINDS[kind].name;
         let have = false;
-        try { have = !!(await deps.keychain.get(n)); } catch (e) { have = false; }
+        let v = null; try { v = await deps.keychain.get(n); } catch (e) { v = null; }
+        have = !!v;
+        /* the request injector reads a cache filled at launch; a Keychain that was locked then is read again here,
+           so the stand-in handed to the page always has a real key behind it */
+        if (v && deps.onSaved) { try { deps.onSaved(n, v); } catch (e) {} }
         out[kind] = have ? deps.placeholders[n] : null;
       }
       return { ok: true, placeholder: true, keys: out };

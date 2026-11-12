@@ -25,7 +25,10 @@ function parseLine(line) {
     return text ? { type: m.type, text: text } : null;
   }
   if (m.type === 'state' && ['starting', 'listening', 'off', 'blocked', 'paused'].indexOf(m.state) >= 0) {
-    return { type: 'state', state: m.state, reason: String(m.reason || '').slice(0, 80), onDevice: !!m.onDevice };
+    /* onDevice only when the helper said it (it does on "listening"); otherwise the page would be told speech goes to Apple's servers */
+    const ev = { type: 'state', state: m.state, reason: String(m.reason || '').slice(0, 80) };
+    if (typeof m.onDevice === 'boolean') ev.onDevice = m.onDevice;
+    return ev;
   }
   return null;
 }
