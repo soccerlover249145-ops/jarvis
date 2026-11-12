@@ -724,7 +724,7 @@
     if (canCal) Kin.email.loadGis();
     B.gather({ pack: Kin.pack.get(), timeoutMs: 7000, market: brain.hasKey() && !Kin.shared ? marketWatch : null,
       calendar: canCal ? { ready: Kin.email.hasToken('cal'), read: function () { return Kin.email.calendar({ days: 1 }); } } : null,
-      reminders: Kin.remind ? function () { return Kin.remind.today(); } : null }).then(function (data) {
+      reminders: Kin.remind ? function () { return Kin.remind.today(); } : null, todo: Kin.lists ? function () { return Kin.lists.get('to-do'); } : null }).then(function (data) {
       B.show(data, {
         brand: 'Jarvis',
         onRefresh: function () { B.hide(true); brief(); },

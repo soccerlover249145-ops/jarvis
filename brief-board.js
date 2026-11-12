@@ -47,10 +47,10 @@
 
   /* ------------------------------------------------------------ settings */
   var CARDS = [
-    { id: 'weather', name: 'Weather' }, { id: 'calendar', name: 'Your calendar and reminders' }, { id: 'nok', name: 'Your company' }, { id: 'start', name: 'Jarvis can start' }, { id: 'today', name: 'Coming up' },
+    { id: 'weather', name: 'Weather' }, { id: 'calendar', name: 'Your calendar and reminders' }, { id: 'todo', name: 'Your to-do list' }, { id: 'nok', name: 'Your company' }, { id: 'start', name: 'Jarvis can start' }, { id: 'today', name: 'Coming up' },
     { id: 'priorities', name: 'Top priorities' }, { id: 'market', name: 'Market watch' }, { id: 'footer', name: 'On this day' }
   ];
-  var DEF = { order: ['weather', 'calendar', 'nok', 'start', 'today', 'priorities', 'market', 'footer'], on: { weather: true, calendar: true, nok: true, start: true, today: true, priorities: true, market: true, footer: false }, units: 'F', owner: '', autoSmall: true, autoCap: 0.25, autoDay: 1 };
+  var DEF = { order: ['weather', 'calendar', 'todo', 'nok', 'start', 'today', 'priorities', 'market', 'footer'], on: { weather: true, calendar: true, todo: true, nok: true, start: true, today: true, priorities: true, market: true, footer: false }, units: 'F', owner: '', autoSmall: true, autoCap: 0.25, autoDay: 1 };
   var settings = {
     get: function () { var v = ls.get('kin.bb.settings', null) || {}; var order = (v.order || []).filter(function (id) { return DEF.order.indexOf(id) >= 0; }); DEF.order.forEach(function (id) { if (order.indexOf(id) < 0) order.push(id); }); return { order: order, on: Object.assign({}, DEF.on, v.on || {}), units: v.units === 'C' ? 'C' : 'F', owner: typeof v.owner === 'string' ? v.owner.slice(0, 60) : '', autoSmall: v.autoSmall !== false, autoCap: isFinite(v.autoCap) && v.autoCap >= 0 && v.autoCap <= 2 ? +v.autoCap : DEF.autoCap, autoDay: v.autoDay != null && isFinite(v.autoDay) && v.autoDay >= 0 && v.autoDay <= 20 ? +v.autoDay : DEF.autoDay }; },
     set: function (patch) { var v = Object.assign(settings.get(), patch || {}); ls.set('kin.bb.settings', v); return v; },
@@ -221,6 +221,10 @@
       if (opts.calendar.ready && typeof opts.calendar.read === 'function') jobs.push(withTimeout(Promise.resolve().then(opts.calendar.read), ms, 'Your calendar').then(function (list) { data.calendar = { items: Array.isArray(list) ? list : [] }; }, function (e) { data.calendar = { error: String(e && e.message || e) }; }));
       else data.calendar = { waiting: true };
     }
+    /* the to-do list, kept on this device (lists.js): what is still to do, the oldest first */
+    if (set.on.todo && typeof opts.todo === 'function') {
+      try { var tl = opts.todo(); data.todo = tl && Array.isArray(tl.items) ? { name: tl.name, open: tl.items.filter(function (x) { return x && !x.done && typeof x.text === 'string'; }).map(function (x) { return { id: String(x.id), text: x.text.slice(0, 200) }; }) } : null; } catch (e) { data.todo = null; }
+    }
     /* reminders due today, kept on this device (remind.js): read at once, no permission needed */
     if (set.on.calendar && typeof opts.reminders === 'function') {
       try { var rs = opts.reminders(); data.reminders = (Array.isArray(rs) ? rs : []).slice(0, 12).map(function (r) { return { text: String(r.text || '').slice(0, 200), at: +r.at, rep: !!(r.repeat || r.every) }; }).filter(function (r) { return isFinite(r.at); }); } catch (e) { data.reminders = []; }
@@ -241,6 +245,7 @@
     var cal = d.calendar; if (cal && cal.items) { var nowMs = (d.now || new Date()).getTime(), nx = cal.items.filter(function (e) { return !e.allDay && e.start > nowMs; })[0];
       out.push(cal.items.length ? cal.items.length + (cal.items.length === 1 ? ' thing is' : ' things are') + ' on your calendar today' + (nx ? ', the next at ' + clock(new Date(nx.start)) : '') + '.' : 'Your calendar is clear today.'); }
     var rm = d.reminders; if (rm && rm.length) out.push(rm.length === 1 ? 'One reminder today, at ' + clock(new Date(rm[0].at)) + '.' : rm.length + ' reminders today, the first at ' + clock(new Date(rm[0].at)) + '.');
+    var td = d.todo; if (td && td.open.length) out.push(td.open.length === 1 ? 'One thing is on your to-do list.' : td.open.length + ' things are on your to-do list.');
     if (!(w && !w.error) && !n) out.push('Set your town and import your pack in settings, and I\'ll have a full brief for you.');
     var o = d.offers || [], started = o.filter(function (x) { return x.state === 'running' || x.state === 'done'; }), next = o.filter(function (x) { return !x.state; })[0];
     if (started.length) out.push('I have started on ' + started.map(function (x) { return x.say; }).join(started.length > 2 ? ', ' : ' and ').replace(/, ([^,]*)$/, ', and $1') + '.');
@@ -343,7 +348,7 @@
       var w = d.weather;
       head(c, 'Weather', w && w.place ? w.place + (w.place ? ' · today' : '') : 'Today');
       var b = h('div', 'bb-body'); c.appendChild(b);
-      if (!w || w.error === 'noplace') { c.classList.add('bb-slim'); empty(b, 'No town set yet. Use your location, or set a town in Settings. Only rounded coordinates go to Open-Meteo.');
+      if (!w || w.error === 'noplace') { c.classList.add('bb-slim'); empty(b, 'No town set yet. Use your location (only rounded coordinates go to Open-Meteo), or set a town in Settings.');
         if (window.Kin && Kin.chart && Kin.chart.locate) { var lr = h('div', 'bb-chips'), lb = h('button', 'bb-pill bb-go', 'Use my location'); lb.type = 'button';
           lb.addEventListener('click', function (e) { if (!e.isTrusted) return; lb.disabled = true; lb.textContent = 'Finding you…'; Kin.chart.locate().then(function () { if (ctx && ctx.refresh) ctx.refresh(); else lb.textContent = 'Saved. Tap Refresh.'; }, function (er) { lb.disabled = false; lb.textContent = 'Use my location'; var p2 = b.querySelector('.bb-empty'); if (p2) p2.textContent = er.message; }); });
           lr.appendChild(lb); b.appendChild(lr); }
@@ -426,6 +431,18 @@
         if (m.childNodes.length) r.appendChild(m); li.appendChild(r); ul.appendChild(li); });
       b.appendChild(ul);
     },
+    todo: function (c, d) {
+      var td = d.todo; head(c, 'Your to-do list', td.open.length + ' to go · kept on this device'); var b = h('div', 'bb-body'); c.appendChild(b);
+      var ul = h('ul', 'bb-list');
+      td.open.slice(0, 7).forEach(function (x) {
+        var li = h('li', 'bb-task'), bt = h('button', 'bb-check'); bt.type = 'button'; bt.setAttribute('role', 'checkbox'); bt.setAttribute('aria-checked', 'false'); bt.setAttribute('aria-label', 'Tick off: ' + x.text);
+        bt.appendChild(s('svg', { viewBox: '0 0 16 16', 'aria-hidden': 'true' }, [s('path', { d: 'M3.5 8.5l3 3 6-7' })]));
+        /* ticked here is ticked on the list (and back again) */
+        bt.addEventListener('click', function () { if (!window.Kin || !Kin.lists) return; var it = Kin.lists.toggle(td.name, x.id); var on = !!(it && it.done); bt.setAttribute('aria-checked', on ? 'true' : 'false'); li.classList.toggle('bb-done', on); });
+        li.appendChild(bt); var r = h('div'); r.appendChild(h('div', 'bb-rt', x.text)); li.appendChild(r); ul.appendChild(li);
+      });
+      b.appendChild(ul); if (td.open.length > 7) b.appendChild(h('p', 'bb-empty', (td.open.length - 7) + ' more in the Lists tab.'));
+    },
     priorities: function (c, d) {
       var n = d.nok, set = d.settings; head(c, 'Top priorities', set.owner ? 'Open tasks for ' + set.owner + ', the late ones first' : 'Open tasks, the late ones first'); var b = h('div', 'bb-body'); c.appendChild(b);
       if (!n) { empty(b, 'Import your pack to see your priorities.'); return; } if (!n.priorities.length) { empty(b, set.owner ? 'No open dated tasks for ' + set.owner + '.' : 'No open dated tasks.'); return; }
@@ -481,6 +498,7 @@
   function shows(id, d) {
     if (!d.settings.on[id]) return false;
     if (id === 'calendar') return !!d.calendar || !!(d.reminders && d.reminders.length);
+    if (id === 'todo') return !!(d.todo && d.todo.open.length);
     if (id === 'market') return !!d.market && !!(d.market.error || (d.market.items && d.market.items.length) || lastMarket()); if (id === 'footer') return !!(d.nok && d.nok.onThisDay); if (id === 'start') return !!(d.offers && d.offers.length); return true;
   }
 
