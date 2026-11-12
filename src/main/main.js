@@ -15,11 +15,14 @@ const fs = require('fs');
 const { pathToFileURL } = require('url');
 const electron = require('electron');
 const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, shell, dialog, Notification, nativeImage,
-  protocol, net, session, screen: eScreen, desktopCapturer, systemPreferences } = electron;
+  protocol, net, session, screen: eScreen, desktopCapturer, systemPreferences, clipboard } = electron;
+const { execFile } = require('child_process');
 
 const { makeKeychain } = require('./keychain');
 const { STORE_MAP, PLACEHOLDER, injectHeaders, watchUrls } = require('./secrets');
-const { makeActions } = require('./actions');
+const { makeActions, resolveFile, listFiles } = require('./actions');
+const { resolveDir, move: moveFile } = require('./fileops');
+const { makeMac } = require('./mac');
 const { makeScreen } = require('./screen');
 const { makeConfig } = require('./config');
 const { makeEars } = require('./ears');
@@ -38,7 +41,7 @@ protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: t
 
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 
-let cfg, keychain, actions, screenCap, ears, hands, control, desk, deskKeys;
+let cfg, keychain, actions, screenCap, ears, hands, control, desk, deskKeys, macOps;
 let mainLive = false, settingsWin = null;
 let mainWin = null, compactWin = null, overlayWin = null, tray = null;
 let unseen = 0, quitting = false, earsState = 'off';
@@ -294,21 +297,25 @@ function wireIpc() {
   deskHandle('desk:emailDraft', function (a) { return desk.newEmailDraft(a); });
   deskHandle('desk:runTask', function (a) { return desk.runTask(a); });
   deskHandle('desk:stop', function () { return desk.stop(); });
+  /* the macOS-automation oomph: reads ask once then can be always-allowed; writes ask; files always ask */
+  deskHandle('desk:readMail', function (a) { return desk.readMail(a); });
+  deskHandle('desk:readCalendar', function (a) { return desk.readCalendar(a); });
+  deskHandle('desk:readReminders', function (a) { return desk.readReminders(a); });
+  deskHandle('desk:readNotes', function (a) { return desk.readNotes(a); });
+  deskHandle('desk:listFolder', function (a) { return desk.listFolder(a); });
+  deskHandle('desk:readClipboard', function () { return desk.readClipboard(); });
+  deskHandle('desk:readSelection', function () { return desk.readSelection(); });
+  deskHandle('desk:screenLook', function () { return desk.screenLook(); });
+  deskHandle('desk:addEvent', function (a) { return desk.addEvent(a); });
+  deskHandle('desk:addReminder', function (a) { return desk.addReminder(a); });
+  deskHandle('desk:appendNote', function (a) { return desk.appendNote(a); });
+  deskHandle('desk:setClipboard', function (a) { return desk.setClipboard(a); });
+  deskHandle('desk:moveFile', function (a) { return desk.moveFile(a); });
+  deskHandle('desk:trashFile', function (a) { return desk.trashFile(a); });
   keysHandle('desk:keys:get', function () { return deskKeys.get(); });
   keysHandle('desk:keys:save', function (a) { return deskKeys.saveFromPage(a); });
 
-  handle('screen:look', async function () {
-    const p = screenCap.permission();
-    if (p !== 'granted' && p !== 'unknown') return { ok: false, permission: 'screen', why: 'Allow Screen Recording for Jarvis in System Settings, Privacy & Security, then quit and reopen Jarvis.' };
-    const wasVisible = compactWin && compactWin.isVisible();
-    if (wasVisible) compactWin.hide();          /* Jarvis's own pill is not part of what you want looked at */
-    try {
-      const s = await screenCap.capture();
-      toast('Jarvis looked at your screen', 'One picture, sent to Claude with your question.');
-      return { ok: true, data: s.data, media_type: s.media_type, width: s.geo.shot.width, height: s.geo.shot.height };
-    } catch (e) { return { ok: false, why: e.message }; }
-    finally { if (wasVisible) compactWin.showInactive(); }
-  });
+  handle('screen:look', async function () { return lookAtScreen(); });
 
   handle('control:start', function (a) { return control.start(a.task, { from: a.from === 'jarvis' ? 'jarvis' : 'you' }); });
   handle('control:stop', async function () { return { ok: control.stop('You chose Stop.') }; });
@@ -377,6 +384,62 @@ app.whenReady().then(async function () {
   await loadSecrets();
   actions = makeActions({ shell: shell, getConfig: function () { return cfg.get(); }, toast: toast });
   screenCap = makeScreen({ desktopCapturer: desktopCapturer, screen: eScreen, systemPreferences: systemPreferences });
+
+  /* one native confirm dialog, drawn by macOS so a web page can never fake or click it */
+  async function nativeConfirm(q) {
+    app.focus({ steal: true });
+    const r = await dialog.showMessageBox(mainWin && mainWin.isVisible() ? mainWin : null, {
+      type: 'question', buttons: ['Allow', 'No'], defaultId: 1, cancelId: 1, message: q.title, detail: q.detail,
+      checkboxLabel: q.canAlways ? q.alwaysLabel : undefined, checkboxChecked: false
+    });
+    return { ok: r.response === 0, always: !!(q.canAlways && r.checkboxChecked) };
+  }
+
+  /* one picture of the screen, with Jarvis's own pill hidden so it is not in the shot */
+  async function lookAtScreen() {
+    const p = screenCap.permission();
+    if (p !== 'granted' && p !== 'unknown') return { ok: false, permission: 'screen', why: 'Allow Screen Recording for Jarvis in System Settings, Privacy & Security, then quit and reopen Jarvis.' };
+    const wasVisible = compactWin && compactWin.isVisible();
+    if (wasVisible) compactWin.hide();
+    try {
+      const s = await screenCap.capture();
+      toast('Jarvis looked at your screen', 'One picture, sent to Claude with your question.');
+      return { ok: true, data: s.data, media_type: s.media_type, width: s.geo.shot.width, height: s.geo.shot.height };
+    } catch (e) { return { ok: false, why: e.message }; }
+    finally { if (wasVisible) compactWin.showInactive(); }
+  }
+
+  /* run one JavaScript-for-Automation script and resolve its stdout; no shell, fixed args, 20s cap */
+  function runOsa(jxa) {
+    return new Promise(function (resolve, reject) {
+      execFile('/usr/bin/osascript', ['-l', 'JavaScript', '-e', String(jxa)], { timeout: 20000, maxBuffer: 4 * 1024 * 1024 },
+        function (err, stdout, stderr) {
+          if (err) { err.message = String(stderr || err.message || '').slice(0, 400); return reject(err); }
+          resolve(String(stdout || ''));
+        });
+    });
+  }
+
+  /* folder-scoped file helpers for mac.js: everything stays inside the owner's shared folders */
+  const macFiles = {
+    resolveFile: function (p) { return resolveFile(p, cfg.get().folders); },
+    resolveDir: function (p) { return resolveDir(p, cfg.get().folders); },
+    listFiles: async function (a) { return { ok: true, files: await listFiles(a.query, cfg.get().folders, undefined, a.limit) }; },
+    move: function (from, to) { return moveFile(from, to); }
+  };
+
+  macOps = makeMac({
+    osa: runOsa,
+    confirm: nativeConfirm,
+    getConfig: function () { return cfg.get(); },
+    setConfig: function (p) { cfg.set(p); },
+    clipboard: { readText: function () { return clipboard.readText(); }, writeText: function (s) { clipboard.writeText(String(s)); } },
+    files: macFiles,
+    trashItem: function (p) { return shell.trashItem(p); },
+    screenLook: lookAtScreen,
+    toast: toast
+  });
+
   ears = makeEars(path.join(BIN, 'JarvisEars'), { onDeviceOnly: function () { return cfg.get().onDeviceOnly; } });
   hands = makeHands(path.join(BIN, 'JarvisHands'));
   ears.on(function (ev) {
@@ -436,6 +499,7 @@ app.whenReady().then(async function () {
 
   desk = makeDesk({
     actions: actions,
+    mac: macOps,
     openExternal: function (url) { return shell.openExternal(url, { activate: true }); },
     control: control,
     getConfig: function () { return cfg.get(); },

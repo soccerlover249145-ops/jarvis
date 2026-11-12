@@ -93,15 +93,24 @@ function makeDesk(deps) {
   }
   const NO = { ok: false, declined: true, why: 'You did not allow it.' };
 
-  return {
-    version: 1,
+  /* the macOS-automation "oomph" (mac.js) is optional: if it is not wired in, these answer plainly */
+  function mac(name) {
+    const m = deps.mac;
+    if (m && typeof m[name] === 'function') return m[name].bind(m);
+    return function () { return Promise.resolve({ ok: false, why: 'That needs a newer Jarvis app. Update it.' }); };
+  }
+  const MAC_METHODS = ['readMail', 'readCalendar', 'readReminders', 'readNotes', 'listFolder', 'readClipboard',
+    'readSelection', 'screenLook', 'addEvent', 'addReminder', 'appendNote', 'setClipboard', 'moveFile', 'trashFile'];
+
+  const api = {
+    version: 2,
     kinds: KINDS,
 
     capabilities() {
       const c = deps.getConfig();
       return {
-        ok: true, version: 1, platform: 'darwin',
-        can: ['openUrl', 'openApp', 'revealFile', 'openFile', 'newEmailDraft', 'runTask', 'stop'],
+        ok: true, version: 2, platform: 'darwin',
+        can: ['openUrl', 'openApp', 'revealFile', 'openFile', 'newEmailDraft', 'runTask', 'stop'].concat(deps.mac ? MAC_METHODS : []),
         apps: (c.apps || []).map(function (a) { return a.name; }),
         folders: (c.folders || []).length,
         alwaysAllow: (c.alwaysAllow || []).slice(),
@@ -160,8 +169,26 @@ function makeDesk(deps) {
       return deps.control.start(text, { from: 'jarvis' });
     },
 
-    async stop() { return { ok: deps.control.stop('You chose Stop.') }; }
+    async stop() { return { ok: deps.control.stop('You chose Stop.') }; },
+
+    /* ---- the macOS-automation oomph (mac.js); each asks in its own native dialog, reads can be
+       set to "Always allow", file moves and Trash always ask ---- */
+    readMail(a) { return mac('readMail')(a); },
+    readCalendar(a) { return mac('readCalendar')(a); },
+    readReminders(a) { return mac('readReminders')(a); },
+    readNotes(a) { return mac('readNotes')(a); },
+    listFolder(a) { return mac('listFolder')(a); },
+    readClipboard() { return mac('readClipboard')(); },
+    readSelection() { return mac('readSelection')(); },
+    screenLook() { return mac('screenLook')(); },
+    addEvent(a) { return mac('addEvent')(a); },
+    addReminder(a) { return mac('addReminder')(a); },
+    appendNote(a) { return mac('appendNote')(a); },
+    setClipboard(a) { return mac('setClipboard')(a); },
+    moveFile(a) { return mac('moveFile')(a); },
+    trashFile(a) { return mac('trashFile')(a); }
   };
+  return api;
 }
 
 /* ---------- keys: paste each key once per Mac ----------

@@ -27,9 +27,16 @@ Open Jarvis's settings from the menu bar orb > Settings…, Mac section:
 1. **Microphone** and **Speech Recognition**: macOS asks when Jarvis first listens. Click Allow on both.
 2. **Screen Recording**: click Open System Settings next to it and switch Jarvis on. Let macOS quit and reopen Jarvis.
 3. **Accessibility** (only for "do it on my computer" tasks): Open System Settings next to it, switch Jarvis on.
-4. **Claude key**: Brain > Claude key > Save key. It goes to the macOS Keychain, never to a file.
-5. **Apps Jarvis may open** and **folders shared with Jarvis**: add them with Add an app… and Share a folder….
-6. **When Jarvis opens things**: every open asks you first in a macOS dialog. Tick "Always allow" for the kinds you trust (web pages, apps on your list, files, email drafts). Tasks that use your mouse and keyboard always ask.
+4. **Automation** (for reading Mail and writing drafts, and for Calendar/Reminders/Notes): the first time Jarvis reads your inbox, calendar, reminders or notes, macOS asks "Jarvis wants to control Mail / Calendar / Reminders / Notes". Click OK. You can see and change these later in System Settings > Privacy & Security > Automation.
+5. **Calendars**, **Reminders**, **Contacts**: the first time Jarvis reads or adds one, macOS asks. Click Allow. (Also under Privacy & Security.)
+6. **Full Disk Access** (optional): only if you want Jarvis to open or move files outside the folders you shared. System Settings > Privacy & Security > Full Disk Access > add Jarvis. Leave it off and Jarvis stays inside your shared folders.
+7. **Claude key**: Brain > Claude key > Save key. It goes to the macOS Keychain, never to a file.
+8. **Apps Jarvis may open** and **folders shared with Jarvis**: add them with Add an app… and Share a folder….
+9. **When Jarvis does things**: every action asks you first in a macOS dialog you cannot fake or auto-click.
+   - *Reads* (your inbox, calendar, reminders, notes, clipboard, selected text, a screen picture) ask once; tick "Always allow" to stop asking for that kind.
+   - *Writes* (a draft, a calendar event, a reminder, a note, the clipboard) ask every time unless you always-allow that kind.
+   - *Moving a file* or *putting a file in the Trash* always asks, every time. Trash means the Finder Trash — recoverable, never a hard delete.
+   - *Tasks that use your mouse and keyboard* ("take control") always ask, keep the red Stop bar, and stop on Escape or a mouse move. Jarvis never sends, buys, books, calls or deletes without asking.
 
 ### What the app adds to Jarvis
 

@@ -28,7 +28,10 @@ const DEFAULTS = {
   source: 'live',              /* 'live': the full window shows https://jarvis.unwebbed.app (bundled copy if offline); 'bundled': the copy inside the app */
   alwaysAllow: []              /* kinds the owner ticked "Always allow" for (see desk.js); empty means every action asks first */
 };
-const ALWAYABLE = ['openUrl', 'openApp', 'revealFile', 'openFile', 'emailDraft'];
+const ALWAYABLE = ['openUrl', 'openApp', 'revealFile', 'openFile', 'emailDraft',
+  /* the mac.js "oomph" reads and non-destructive writes; file moves and Trash are deliberately absent */
+  'readMail', 'readCalendar', 'readReminders', 'readNotes', 'listFolder', 'readClipboard', 'readSelection',
+  'screenLook', 'addEvent', 'addReminder', 'appendNote', 'setClipboard'];
 
 function clean(raw) {
   const c = JSON.parse(JSON.stringify(DEFAULTS));

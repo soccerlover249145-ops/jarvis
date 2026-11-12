@@ -104,3 +104,44 @@ page removes only the stand-in; the Keychain copy is removed from the Mac settin
 In the brain, offer the matching tools (`open_url`, `open_app`, `open_file`, `email_draft`, `run_task`) only
 when `Kin.desk.available()`; in a normal browser keep the current behaviour (open a tab, or a compose link the
 owner clicks).
+
+## Version 2: macOS automation ("oomph")
+
+`jarvisDesk.version >= 2` adds reliable control of the Mac's own apps through macOS Automation, far steadier
+than driving the screen with the mouse. Two classes, enforced in the main process:
+
+- **READ / LOOK** — ask once in a native dialog, then the owner can tick "Always allow" for that kind:
+  `readMail({limit})`, `readCalendar({days})`, `readReminders({limit})`, `readNotes({name?,limit})`,
+  `listFolder({query,limit})`, `readClipboard()`, `readSelection()`, `screenLook()`.
+- **WRITE** — a native dialog **every time** unless the owner always-allows that kind:
+  `addEvent({title,start,end,notes?,location?,calendar?})`, `addReminder({name,due?,list?,notes?})`,
+  `appendNote({name,text})`, `setClipboard({text})`.
+- **FILES — always ask** (never always-allowed), inside the owner's shared folders only:
+  `moveFile({from,to})`, `trashFile({path})` (moves to the Finder Trash, never a hard delete).
+
+Nothing here sends an email, posts, buys, books, calls or empties the Trash. `screenLook()` returns
+`{ ok, data (base64 jpeg), media_type, width, height }` for the page's own Claude call; `readMail` etc. return
+shaped, length-capped objects. An app the owner has not authorized yet returns `{ ok:false, permission:'automation', app, why }`.
+
+### Matching Claude tools to offer when `Kin.desk.available()` and `caps().version >= 2`
+
+| Tool | jarvisDesk call | Class |
+|------|-----------------|-------|
+| `read_mail` | `readMail` | read |
+| `draft_mail` | `newEmailDraft` (v1) | write (never sends) |
+| `read_calendar` | `readCalendar` | read |
+| `add_event` | `addEvent` | write |
+| `read_reminders` | `readReminders` | read |
+| `add_reminder` | `addReminder` | write |
+| `read_note` | `readNotes` | read |
+| `append_note` | `appendNote` | write |
+| `list_folder` | `listFolder` | read |
+| `move_file` | `moveFile` | file (always asks) |
+| `screen_look` | `screenLook` | look |
+| `read_clipboard` | `readClipboard` | read |
+| `read_selection` | `readSelection` | read |
+| `set_clipboard` | `setClipboard` | write |
+
+Add them to the brain only when `jarvisDesk` is present and `version >= 2`; in a normal browser keep the current
+behaviour. The web app never needs to draw a confirm — macOS draws every dialog itself, and the page cannot
+click it. `runTask` is unchanged (its own step/spend/time caps, Stop bar, and the `ask_owner` gate still apply).
