@@ -327,7 +327,8 @@
   var fromMac = {};
   function prefill(after) {
     var k = K(); if (!k || typeof k.get !== 'function') return Promise.resolve(false);
-    var needC = Kin.brain && !Kin.brain.hasKey(), needE = Kin.voice && Kin.voice.tts && !Kin.voice.tts.hasKey();
+    /* a stand-in Anthropic or ElevenLabs refused once on this device is not used again: the founder pastes the key */
+    var needC = Kin.brain && !Kin.brain.hasKey() && !noMac('claude'), needE = Kin.voice && Kin.voice.tts && !Kin.voice.tts.hasKey() && !noMac('elevenlabs');
     if (!needC && !needE) return Promise.resolve(false);
     var pr; try { pr = Promise.resolve(k.get()); } catch (e) { pr = Promise.resolve(null); }
     return pr.then(function (r) {
@@ -345,15 +346,23 @@
     var pr; try { pr = Promise.resolve(k.saveFromPage(kind, String(value).trim())); } catch (e) { pr = Promise.resolve({ ok: false }); }
     return pr.then(function (r) {
       r = r || {};
-      if (r.ok && typeof r.placeholder === 'string' && r.placeholder) {
-        if (kind === 'claude' && Kin.brain.setKey(r.placeholder).ok) fromMac.claude = true;
-        if (kind === 'elevenlabs') { fromMac.elevenlabs = true; Kin.voice.tts.setKey(r.placeholder).catch(function () {}); }
-      } else if (r.ok && r.unchanged) fromMac[kind] = true;
+      /* the Keychain keeps a copy for next time; this page keeps using the key it was given (no stand-in swap) */
+      if (r.ok) { fromMac[kind] = true; setNoMac(kind, false); }
       if (typeof after === 'function') after(r);
       return { ok: !!r.ok, why: r.ok ? '' : String(r.why || '').slice(0, 200) };
     }, function () { return { ok: false }; });
   }
   function keptOnMac(kind) { return !!fromMac[kind] && !!K(); }
+  function noMac(kind) { try { return window.localStorage.getItem('kin.nomac.' + kind) === '1'; } catch (e) { return false; } }
+  function setNoMac(kind, on) { try { if (on) window.localStorage.setItem('kin.nomac.' + kind, '1'); else window.localStorage.removeItem('kin.nomac.' + kind); } catch (e) {} }
+  function isStandIn(k) { return /KEYCHAIN-PLACEHOLDER|keychain-placeholder/.test(String(k || '')); }
+  /** a stand-in in use from an earlier version: checked once at load (free); refused, it is dropped and not used again */
+  function checkStandIn(after) {
+    var B = Kin.brain, cur = ''; try { cur = window.localStorage.getItem('kin.key') || ''; } catch (e) {}
+    if (!K() || !B || !B.checkKey || !isStandIn(cur)) return;
+    B.checkKey().then(function (c) { if (c.why !== 'key') return; B.dropKey(); fromMac.claude = false; setNoMac('claude', true); if (typeof after === 'function') after(); });
+  }
+  function dropStandIn(kind) { setNoMac(kind, true); fromMac[kind] = false; }
 
-  Kin.mac = { asked: asked, available: available, available2: available2, wants: wants, readsWanted: readsWanted, localIso: localIso, tools: tools, draft: draft, busy: busy, stop: stop, onDone: onDone, needsMac: needsMac, NEED_TEXT: NEED_TEXT, need: need, card: card, note: note, STEPS: STEPS, prefill: prefill, saveKey: saveKey, keptOnMac: keptOnMac, openOwn: openOwn };
+  Kin.mac = { asked: asked, available: available, available2: available2, wants: wants, readsWanted: readsWanted, localIso: localIso, tools: tools, draft: draft, busy: busy, stop: stop, onDone: onDone, needsMac: needsMac, NEED_TEXT: NEED_TEXT, need: need, card: card, note: note, STEPS: STEPS, prefill: prefill, saveKey: saveKey, keptOnMac: keptOnMac, isStandIn: isStandIn, checkStandIn: checkStandIn, dropStandIn: dropStandIn, openOwn: openOwn };
 })();

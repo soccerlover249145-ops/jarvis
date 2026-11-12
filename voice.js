@@ -302,7 +302,10 @@
       /** read the voices and models again with the saved key (after adding a voice to the account) */
       refresh: function () {
         if (!T.key) return Promise.resolve(false);
-        return voicesOrStandard().then(function (vs) { T.voices = vs; T.bad = ''; return loadModels(); }).then(function (ms) { T.models = ms; settle(); return true; }, function (e) { T.why = (e && e.text) || ''; if (e && e.code === 'key') T.bad = T.why; return false; });
+        return voicesOrStandard().then(function (vs) { T.voices = vs; T.bad = ''; return loadModels(); }).then(function (ms) { T.models = ms; settle(); return true; }, function (e) { T.why = (e && e.text) || ''; if (e && e.code === 'key') T.bad = T.why;
+          /* the Mac's stand-in was refused: drop it and ask for the key, rather than failing every sentence */
+          if (e && e.code === 'key' && Kin.mac && Kin.mac.isStandIn && Kin.mac.isStandIn(T.key)) { Kin.mac.dropStandIn('elevenlabs'); T.key = ''; T.bad = ''; T.why = 'The voice key saved in your Mac app was refused. Paste it once more in Settings, Voice.'; ls.del('kin.tts.key'); }
+          return false; });
       },
       setVoice: function (id) { var v = T.voices.filter(function (x) { return x.id === id; })[0]; if (!v) return; T.voice = v.id; T.voiceName = v.name; T.bad = ''; ls.set('kin.tts.voice', v.id); ls.set('kin.tts.voiceName', v.name); },
       setModel: function (id) { if (!id) return; T.model = id; T.bad = ''; ls.set('kin.tts.model', id); },

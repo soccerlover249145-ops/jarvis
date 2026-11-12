@@ -2162,7 +2162,8 @@
   });
   /* inside the Jarvis Mac app: a key this page lacks comes from the Mac's Keychain (never shown), and a finished task is reported */
   if (Kin.mac) {
-    Kin.mac.prefill(function () { refreshSettings(); });
+    Kin.mac.prefill(function () { refreshSettings(); }).then(function () {
+    if (Kin.mac.checkStandIn) Kin.mac.checkStandIn(function () { localReply('The Claude key saved in the Mac app was refused by Anthropic, sir, so I have cleared it. Paste your key once more here, under Brain: I check it as you save it.', 'Keys'); settingsAt('brain'); refreshSettings(); }); });
     Kin.mac.onDone(function (o) { localReply(o.title + (o.body ? ' ' + o.body : ''), 'Your Mac'); showThread(); });
   }
   paint();
