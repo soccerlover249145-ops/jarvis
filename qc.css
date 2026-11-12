@@ -427,9 +427,9 @@ body, .app { background: #000000; }
 .packname { font: 500 11px/1 var(--f-lab); letter-spacing: .16em; text-transform: uppercase; color: var(--text-3); }
 .when { font: 400 12px/18px var(--f-lab); letter-spacing: .06em; color: var(--text-2); }
 .when b { font-weight: 500; color: var(--text); }
-.top .icon { border-color: var(--holo-edge); background: linear-gradient(180deg, rgba(120, 190, 255, .12), rgba(60, 120, 200, .05)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12); color: var(--text); }
-.top .icon:hover { border-color: rgba(111, 227, 255, .5); }
-.vpill { font: 500 11px/1 var(--f-lab); letter-spacing: .16em; text-transform: uppercase; border-color: var(--holo-edge); background: rgba(2, 10, 24, .5); }
+.top .icon { border-color: var(--holo-edge); background: rgba(255, 255, 255, .04); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08); color: var(--text); }
+.top .icon:hover { border-color: var(--line); }
+.vpill { font: 500 11px/1 var(--f-lab); letter-spacing: .16em; text-transform: uppercase; border-color: var(--holo-edge); background: rgba(255, 255, 255, .04); }
 .vpill[data-s="listening"], .vpill[data-s="speaking"], .vpill[data-s="thinking"], .vpill[data-s="awake"] { color: var(--accent); background: rgba(111, 227, 255, .10); border-color: rgba(111, 227, 255, .38); box-shadow: 0 0 18px -6px rgba(111, 227, 255, .6); }
 
 /* home cards */
@@ -463,26 +463,26 @@ body, .app { background: #000000; }
 .qok { background: linear-gradient(170deg, rgba(255, 200, 112, .16), rgba(255, 200, 112, .03) 55%), var(--holo); border-color: rgba(255, 200, 112, .32); }
 .qok.quiet { background: var(--holo); border-color: var(--holo-edge); }
 .qok-t { font: 400 18px/25px var(--f-ui); color: #fff; }
-.qtile { background: rgba(120, 190, 255, .07); border: 1px solid rgba(150, 210, 255, .14); border-radius: 18px; }
+.qtile { background: rgba(255, 255, 255, .04); border: 1px solid var(--line2); border-radius: 18px; }
 .qv { font: 300 30px/1 var(--f-ui); color: #fff; text-shadow: 0 0 20px rgba(111, 227, 255, .22); }
 .qtile-s { font-family: var(--f-lab); }
 .qladder span { background: rgba(150, 210, 255, .10); }
 .qladder span.on { background: linear-gradient(90deg, var(--accent-2), var(--accent)); box-shadow: 0 0 10px rgba(111, 227, 255, .5); }
 
 /* chips and pills: cyan rims, spaced capitals */
-.qchip { height: 26px; font: 500 11px/1 var(--f-lab); letter-spacing: .1em; text-transform: uppercase; color: var(--text-2); background: rgba(2, 10, 24, .45); border-color: rgba(150, 210, 255, .2); }
+.qchip { height: 26px; font: 500 11px/1 var(--f-lab); letter-spacing: .1em; text-transform: uppercase; color: var(--text-2); background: rgba(255, 255, 255, .04); border-color: var(--line2); }
 .qchip.live { color: var(--accent); background: rgba(111, 227, 255, .10); border-color: rgba(111, 227, 255, .35); }
 .qchip.ok { color: var(--ok); background: rgba(124, 240, 192, .08); border-color: rgba(124, 240, 192, .3); }
 .qchip.bad { color: var(--bad); background: rgba(255, 143, 166, .10); border-color: rgba(255, 143, 166, .35); }
 .qchip.warm { color: var(--warm); background: rgba(255, 200, 112, .10); border-color: rgba(255, 200, 112, .35); }
 .qbtn, .qchipbtn, .lnk, .snav button, .seg button, .wl-pill, .dl-pill, .bb-pill, .sy-pill {
   font: 500 12px/1 var(--f-lab); letter-spacing: .12em; text-transform: uppercase; color: var(--text);
-  border: 1px solid rgba(150, 210, 255, .24); background: linear-gradient(180deg, rgba(120, 190, 255, .14), rgba(60, 120, 200, .07));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14); }
+  border: 1px solid var(--line2); background: rgba(255, 255, 255, .04);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08); }
 .qbtn { height: 44px; padding: 0 18px; }
 .qbtn.lg { height: 46px; padding: 0 20px; font-size: 12px; }
 .qbtn.sm { height: 44px; padding: 0 16px; font-size: 11px; }
-.qbtn:hover, .qchipbtn:hover, .lnk:hover:not(:disabled), .snav button:hover, .wl-pill:hover, .dl-pill:hover, .bb-pill:hover, .sy-pill:hover { border-color: rgba(111, 227, 255, .55); background: linear-gradient(180deg, rgba(120, 190, 255, .22), rgba(60, 120, 200, .10)); }
+.qbtn:hover, .qchipbtn:hover, .lnk:hover:not(:disabled), .snav button:hover, .wl-pill:hover, .dl-pill:hover, .bb-pill:hover, .sy-pill:hover { border-color: var(--line); background: rgba(255, 255, 255, .08); }
 .qbtn.primary, .bigpill, .loadbtn, .wl-primary, .dl-primary, .gx-go, .bb-pill.bb-go, .dock .bar .send, .seg button[aria-pressed="true"], .snav button[aria-current="true"], .acx .ac .ac-tab[aria-selected="true"] {
   color: #07080b; background: #F2F5F8; border-color: transparent;
   box-shadow: none; }
@@ -493,7 +493,7 @@ body, .app { background: #000000; }
 .qchipbtn { height: 36px; padding: 0 14px; font-size: 11px; }
 .lnk { min-height: 44px; padding: 0 18px; }
 .snav button { min-height: 40px; font-size: 11px; }
-.seg { background: rgba(2, 10, 24, .5); border-color: rgba(150, 210, 255, .2); }
+.seg { background: rgba(255, 255, 255, .04); border-color: var(--line2); }
 .seg button { min-height: 38px; border: 0; background: transparent; box-shadow: none; color: var(--text-2); font-size: 11px; }
 .qbtn:focus-visible, .lnk:focus-visible, .qchipbtn:focus-visible, .wl-pill:focus-visible, .dl-pill:focus-visible, .bb-pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
@@ -505,7 +505,7 @@ body, .app { background: #000000; }
 .dock .caption small { font: 500 11px/1.3 var(--f-lab); letter-spacing: .16em; text-transform: uppercase; color: var(--text-3); }
 .thread .msg { font: 400 15px/23px var(--f-ui); }
 .thread .msg small { font: 500 11px/1.3 var(--f-lab); letter-spacing: .26em; text-transform: uppercase; color: var(--accent); }
-.thread .msg.you p { background: linear-gradient(180deg, rgba(120, 190, 255, .16), rgba(60, 120, 200, .08)); border: 1px solid rgba(150, 210, 255, .24); color: #fff; }
+.thread .msg.you p { background: var(--s3); border: 1px solid var(--line); color: #fff; }
 .md h3, .md h4 { font: 500 12px/1.4 var(--f-lab); letter-spacing: .2em; text-transform: uppercase; color: var(--accent); margin-top: 16px; }
 .md th { font: 500 11px/1.3 var(--f-lab); letter-spacing: .14em; text-transform: uppercase; color: var(--text-2); }
 .md td, .md th { border-color: rgba(150, 210, 255, .12); }
@@ -541,22 +541,22 @@ body, .app { background: #000000; }
 .sheethead .icon { border-color: var(--holo-edge); }
 .sheet h3 { font: 500 11px/1.3 var(--f-lab); letter-spacing: .26em; text-transform: uppercase; color: var(--accent); border-top-color: rgba(150, 210, 255, .12); }
 .row > span:first-child { font: 500 11px/1.3 var(--f-lab); letter-spacing: .16em; text-transform: uppercase; color: var(--text-2); }
-.row input[type=text], .row input[type=password], .row select, .sy-input { border-color: rgba(150, 210, 255, .26); background: rgba(2, 10, 24, .55); color: #fff; }
-.row input:focus, .row select:focus, .sy-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(111, 227, 255, .15); outline: none; }
-.note.warn { background: rgba(120, 190, 255, .07); border-color: rgba(150, 210, 255, .16); }
+.row input[type=text], .row input[type=password], .row select, .sy-input { border-color: var(--line2); background: rgba(255, 255, 255, .04); color: #fff; }
+.row input:focus, .row select:focus, .sy-input:focus { border-color: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, .12); outline: none; }
+.note.warn { background: rgba(255, 255, 255, .04); border-color: var(--line2); }
 .snav { background: linear-gradient(180deg, #08193a 72%, rgba(8, 25, 58, 0)); }
 .sgroup, .sy { background: var(--holo); border: 1px solid var(--holo-edge); box-shadow: var(--holo-glow); border-radius: 26px; }
 .sgtitle { font: 300 26px/1.1 var(--f-ui); color: #fff; }
 .steps .step b { font: 500 11px/1.3 var(--f-lab); letter-spacing: .16em; text-transform: uppercase; color: var(--text-3); }
-.mrow, .logrow, .memrow, .gbjob { background: rgba(120, 190, 255, .07); border: 1px solid rgba(150, 210, 255, .14); border-radius: 18px; }
+.mrow, .logrow, .memrow, .gbjob { background: rgba(255, 255, 255, .04); border: 1px solid var(--line2); border-radius: 18px; }
 .mrow small, .logrow small, .memrow small { font: 500 11px/1.3 var(--f-lab); letter-spacing: .14em; text-transform: uppercase; color: var(--text-2); }
 .board .loadcard p b { font: 300 30px/1.1 var(--f-ui); color: #fff; }
 
 /* phone: the frosted bar and the conversation sheet in the same glass */
 @media (max-width: 1099px) {
-  .dock .bar { background: rgba(4, 16, 36, .88); border-color: rgba(150, 210, 255, .3); box-shadow: 0 0 0 1px rgba(150, 210, 255, .06), 0 20px 60px -20px rgba(0, 0, 0, .9), inset 0 1px 0 rgba(255, 255, 255, .1); }
+  .dock .bar { background: rgba(255, 255, 255, .04); border-color: var(--line2); box-shadow: 0 20px 60px -20px rgba(0, 0, 0, .9), inset 0 1px 0 rgba(255, 255, 255, .06); }
   .app .dock .thread:not([hidden]) { background: #050607; border-top-color: var(--holo-edge); }
-  .app .dock .dock-h #caption.caption { background: #071a36; border-color: var(--holo-edge); font: 400 14px/20px var(--f-ui); }
+  .app .dock .dock-h #caption.caption { background: #14171e; border-color: var(--holo-edge); font: 400 14px/20px var(--f-ui); }
 }
 @media (max-width: 700px) {
   .qgreet { font-size: 38px; }

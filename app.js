@@ -896,16 +896,28 @@
   });
 
   /* ------------------------------------------------------------ settings */
+  function stepGo(go) {
+    return function () {
+      if (go === 'mic') { $('sheet').hidden = true; gesture(); if (ears.supported) $('mic').click(); return; }
+      if (go === 'wake') { $('sheet').hidden = true; wakeNow(); return; }
+      settingsAt(go.sg); setTimeout(function () { var f = $(go.focus); if (f) f.focus(); }, 60);
+    };
+  }
   function steps() {
     var micOk = S.micState === 'listening' || ls.get('kin.micok', '') === '1', p = Kin.pack.get(), rows = [
-      [micOk, 'Allow the microphone', ears.supported ? 'Tap the mic once and choose Allow. The browser remembers it for this site. The browser, not this page, turns your speech into text, on its maker’s servers.' : 'This browser cannot listen by itself. Use the keyboard’s mic or type.'],
-      [brain.hasKey(), 'Paste a Claude API key', 'From console.anthropic.com. With one, your questions and the parts of the pack Jarvis looks up go to Anthropic for an answer. Without one Jarvis answers only from the pack on this device.'],
-      [voice.tts.hasKey(), 'Optional: paste a voice key', 'From elevenlabs.io. With one, every sentence Jarvis speaks is sent there and spoken in the voice you pick. Without one, the browser’s own voice reads the answers.'],
-      [!!p, 'Import your Kin pack', 'In the Atlas: Kin’s settings > Your data > Export everything. Then here: Settings > Import Kin pack (below). The file is stored on this device only.'],
-      [S.wakes > 0, 'Say “hey Jarvis”', 'Or your own wake phrase. Then just talk.']
+      [micOk, 'Allow the microphone', ears.supported ? 'Tap the mic once and choose Allow. The browser remembers it for this site. The browser, not this page, turns your speech into text, on its maker’s servers.' : 'This browser cannot listen by itself. Use the keyboard’s mic or type.', 'mic'],
+      [brain.hasKey(), 'Paste a Claude API key', 'From console.anthropic.com. With one, your questions and the parts of the pack Jarvis looks up go to Anthropic for an answer. Without one Jarvis answers only from the pack on this device.', { sg: 'brain', focus: 'apiKey' }],
+      [voice.tts.hasKey(), 'Optional: paste a voice key', 'From elevenlabs.io. With one, every sentence Jarvis speaks is sent there and spoken in the voice you pick. Without one, the browser’s own voice reads the answers.', { sg: 'voice', focus: 'ttsKey' }],
+      [!!p, 'Import your Kin pack', 'In the Atlas: Kin’s settings > Your data > Export everything. Then here: Settings > Import Kin pack (below). The file is stored on this device only.', { sg: 'brain', focus: 'packFile' }],
+      [S.wakes > 0, 'Say “hey Jarvis”', 'Or your own wake phrase. Then just talk.', 'wake']
     ];
     var el = $('steps'); el.textContent = '';
-    rows.forEach(function (r, i) { var d = document.createElement('div'); d.className = 'step' + (r[0] ? ' done' : ''); var b = document.createElement('b'); b.textContent = r[0] ? 'OK' : '0' + (i + 1); var pp = document.createElement('p'); pp.textContent = r[1]; var sm = document.createElement('small'); sm.textContent = r[2]; pp.appendChild(sm); d.appendChild(b); d.appendChild(pp); el.appendChild(d); });
+    rows.forEach(function (r, i) {
+      var d = document.createElement('button'); d.type = 'button'; d.className = 'step' + (r[0] ? ' done' : ''); d.disabled = !!r[0];
+      var b = document.createElement('b'); b.textContent = r[0] ? 'OK' : '0' + (i + 1); var pp = document.createElement('p'); pp.textContent = r[1]; var sm = document.createElement('small'); sm.textContent = r[2]; pp.appendChild(sm); d.appendChild(b); d.appendChild(pp);
+      if (!r[0]) d.addEventListener('click', stepGo(r[3]));
+      el.appendChild(d);
+    });
   }
   /** the keyed voice: who speaks, with which model, and anything that went wrong */
   function voiceSettings() {

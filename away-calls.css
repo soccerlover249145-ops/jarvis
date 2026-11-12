@@ -46,8 +46,8 @@
   transition: transform .15s var(--ac-ease), background .2s var(--ac-ease), box-shadow .2s var(--ac-ease); }
 .ac .pill .pl { font: 500 18px/1.1 var(--ac-display); letter-spacing: .04em; text-transform: uppercase; }
 .ac .pill .pn { font: 400 13px/1.25 var(--ac-display); opacity: .86; }
-.ac .pill.go { color: var(--ac-ink); background: linear-gradient(180deg, var(--ac-amber2), var(--ac-amber)); box-shadow: 0 10px 28px -12px rgba(255, 180, 92, .8), 0 1px 0 rgba(255, 255, 255, .5) inset; }
-.ac .pill.alt { color: #fff; background: rgba(255, 255, 255, .08); box-shadow: 0 0 0 1.5px rgba(255, 207, 138, .7) inset; }
+.ac .pill.go { color: #07080b; background: #F2F5F8; box-shadow: none; }
+.ac .pill.alt { color: #fff; background: rgba(255, 255, 255, .06); box-shadow: 0 0 0 1px rgba(255, 255, 255, .22) inset; }
 .ac .pill.stop { color: #fff; background: rgba(255, 255, 255, .04); box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .34) inset; }
 .ac .pill.stop .pl { color: #FFB3C1; }
 .ac .pill:hover:not(:disabled) { transform: translateY(-1px); }
@@ -120,7 +120,7 @@
 .ac .ac-in { flex: 1; font-family: var(--ac-display); font-weight: 400; }
 .ac .ac-in::placeholder { color: var(--ac-dim); }
 .ac .ac-add { display: flex; gap: 8px; }
-.ac .ac-addb { height: 44px; padding: 0 20px; border-radius: var(--r-pill, 999px); font: 500 14px/1 var(--ac-display); letter-spacing: .06em; text-transform: uppercase; color: var(--ac-ink) !important; background: linear-gradient(180deg, var(--ac-amber2), var(--ac-amber)) !important; }
+.ac .ac-addb { height: 44px; padding: 0 20px; border-radius: var(--r-pill, 999px); font: 500 14px/1 var(--ac-display); letter-spacing: .06em; text-transform: uppercase; color: #07080b !important; background: #F2F5F8 !important; }
 .ac .ac-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .ac .ac-empty { font-style: normal; color: var(--ac-dim); }
 .ac .ac-tag { display: inline-flex; align-items: center; gap: 4px; height: 34px; padding: 0 4px 0 14px; border-radius: var(--r-pill, 999px); font: 500 14px/1 var(--ac-display); background: rgba(255, 255, 255, .08); box-shadow: 0 0 0 1px rgba(255, 255, 255, .14) inset; }
