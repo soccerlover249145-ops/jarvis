@@ -437,12 +437,16 @@
     /* "check my inbox", "what's on my calendar", "show my drafts": their panels, no model call. Only when that is the
        whole request: "check my email for typos" or "the schedule for the game" go to Claude as usual */
     var mq = mailSearchAsk(text);
+    /* inside the Mac app without Google, a mail search goes to Claude, which reads the Mac's own Mail */
+    if (mq && Kin.email && !Kin.email.canRead() && Kin.mac && Kin.mac.available2 && Kin.mac.available2()) mq = null;
     if (mq) {
       inp.value = ''; lastLen = 0; touch(); addMsg('you', text); inboxQ = mq; openShelf('inbox');
       var ml = Kin.email.canRead() ? 'Your mail search, sir: ' + mq + '. Tap Search and I will look.' : 'To search your mail I need your Google Client ID in Settings, Email, sir.';
       addMsg('kin', ml); if (S.unlocked && voice.canSpeak() && !S.busy && !S.talking) say(ml, true); return;
     }
     var pn = panelAsk(text);
+    /* inside the Mac app without Google: the inbox and calendar are read from the Mac's own Mail and Calendar instead */
+    if (pn && pn !== 'outbox' && Kin.email && !Kin.email.canRead() && Kin.mac && Kin.mac.available2 && Kin.mac.available2()) pn = null;
     if (pn) {
       inp.value = ''; lastLen = 0; touch(); addMsg('you', text); openShelf(pn);
       var pl = pn === 'outbox' ? (Kin.email.waiting().length ? 'Your outbox, sir. ' + Kin.email.waiting().length + (Kin.email.waiting().length === 1 ? ' email is' : ' emails are') + ' waiting.' : 'Your outbox is empty, sir.')
@@ -454,6 +458,8 @@
     /* a reminder ("remind me at 8 to watch the new episode") before the panels that look for words inside a sentence */
     var rem0 = Kin.remind ? Kin.remind.instant(text) : null;
     if (rem0) { instantly(text, rem0); return; }
+    var lst0 = null; if (Kin.lists) { try { lst0 = Kin.lists.instant(text); } catch (e) { lst0 = null; } }
+    if (lst0) { instantly(text, lst0); return; }
     if (Kin.briefBoard && Kin.briefBoard.isBriefRequest(text)) { inp.value = ''; lastLen = 0; touch(); brief(text); return; }
     /* a video or a recording, and Bluetooth or USB devices: their own panels; nothing is sent until the founder picks */
     if (Kin.watch && Kin.watch.isRequest(text)) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); watch(text); return; }
@@ -522,6 +528,7 @@
         /* an email Kin wrote: a card under the answer; only the founder's tap sends it */
         onEmail: function (d) { lastSign = Date.now(); if (!Kin.email) return; var id = Kin.email.saveDraft(d), box = p && p.parentNode; if (box) box.appendChild(Kin.email.card(d, { id: id, onChange: outboxCount, onSay: function (t) { if (S.unlocked && voice.canSpeak()) say(t, true); } })); outboxCount(); showThread(); },
         /* an event Jarvis prepared: a card under the answer; it goes on a calendar only when the founder taps */
+        onList: function (r) { lastSign = Date.now(); var box = p && p.parentNode; if (!box || !r || !r.added.length) return; var c = el('div', 'remnote lnote'); c.appendChild(el('small', '', 'Added to your ' + Kin.lists.title(r.list.name).toLowerCase() + ' list')); c.appendChild(el('b', '', r.added.map(function (x) { return x.text; }).join(', '))); box.appendChild(c); listUndo({ list: { name: r.list.name }, undoList: { name: r.list.name, drop: r.fresh || [], retick: r.reopened || [] } }, box); refreshMade(); showThread(); },
         onRemind: function (r) { lastSign = Date.now(); var box = p && p.parentNode; if (!box) return; var c = el('div', 'remnote'); c.appendChild(el('small', '', 'Reminder set')); c.appendChild(el('b', '', r.text)); c.appendChild(el('span', '', Kin.remind.describe(r))); box.appendChild(c); remindSet(r, box); refreshCal(); showThread(); },
         onRemindCancel: function (r) { lastSign = Date.now(); var box = p && p.parentNode; if (!box || !r) return; var c = el('div', 'remnote'); c.appendChild(el('small', '', 'Reminder cancelled')); c.appendChild(el('b', '', r.text)); c.appendChild(el('span', '', Kin.remind.describe(r))); box.appendChild(c); remindUndo([r], box); refreshCal(); showThread(); },
         onEvent: function (e) { lastSign = Date.now(); if (!Kin.email || !Kin.email.eventCard) return; var box = p && p.parentNode; if (box) box.appendChild(Kin.email.eventCard(e, { onSay: function (t) { if (S.unlocked && voice.canSpeak()) say(t, true); } })); showThread(); },
@@ -652,7 +659,9 @@
     if (k === 'smart') { settingsAt('brain'); return; }
     if (k === 'settings') { settingsAt('start'); return; }
     if (k === 'remind') { $('sheet').hidden = true; openShelf('cal'); return; }
+    if (k === 'lists') { $('sheet').hidden = true; openShelf('lists'); return; }
     if (k === 'inbox') { $('sheet').hidden = true; openShelf('inbox'); return; }
+    if (k === 'instant') { $('sheet').hidden = true; var qi = 'What time is it in Tokyo?', ri = Kin.clock ? Kin.clock.instant(qi) : null; if (ri) instantly(qi, ri); showThread(); return; }
     if (k === 'ptt') { $('sheet').hidden = true; localReply(window.matchMedia && matchMedia('(pointer: coarse)').matches ? 'Tap the microphone and talk, sir. On a computer you can hold the space bar instead.' : 'Hold the space bar, speak, and let go, sir. Or just start typing.', 'Hold Space to talk'); showThread(); return; }
     if (k === 'mac') { $('sheet').hidden = true; var mp = localReply(Kin.mac && Kin.mac.available() ? 'You are in the Mac app, sir. Ask me to open an app, a file or a site, or to do something on your computer. Your Mac asks you before each one.' : Kin.mac.NEED_TEXT, 'Mac app'); if (Kin.mac && !Kin.mac.available()) mp.parentNode.appendChild(Kin.mac.need()); showThread(); return; }
   }
@@ -667,6 +676,7 @@
     if (k === 'outbox') { openShelf('outbox'); return; }
     if (k === 'inbox') { openShelf('inbox'); return; }
     if (k === 'cal') { openShelf('cal'); return; }
+    if (k === 'lists') { openShelf('lists'); return; }
     if (/^made:/.test(k)) { openShelf('made', k.slice(5)); return; }
     tryIt(k);
   };
@@ -811,10 +821,22 @@
     inp.value = ''; lastLen = 0; multi = single = 0; touch();
     addMsg('you', text); var p = addMsg('kin', ''); Kin.mind.md(r.show, p); p.className = 'md';
     var speakIt = (S.talk === 'awake' || S.unlocked) && S.unlocked;
+    /* an answer on its way (the forecast): a line now, the words and the voice when it arrives */
+    if (r.pending && typeof r.pending.then === 'function') {
+      caption(r.show, r.label || 'One moment', 'kin');
+      r.pending.then(function (res) {
+        if (!res) return; p.textContent = ''; Kin.mind.md(res.show, p);
+        caption(res.say, (r.label || 'Done here') + ', no call to Claude');
+        if (speakIt && !S.busy) say(res.say, true); else captionFade(9000);
+        showThread();
+      });
+      refreshMade(); return;
+    }
     caption(r.say, r.protocol || 'Done here, no call needed');
     if (speakIt) say(r.say, true).then(function () { if (r.sleep && S.talk === 'awake') sleep(true); }); else { captionFade(7000); if (r.sleep && S.talk === 'awake') sleep(true); }
     if (r.open) openShelf(r.open);
     if (r.remind) remindSet(r.remind, p.parentNode, r.remindMore);
+    if ((r.list || r.undoList) && Kin.lists) listUndo(r, p.parentNode);
     if (r.undoRemind && r.undoRemind.length && Kin.remind) remindUndo(r.undoRemind, p.parentNode);
     refreshMade();
   }
@@ -826,6 +848,18 @@
   }
   /* the Calendar panel shows reminders: redrawn only when it is the one open, so nothing else loses what is typed in it */
   function refreshCal() { if (!$('shelf').hidden && shelfTab === 'cal') refreshMade(); }
+  /** under a list change: Undo puts back only that change (new items off again, a reopened one ticked again, cleared or
+      removed ones back, a tick undone), and leaves anything added since */
+  function listUndo(r, box) {
+    var row = el('div', 'btns remset'), u = r.undoList, un = null;
+    if (u && !(Array.isArray(u) && !u.length)) {
+      un = el('button', 'lnk dim', 'Undo'); un.type = 'button';
+      un.addEventListener('click', function () { gesture(); Kin.lists.undo(u); un.disabled = true; un.textContent = 'Undone'; refreshMade(); });
+      row.appendChild(un);
+    }
+    var op = el('button', 'lnk', 'Open the list'); op.type = 'button'; op.addEventListener('click', function () { gesture(); openShelf('lists'); });
+    row.appendChild(op); box.appendChild(row);
+  }
   /** under a reminder just set (by a phrase or by Claude): Undo, and once, an offer to notify when Jarvis is in the background
      (the browser asks only on that tap) */
   function remindSet(rem, box, more) {
@@ -833,6 +867,20 @@
     var row = el('div', 'btns remset'), un = el('button', 'lnk dim', 'Undo'); un.type = 'button';
     un.addEventListener('click', function () { gesture(); Kin.remind.cancel(rem.id); (more || []).forEach(function (m) { Kin.remind.cancel(m.id); }); un.disabled = true; un.textContent = 'Cancelled'; if (nb) nb.remove(); refreshCal(); });
     row.appendChild(un);
+    /* inside the Jarvis Mac app: also into Apple Reminders, so the iPhone and Watch say it when Jarvis is closed (one-offs only) */
+    var JD = window.jarvisDesk;
+    if (JD && JD.version >= 2 && typeof JD.addReminder === 'function' && !Kin.shared && !rem.repeat && !rem.every) {
+      var ap = el('button', 'lnk', 'Also add to Apple Reminders'); ap.type = 'button';
+      ap.addEventListener('click', function () {
+        gesture(); ap.disabled = true; ap.textContent = 'Your Mac is asking…';
+        var d = new Date(rem.at), z = -d.getTimezoneOffset(), pad = function (n) { return ('0' + Math.floor(Math.abs(n))).slice(-2); };
+        var due = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':00' + (z >= 0 ? '+' : '-') + pad(z / 60) + ':' + pad(z % 60);
+        var pr; try { pr = Promise.resolve(JD.addReminder({ name: rem.text, due: due })); } catch (e) { pr = Promise.reject(e); }
+        pr.then(function (r) { r = r || {}; ap.textContent = r.ok ? 'Added to Apple Reminders' + (r.list ? ' (' + String(r.list).slice(0, 40) + ')' : '') : r.declined ? 'Not added: you said no' : 'Not added: ' + String(r.why || 'the Mac did not do it').slice(0, 120); },
+          function () { ap.textContent = 'Not added: the Mac app did not answer'; });
+      });
+      row.appendChild(ap);
+    }
     var D = Kin.desk, nb = null;
     if (D && D.notify && D.notify.permission() === 'default') {
       nb = el('button', 'lnk', 'Also notify me when Jarvis is in the background'); nb.type = 'button';
@@ -913,7 +961,7 @@
     if (pk && cp && ct) { syncPack(); if (window.MutationObserver) new MutationObserver(syncPack).observe(pk, { childList: true, characterData: true, subtree: true }); }
     var wt = $('ctxWhereT'); if (wt) wt.textContent = Kin.mac && Kin.mac.available() ? 'This computer' : 'This browser';
     var plus = $('bplus'), bar = $('bar'), menu = null;
-    var ITEMS = [['brief', 'Brief me'], ['whatsnew', 'What\u2019s new'], ['inbox', 'Inbox'], ['outbox', 'Outbox'], ['cal', 'Calendar'], ['watch', 'Watch or listen to something'], ['devices', 'Bluetooth and USB devices'], ['gauntlet', 'Test yourself'], ['settings', 'Settings']];
+    var ITEMS = [['brief', 'Brief me'], ['whatsnew', 'What\u2019s new'], ['inbox', 'Inbox'], ['outbox', 'Outbox'], ['cal', 'Calendar and reminders'], ['lists', 'Lists'], ['watch', 'Watch or listen to something'], ['devices', 'Bluetooth and USB devices'], ['gauntlet', 'Test yourself'], ['settings', 'Settings']];
     function close() { if (!menu) return; menu.remove(); menu = null; plus.setAttribute('aria-expanded', 'false'); }
     function open() {
       menu = document.createElement('div'); menu.className = 'bmenu'; menu.setAttribute('role', 'menu'); menu.setAttribute('aria-label', 'Quick actions');
@@ -990,7 +1038,7 @@
   var shelfTab = 'made', shelfOpen = '';
   function openShelf(tab, id) { shelfTab = tab || 'made'; shelfOpen = id || ''; $('shelf').hidden = false; refreshMade(); }
   /* the window look: an app icon per tab, a coloured initial for each person, and times that read like a mail app */
-  var WICON = { made: 'M12 3l2.2 5.3L19.5 10l-5.3 2.2L12 17.5l-2.2-5.3L4.5 10l5.3-1.7z', log: 'M7 4h10v16H7zM10 8h4M10 12h4', inbox: 'M4 6h16v12H4zM4 7l8 6 8-6', outbox: 'M4 12l16-8-5 16-3-6.5z', cal: 'M4 6h16v14H4zM4 10h16M8 3.5v4M16 3.5v4' };
+  var WICON = { made: 'M12 3l2.2 5.3L19.5 10l-5.3 2.2L12 17.5l-2.2-5.3L4.5 10l5.3-1.7z', log: 'M7 4h10v16H7zM10 8h4M10 12h4', inbox: 'M4 6h16v12H4zM4 7l8 6 8-6', outbox: 'M4 12l16-8-5 16-3-6.5z', cal: 'M4 6h16v14H4zM4 10h16M8 3.5v4M16 3.5v4', lists: 'M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01' };
   var AVC = ['#4FA8F5', '#F2685C', '#3CC46E', '#A47CF0', '#F5B43C', '#2EC4B0', '#F27BB5'];
   function avatar(name) {
     var n = String(name || '?').replace(/^[^A-Za-z0-9]+/, ''), h = 0; for (var i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) >>> 0;
@@ -1005,13 +1053,17 @@
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
   function refreshMade() {
-    var el = $('shelfbody'); if (!el || $('shelf').hidden) return; el.textContent = '';
+    var el = $('shelfbody'); if (!el || $('shelf').hidden) return;
+    /* a list field with the cursor in it: its place, so the Lists tab can put the cursor back after the redraw */
+    var fa = document.activeElement; listRefocus = fa && el.contains(fa) && fa.dataset && fa.dataset.draft != null ? { k: fa.dataset.draft, a: fa.selectionStart, b: fa.selectionEnd } : null;
+    el.textContent = '';
     [].forEach.call(document.querySelectorAll('#shelftabs button'), function (b) { b.setAttribute('aria-pressed', b.dataset.tab === shelfTab); if (b.dataset.tab === shelfTab) { var t = $('shelftabs'); if (t.scrollWidth > t.clientWidth) t.scrollLeft = Math.max(0, b.offsetLeft - t.clientWidth / 2 + b.offsetWidth / 2); } });
-    var sh = $('shelf').querySelector('.sheethead h2'); if (sh) sh.textContent = { log: 'Logbook', inbox: 'Inbox', outbox: 'Outbox', cal: 'Calendar' }[shelfTab] || 'Made';
+    var sh = $('shelf').querySelector('.sheethead h2'); if (sh) sh.textContent = { log: 'Logbook', inbox: 'Inbox', outbox: 'Outbox', cal: 'Calendar', lists: 'Lists' }[shelfTab] || 'Made';
     var ic = $('shelficon'); if (ic) { ic.dataset.tab = WICON[shelfTab] ? shelfTab : 'made'; ic.innerHTML = '<svg viewBox="0 0 24 24"><path d="' + (WICON[shelfTab] || WICON.made) + '"/></svg>'; }
     if (shelfTab === 'outbox') { outboxShelf(el); return; }
     if (shelfTab === 'inbox') { inboxShelf(el); return; }
     if (shelfTab === 'cal') { calShelf(el); return; }
+    if (shelfTab === 'lists') { listsShelf(el); return; }
     if (shelfTab === 'log') {
       var log = Kin.mind.log();
       if (!log.length) { var e0 = document.createElement('p'); e0.className = 'empty'; e0.textContent = 'Nothing logged yet. Say "bench, 135 for 8" or "log that I changed the brake pads".'; el.appendChild(e0); return; }
@@ -1209,6 +1261,54 @@
   }
   /** the calendar: the next few days from Google Calendar, read on a tap, held in memory for this visit only */
   var calCache = null, calBusy = false, calErr = '';
+  /** the Lists tab: each list with its items; tap to tick off, the cross to remove, a field to add, Clear ticked.
+      What is being typed in a field is kept when the tab is drawn again (a change by voice, or in another tab) */
+  var listDraft = {}, listRefocus = null;
+  function listsShelf(host) {
+    if (!Kin.lists) return;
+    /* where the cursor was before the redraw (refreshMade notes it before it empties the panel) */
+    var rf = listRefocus; listRefocus = null;
+    var actKey = rf ? rf.k : null, selA = rf ? rf.a : 0, selB = rf ? rf.b : 0;
+    var draftField = function (inp, k) { inp.dataset.draft = k; inp.value = listDraft[k] || ''; inp.addEventListener('input', function () { listDraft[k] = inp.value; }); };
+    var ls = Kin.lists.all().slice().sort(function (a, b) { return (a.made || 0) - (b.made || 0); });
+    if (!ls.length) { var e0 = document.createElement('p'); e0.className = 'empty'; e0.textContent = 'No lists yet. Say "add eggs and milk to my shopping list" or "put call Sam on my to-do list", or start one below. Lists stay on this device.'; host.appendChild(e0); }
+    function refocus(name) { setTimeout(function () { var f = [].filter.call(document.querySelectorAll('#shelfbody .lsec'), function (s) { return s.dataset.list === name; })[0]; var i = f && f.querySelector('.ladd input'); if (i) i.focus({ preventScroll: true }); }, 0); }
+    ls.forEach(function (l) {
+      var title = Kin.lists.title(l.name), sec = document.createElement('section'); sec.className = 'lsec'; sec.dataset.list = l.name;
+      var open = l.items.filter(function (x) { return !x.done; }).length, done = l.items.length - open;
+      var hd = document.createElement('div'); hd.className = 'lhead';
+      var h = document.createElement('h4'); h.className = 'calday'; h.textContent = title; hd.appendChild(h);
+      var ct = document.createElement('small'); ct.textContent = l.items.length ? open + ' to go' + (done ? ', ' + done + ' done' : '') : 'Empty'; hd.appendChild(ct);
+      var acts = document.createElement('span'); acts.className = 'lacts';
+      if (done) { var cd = el('button', 'lnk dim', 'Clear ticked'); cd.type = 'button'; cd.addEventListener('click', function () { gesture(); Kin.lists.clear(l.name, true); refreshMade(); }); acts.appendChild(cd); }
+      if (!l.items.length) { var dl = el('button', 'lnk dim', 'Delete list'); dl.type = 'button'; dl.addEventListener('click', function () { gesture(); Kin.lists.drop(l.name); refreshMade(); }); acts.appendChild(dl); }
+      hd.appendChild(acts); sec.appendChild(hd);
+      var ul = document.createElement('ul'); ul.className = 'litems';
+      l.items.slice().sort(function (a, b) { return (a.done ? 1 : 0) - (b.done ? 1 : 0); }).forEach(function (it) {
+        var li = document.createElement('li'); li.className = 'litem' + (it.done ? ' done' : '');
+        var cb = document.createElement('button'); cb.type = 'button'; cb.className = 'lcheck'; cb.setAttribute('role', 'checkbox'); cb.setAttribute('aria-checked', it.done ? 'true' : 'false'); cb.setAttribute('aria-label', it.text);
+        var tog = function () { gesture(); Kin.lists.toggle(l.name, it.id); refreshMade(); };
+        cb.addEventListener('click', tog);
+        var tx = document.createElement('span'); tx.className = 'ltext'; tx.textContent = it.text; tx.addEventListener('click', tog);
+        var rm = document.createElement('button'); rm.type = 'button'; rm.className = 'lrm'; rm.setAttribute('aria-label', 'Remove ' + it.text); rm.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+        rm.addEventListener('click', function () { gesture(); Kin.lists.remove(l.name, it.id); refreshMade(); });
+        li.appendChild(cb); li.appendChild(tx); li.appendChild(rm); ul.appendChild(li);
+      });
+      sec.appendChild(ul);
+      var f = document.createElement('form'); f.className = 'ladd ibsearch'; var fi = document.createElement('input'); fi.type = 'text'; fi.className = 'ibq'; fi.maxLength = 300; fi.placeholder = 'Add to ' + title.toLowerCase(); fi.setAttribute('aria-label', 'Add to ' + title); fi.enterKeyHint = 'done'; fi.autocomplete = 'off';
+      var ab = el('button', 'pill sm alt'); ab.type = 'submit'; ab.appendChild(el('span', 'pl', 'Add'));
+      draftField(fi, 'L:' + l.name);
+      f.addEventListener('submit', function (e) { e.preventDefault(); var v = fi.value.trim(); if (!v) return; listDraft['L:' + l.name] = ''; Kin.lists.add(l.name, v); refreshMade(); refocus(l.name); });
+      f.appendChild(fi); f.appendChild(ab); sec.appendChild(f); host.appendChild(sec);
+    });
+    /* a new list */
+    var nf = document.createElement('form'); nf.className = 'ladd lnew ibsearch'; var ni = document.createElement('input'); ni.type = 'text'; ni.className = 'ibq'; ni.maxLength = 40; ni.placeholder = ls.length ? 'Start another list: its name' : 'Start a list: its name, like Shopping'; ni.setAttribute('aria-label', 'New list name'); ni.autocomplete = 'off';
+    var nb = el('button', 'pill sm go'); nb.type = 'submit'; nb.appendChild(el('span', 'pl', 'Start list'));
+    draftField(ni, 'new');
+    nf.addEventListener('submit', function (e) { e.preventDefault(); var v = ni.value.trim(); if (!v) return; listDraft['new'] = ''; var k = Kin.lists.key(v); if (!Kin.lists.get(k)) { Kin.lists.add(k, []); } refreshMade(); refocus(k); });
+    nf.appendChild(ni); nf.appendChild(nb); host.appendChild(nf);
+    if (actKey != null) { var back = [].filter.call(host.querySelectorAll('input[data-draft]'), function (x) { return x.dataset.draft === actKey; })[0]; if (back) { back.focus({ preventScroll: true }); try { back.setSelectionRange(selA, selB); } catch (e) {} } }
+  }
   /** reminders on this device, at the top of the Calendar panel: what, when, and Cancel (Stop for a repeating one) */
   function remindRows(host) {
     var p = Kin.remind ? Kin.remind.pending() : []; if (!p.length) return 0;
@@ -1360,10 +1460,17 @@
       [!!p, 'Import your Kin pack', 'In the Atlas: Kin’s settings > Your data > Export everything. Then here: Settings > Import Kin pack (below). The file is stored on this device only.', { sg: 'brain', focus: 'packFile' }],
       [S.wakes > 0, 'Say “hey Jarvis”', 'Or your own wake phrase. Then just talk.', 'wake']
     ];
+    /* the optional ones, each opening its own section: nothing is asked for or connected until the founder taps inside it.
+       Not at a shared address (nothing is kept there), and not notifications once this browser has blocked them */
+    if (!Kin.shared) {
+      if (Kin.chart && Kin.chart.place) rows.push([!!Kin.chart.place(), 'Optional: set your town', 'For the weather in the brief and for “is it going to rain”. The town name goes to Open-Meteo once, to find it; the forecast is then asked for by its coordinates.', { sg: 'brief', focus: 'wxTown' }]);
+      if (Kin.email && Kin.email.canRead) rows.push([Kin.email.canRead(), 'Optional: connect Google', 'Your Google Client ID turns on the Inbox, the Calendar panel and Send now. Google asks before each kind of access, and what is read is not kept on this device.', { sg: 'email', focus: 'mailCid' }]);
+      if (Kin.desk && Kin.desk.notify && Kin.desk.notify.supported() && Kin.desk.notify.permission() !== 'denied') rows.push([Kin.desk.notify.permission() === 'granted', 'Optional: turn on notifications', 'So a reminder or a finished job can tell you while Jarvis is in the background.', { sg: 'away', focus: 'notifyOn' }]);
+    }
     var el = $('steps'); el.textContent = '';
     rows.forEach(function (r, i) {
       var d = document.createElement('button'); d.type = 'button'; d.className = 'step' + (r[0] ? ' done' : ''); d.disabled = !!r[0];
-      var b = document.createElement('b'); b.textContent = r[0] ? 'OK' : '0' + (i + 1); var pp = document.createElement('p'); pp.textContent = r[1]; var sm = document.createElement('small'); sm.textContent = r[2]; pp.appendChild(sm); d.appendChild(b); d.appendChild(pp);
+      var b = document.createElement('b'); b.textContent = r[0] ? 'OK' : (i < 9 ? '0' : '') + (i + 1); var pp = document.createElement('p'); pp.textContent = r[1]; var sm = document.createElement('small'); sm.textContent = r[2]; pp.appendChild(sm); d.appendChild(b); d.appendChild(pp);
       if (!r[0]) d.addEventListener('click', stepGo(r[3]));
       el.appendChild(d);
     });

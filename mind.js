@@ -389,9 +389,17 @@
     tick();
   }
   function stopTimer(quiet) { if (timer) clearInterval(timer.iv); timer = null; if (!quiet) tick(); else tick(); }
-  function fmt(sec) { var m = Math.floor(sec / 60), s = sec % 60; return m ? m + (m === 1 ? ' minute' : ' minutes') + (s ? ' ' + s + ' seconds' : '') : s + ' seconds'; }
+  function fmt(sec) {
+    var h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+    if (h) return h + (h === 1 ? ' hour' : ' hours') + (m ? ' ' + m + (m === 1 ? ' minute' : ' minutes') : '') + (s ? ' ' + s + ' seconds' : '');
+    return m ? m + (m === 1 ? ' minute' : ' minutes') + (s ? ' ' + s + ' seconds' : '') : s + ' seconds';
+  }
   function instantTimer(raw) {
-    var t = numify(String(raw || '').trim().toLowerCase()).replace(/[.!?]+$/, '');
+    var t = numify(String(raw || '').trim().toLowerCase()).replace(/[.!?]+$/, '').replace(/^(?:(?:hey|ok|okay) )?(?:jarvis|kin)[,!.]? /, '').replace(/^(?:(?:please|can you|could you) )+/, '').replace(/,? please$/, '')
+      /* "an hour", "half an hour", "an hour and a half", "1 hour 30 minutes" become minutes the pattern below reads */
+      .replace(/\b(?:an|one|1) hour and a half\b/, '90 minutes').replace(/\bhalf an hour\b/, '30 minutes').replace(/\b(?:an|one) hour\b/, '1 hour')
+      .replace(/(\d+(?:\.\d+)?) ?(?:hours?|hrs?|h)(?:,? and)? (\d+) ?(?:minutes?|mins?|m)\b/, function (x, h, mi) { return (Math.round(+h * 60) + +mi) + ' minutes'; })
+      .replace(/(\d+(?:\.\d+)?) ?(?:hours?|hrs?)\b/, function (x, h) { return Math.round(+h * 60) + ' minutes'; });
     if (/^(cancel|stop|clear|kill) (the )?timer$/.test(t)) { if (!timer) return { say: 'There is no timer running, sir.', show: 'No timer running.' }; stopTimer(); return { say: 'Timer cancelled, sir.', show: 'Timer cancelled.' }; }
     if (/^(how (long|much time)( is)? left|time left|how long on the timer)$/.test(t)) { if (!timer) return { say: 'There is no timer running, sir.', show: 'No timer running.' }; var l = Math.ceil((timer.end - Date.now()) / 1000); return { say: fmt(l) + ' left, sir.', show: fmt(l) + ' left.' }; }
     var m = /^(?:(?:set|start) (?:a |an )?)?(?:(rest|timer|rest timer)(?: for)? (\d+(?:\.\d+)?) ?(seconds?|secs?|s|minutes?|mins?|m)|(\d+(?:\.\d+)?) ?(seconds?|secs?|minutes?|mins?)(?: rest)?(?: timer)?)$/.exec(t);
@@ -408,6 +416,11 @@
   var PROTOCOLS = {
     morning: { name: 'Morning brief', run: function () {
       var d = dated(7), h = new Date().getHours(), hi = h < 12 ? 'Good morning, sir.' : h < 18 ? 'Good afternoon, sir.' : 'Good evening, sir.';
+      /* today's reminders by time only, and what is left on the to-do list (both kept on this device) */
+      var hm = function (t) { return new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); };
+      var rt = Kin.remind ? Kin.remind.today() : [], td = Kin.lists && Kin.lists.get ? Kin.lists.get('to-do') : null, left = td ? td.items.filter(function (x) { return !x.done; }).length : 0;
+      var extra = (rt.length ? ' ' + (rt.length === 1 ? 'One reminder today, at ' + hm(rt[0].at) : rt.length + ' reminders today, the first at ' + hm(rt[0].at)) + '.' : '') + (left ? ' ' + (left === 1 ? 'One thing is' : left + ' things are') + ' on your to-do list.' : '');
+      hi += extra;
       if (!Kin.pack.get()) return { say: hi + ' I hold no pack on this device yet, so I have nothing dated to brief you on.', show: hi + ' No pack on this device yet. In the Atlas: Kin\'s settings > Your data > Export everything. Then here: Settings > Import Kin pack.' };
       var lines = d.slice(0, 4).map(function (n) { return n.t + ', ' + when(n); });
       var sets = data.log.filter(function (e) { return Date.now() - e.at < 864e5; }).length;
@@ -434,14 +447,16 @@
   }
   function instantHelp(raw) {
     if (!/^(help|what can (you|i) (do|say)|what do you do|commands)[?.! ]*$/i.test(String(raw || '').trim())) return null;
-    var show = 'Things you can say:\n- "hey Jarvis", "go to sleep", "stop"\n- "What is due this week?", "brief me", "what is the latest on ..."\n- "Design a poster for ...", "Write a plan for ...", "Make a table of ..."\n- "bench, 135 for 8", "log that I changed the brake pads", "rest 90 seconds"\n- "run the morning protocol", "shutdown", "focus"\n- "remind me at 3pm to call Sam", "remind me every weekday at 8 to stretch", "remind me on the 1st of every month to pay rent", "what are my reminders"\n- "ask Grok Bot ..." (when the Grok Bot bridge is on in settings)\n- "remember that ...", and the thumbs under each answer teach me what works.';
+    var show = 'Things you can say:\n- "hey Jarvis", "go to sleep", "stop"\n- "What is due this week?", "brief me", "what is the latest on ..."\n- "Design a poster for ...", "Write a plan for ...", "Make a table of ..."\n- "bench, 135 for 8", "log that I changed the brake pads", "rest 90 seconds", "set a timer for an hour"\n- "what time is it in Tokyo", "what\'s the date", "is it going to rain", "weather tomorrow"\n- "what\'s 15% of 240", "20% tip on 85", "convert 5 miles to km"\n- "run the morning protocol", "shutdown", "focus"\n- "remind me at 3pm to call Sam", "remind me every weekday at 8 to stretch", "remind me on the 1st of every month to pay rent", "what are my reminders"\n- "add eggs and milk to my shopping list", "what\'s on my to-do list", "tick off eggs"\n- "ask Grok Bot ..." (when the Grok Bot bridge is on in settings)\n- "remember that ...", and the thumbs under each answer teach me what works.';
     return { say: 'It is on screen now, sir.', show: show };
   }
   /** Phrases Kin handles on this device at once, without Claude. Returns { say, show, clip?, sleep?, open? } or null. */
   function instant(text) {
     /* the answer to "When should I remind you?" comes first: "10 minutes" then is the reminder's time, not a timer */
     if (Kin.remind && Kin.remind.waiting()) { var rw = Kin.remind.instant(text); if (rw) return rw; }
-    return instantTimer(text) || instantLog(text) || instantProtocol(text) || instantHelp(text) || (Kin.remind ? Kin.remind.instant(text) : null);
+    /* a list phrase before the logbook: "note down call Sam on my to-do list" goes on the list */
+    var li = null; if (Kin.lists) { try { li = Kin.lists.instant(text); } catch (e) { li = null; } }
+    return instantTimer(text) || (Kin.clock ? Kin.clock.instant(text) : null) || (Kin.calc ? Kin.calc.instant(text) : null) || (Kin.weatherNow ? Kin.weatherNow.instant(text) : null) || li || instantLog(text) || instantProtocol(text) || instantHelp(text) || (Kin.remind ? Kin.remind.instant(text) : null);
   }
 
   /* ---------------------------------------------------------------- spend: an estimate from the token counts */

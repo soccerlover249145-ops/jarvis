@@ -1013,3 +1013,33 @@ body:has(.sheet.win:not([hidden])) .app::after { content: ""; position: fixed; i
 .sheet.win .calrow.rem .calbar { background: #F5B43C; }
 .sheet.win .calrow.rem.rep .calbar { background: linear-gradient(180deg, #F5B43C, #F27BB5); }
 @media (pointer: coarse) { .thread .msg .remset .lnk { min-height: 44px; } }
+
+/* ---------- lists: the Lists tab ---------- */
+.sheet.win .wicon[data-tab="lists"] { background: #2EC4B0; }
+.sheet.win .lsec { margin: 0 0 10px; }
+.sheet.win .lhead { display: flex; align-items: baseline; gap: 10px; margin: 16px 0 8px; }
+.sheet.win .lhead .calday { margin: 0; padding: 0; }
+.sheet.win .lhead small { font: 400 12px/1.2 var(--f-ui); color: var(--w-dim); }
+.sheet.win .lhead .lacts { margin-left: auto; display: flex; gap: 8px; }
+.sheet.win .litems { list-style: none; margin: 0 -18px; padding: 0; }
+.sheet.win .litem { display: grid; grid-template-columns: 30px minmax(0, 1fr) 32px; align-items: center; gap: 8px; padding: 7px 18px; border-top: 1px solid var(--w-line); }
+.sheet.win .litem:last-child { border-bottom: 1px solid var(--w-line); }
+.sheet.win .lcheck { position: relative; width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, .34); background: transparent; cursor: pointer; }
+.sheet.win .lcheck:hover { border-color: #2EC4B0; }
+.sheet.win .litem.done .lcheck { background: #2EC4B0; border-color: #2EC4B0; }
+.sheet.win .litem.done .lcheck::after { content: ''; position: absolute; left: 6px; top: 4px; width: 6px; height: 10px; border: solid #0B0C0E; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.sheet.win .ltext { font: 400 14px/1.4 var(--f-ui); color: var(--w-text); overflow-wrap: anywhere; cursor: pointer; }
+.sheet.win .litem.done .ltext { color: var(--w-dim); text-decoration: line-through; text-decoration-color: rgba(255, 255, 255, .3); }
+.sheet.win .lrm { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--w-dim); display: grid; place-items: center; cursor: pointer; opacity: .55; }
+.sheet.win .lrm:hover { opacity: 1; background: rgba(255, 255, 255, .06); }
+.sheet.win .lrm svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.sheet.win .ladd { margin: 10px 0 0; }
+.sheet.win .lnew { margin-top: 22px; }
+.thread .msg .remnote.lnote { border-color: rgba(46, 196, 176, .32); background: rgba(46, 196, 176, .07); }
+.thread .msg .remnote.lnote small { color: #2EC4B0; }
+@media (pointer: coarse) {
+  .sheet.win .litem { grid-template-columns: 44px minmax(0, 1fr) 44px; }
+  .sheet.win .lcheck { width: 28px; height: 28px; margin: 8px; }
+  .sheet.win .litem.done .lcheck::after { left: 9px; top: 5px; width: 7px; height: 12px; }
+  .sheet.win .lrm { width: 44px; height: 44px; }
+}
