@@ -170,7 +170,7 @@ code, pre, kbd, .md code, .md pre { font-family: var(--f-code) !important; }
 .qladder span.on { background: var(--accent); }
 
 /* the first-run card sits at the top of the board */
-.board .loadcard { position: relative; left: auto; top: auto; transform: none; width: auto; max-width: none; margin: 0 0 var(--gap); padding: 20px 0 0; border-radius: 0; background: none; border: 0; border-top: 1px solid var(--line); box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; font: 400 14px/1.55 var(--f-ui); color: var(--text-2); z-index: 1; text-align: center; }
+.board .loadcard { display: none; }
 .board .loadcard p b { font: 400 30px/1.1 var(--f-serif); color: var(--text); }
 .loadbtn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px; border-radius: 999px; background: var(--text); color: #07080b; font: 500 15px/1 var(--f-ui); letter-spacing: 0; }
 
@@ -233,10 +233,11 @@ code, pre, kbd, .md code, .md pre { font-family: var(--f-code) !important; }
 .app[data-mood="listening"] .status .led { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
 .sharepill { border-color: rgba(255, 114, 114, .4); background: rgba(255, 114, 114, .08); font: 500 12px/1 var(--f-ui); letter-spacing: .01em; }
 
-.dock .bar { position: relative; left: auto; right: auto; bottom: auto; max-width: none; flex: none; margin: 0 14px 14px; height: 56px; padding: 0 7px 0 18px; gap: 4px; border-radius: 999px; background: var(--s2); border: 1px solid var(--line2); }
+.dock .bar { position: relative; left: auto; right: auto; bottom: auto; max-width: 420px; flex: none; margin: 0 auto 14px; height: 44px; padding: 0 5px 0 16px; gap: 2px; border-radius: 999px; background: var(--s2); border: 1px solid var(--line2); }
 .dock .bar input { height: 50px; font: 400 15px/22px var(--f-ui); color: var(--text); }
 .dock .bar input::placeholder { color: var(--text-3); }
-.dock .bar .icon { width: 42px; height: 42px; border-radius: 50%; color: var(--text-2); }
+.dock .bar .icon { width: 34px; height: 34px; border-radius: 50%; color: var(--text-2); }
+.dock .bar input { font-size: 14px; }
 .dock .bar #mic { color: var(--text-2); }
 .dock .bar #mic[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
 .dock .bar .send { border: 0; background: var(--text); color: #07080b; }
@@ -407,7 +408,7 @@ code, pre, kbd, .md code, .md pre { font-family: var(--f-code) !important; }
 /* ================================================================= the figure: Jarvis's head and shoulders in light
    The default look on a computer, drawn in the dock's header where the orb sits (bust.js). The orb stays the look on a
    phone, a touch screen, reduced motion, a low-power device or without WebGL, and whenever the founder picks "Orb". */
-.dock-h #gl.figure { display: none; position: relative; inset: auto; width: 100%; max-width: 360px; height: 224px; margin: -10px auto 0; pointer-events: none;
+.dock-h #gl.figure { display: none; position: relative; inset: auto; width: 100%; max-width: 640px; height: 480px; margin: -10px auto 0; pointer-events: none;
   -webkit-mask-image: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent 100%); mask-image: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent 100%); }
 .app[data-fig="on"] .dock-h #gl.figure { display: block; }
 .app[data-fig="on"] .dock-h .orb { display: none; }
@@ -483,9 +484,9 @@ body, .app { background: #000000; }
 .qbtn.sm { height: 44px; padding: 0 16px; font-size: 11px; }
 .qbtn:hover, .qchipbtn:hover, .lnk:hover:not(:disabled), .snav button:hover, .wl-pill:hover, .dl-pill:hover, .bb-pill:hover, .sy-pill:hover { border-color: rgba(111, 227, 255, .55); background: linear-gradient(180deg, rgba(120, 190, 255, .22), rgba(60, 120, 200, .10)); }
 .qbtn.primary, .bigpill, .loadbtn, .wl-primary, .dl-primary, .gx-go, .bb-pill.bb-go, .dock .bar .send, .seg button[aria-pressed="true"], .snav button[aria-current="true"], .acx .ac .ac-tab[aria-selected="true"] {
-  color: var(--accent-ink); background: linear-gradient(180deg, #c4f5ff 0%, var(--accent) 55%, #34b9ef 100%); border-color: transparent;
-  box-shadow: 0 0 0 1px rgba(111, 227, 255, .6), 0 10px 30px -10px rgba(111, 227, 255, .75), inset 0 1px 0 rgba(255, 255, 255, .7); }
-.qbtn.primary:hover, .bigpill:hover, .wl-primary:hover, .dl-primary:hover { background: linear-gradient(180deg, #e2fbff 0%, #8eeaff 55%, #46c4f5 100%); }
+  color: #07080b; background: #F2F5F8; border-color: transparent;
+  box-shadow: none; }
+.qbtn.primary:hover, .bigpill:hover, .wl-primary:hover, .dl-primary:hover { background: #ffffff; }
 .qbtn.warm { color: var(--warm-ink); background: linear-gradient(180deg, #FFE2B8, var(--warm)); border-color: transparent; box-shadow: 0 10px 30px -12px rgba(255, 200, 112, .7); }
 .qbtn.ghost, .lnk.dim { background: transparent; }
 .lnk.bad, .gx-stop, .bb-pill.bb-stop { color: var(--bad); background: rgba(255, 143, 166, .06); border-color: rgba(255, 143, 166, .4); }
@@ -516,7 +517,7 @@ body, .app { background: #000000; }
 .dock .bar { background: rgba(255, 255, 255, .04); border-color: var(--line2); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06); }
 .dock .bar input { color: #fff; }
 .dock .bar input::placeholder { color: var(--text-3); }
-.dock .bar #mic[aria-pressed="true"] { background: linear-gradient(180deg, #c4f5ff, var(--accent)); color: var(--accent-ink); box-shadow: 0 0 20px rgba(111, 227, 255, .6); }
+.dock .bar #mic[aria-pressed="true"] { background: #F2F5F8; color: #07080b; box-shadow: none; }
 .app[data-mood="listening"] .dock .bar, .app[data-mood="speaking"] .dock .bar { border-color: rgba(111, 227, 255, .6); box-shadow: 0 0 24px -6px rgba(111, 227, 255, .55); }
 .dock .status { font: 500 11px/1 var(--f-lab); letter-spacing: .16em; text-transform: uppercase; border-color: var(--holo-edge); background: rgba(2, 10, 24, .5); }
 
@@ -582,7 +583,7 @@ body, .app { background: #000000; }
 .needsok { display: inline-flex; align-items: center; height: 34px; padding: 0 18px; border-radius: 999px; background: rgba(255, 181, 71, .12); border: 1px solid rgba(255, 181, 71, .35); color: var(--warm, #FFC870); font: 500 13px/1 var(--f-ui); letter-spacing: .02em; box-shadow: 0 0 22px -8px rgba(255, 181, 71, .5); }
 .needsok[hidden] { display: none; }
 @media (min-width: 1100px) {
-  .board { inset: calc(64px + var(--safe-t) + 300px) 0 0; }
+  .board { inset: calc(64px + var(--safe-t) + 540px) 0 0; }
 }
 @media (max-width: 1099px) {
   .board { inset: calc(56px + var(--safe-t)) 0 auto; }
