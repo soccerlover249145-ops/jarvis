@@ -27,6 +27,20 @@
   Kin.SHARED_TEXT = insecure
     ? 'This is the plain http address. Keys and your pack are only kept at the secure address. Open https://' + host + '/ once it is ready.'
     : 'This address is shared with another website, so keys and your pack are not safe here. Open Kin at its own address.';
+  /* a pasted key often carries extra: invisible characters, quotes, "Bearer " or "NAME=" in front, a word or a line after it.
+     The key is the one whole word that has the key's shape; words are never glued together (that would make a wrong key). */
+  Kin.cleanKey = function (k, re) {
+    var t = String(k || '').replace(/[\u200B-\u200D\u2060\uFEFF]/g, '').replace(/\u00A0/g, ' ').trim();
+    var raw = t.split(/\s+/), words = raw.map(function (w) { return w.replace(/^[A-Za-z_][A-Za-z0-9_]*[=:]/, '').replace(/^["'`(<\[]+|["'`)>\],;.]+$/g, ''); }).filter(Boolean);
+    var whole = re ? new RegExp('^(?:' + re.source + ')$') : null;
+    for (var i = 0; whole && i < words.length; i++) if (whole.test(words[i])) {
+      /* a key that wrapped onto a second line: the next word is the rest of it when it looks like key text, not a word */
+      var nx = raw[i + 1] || '';
+      if (raw.length === words.length && !/^sk[-_]/.test(nx) && /^[A-Za-z0-9_\-]{4,}$/.test(nx) && /[0-9_\-]|.[A-Z]/.test(nx) && whole.test(words[i] + nx)) return words[i] + nx;
+      return words[i];
+    }
+    return words.length === 1 ? words[0] : t;
+  };
   /** timings and limits in one place, so a rehearsal can shorten them */
   Kin.T = {
     follow: 45000,     /* after an exchange, how long Kin stays awake waiting for the next thing said */

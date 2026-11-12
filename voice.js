@@ -143,6 +143,9 @@
     }
     return page('', 0).then(function () { out.sort(function (a, b) { return b.score - a.score || a.name.localeCompare(b.name); }); return out; });
   }
+  /* a key made without voice-list access still speaks: keep it, with a standard voice every account has */
+  var STANDARD = { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', tags: 'British, standard voice', score: 0, fallback: true };
+  function voicesOrStandard(key) { return loadVoices(key).catch(function (e) { if (e && e.code === 'key' && /not allowed/.test(e.text || '')) return [STANDARD]; throw e; }); }
   function loadModels(key) {
     return call('/v1/models', {}, key).then(function (r) { return r.whole('json'); }).then(function (j) {
       return (Array.isArray(j) ? j : []).filter(function (m) { return m.can_do_text_to_speech !== false; }).map(function (m) { return { id: m.model_id, name: String(m.name || m.model_id).slice(0, 50) }; });
@@ -285,21 +288,21 @@
       status: function () { return { on: ttsOn(), bad: T.bad, why: T.why, voice: T.voice, voiceName: T.voiceName, model: T.model, voices: T.voices.slice(), models: T.models.slice(), calls: T.calls, chars: T.chars }; },
       /** Save a key after proving it works by reading the account's voices. Resolves { voices } or rejects { text }. */
       setKey: function (k) {
-        k = String(k || '').trim();
+        k = Kin.cleanKey ? Kin.cleanKey(k, /sk_[A-Za-z0-9]{20,200}/) : String(k || '').trim();
         if (Kin.shared) return Promise.reject({ code: 'shared', text: Kin.SHARED_TEXT });
-        if (/^sk-ant-/.test(k)) return Promise.reject({ code: 'shape', text: 'That is a Claude key. It goes under Brain, not here.' });
+        if (/sk-ant-/.test(k)) return Promise.reject({ code: 'shape', text: 'That is a Claude key. It goes under Brain, not here.' });
         if (!/^[A-Za-z0-9_\-]{20,200}$/.test(k)) return Promise.reject({ code: 'shape', text: 'That does not look like an ElevenLabs API key.' });
-        return loadVoices(k).then(function (vs) {
+        return voicesOrStandard(k).then(function (vs) {
           if (!vs.length) throw { code: 'voice', text: 'The key works, but the account has no voices. Add one to your voices in ElevenLabs first.' };
           if (!ls.set('kin.tts.key', k)) throw { code: 'storage', text: 'This browser would not save the key. Its storage is blocked or full (private browsing does this).' };
           T.key = k; T.bad = ''; T.why = ''; T.voices = vs; cache = [];
-          return loadModels(k).then(function (ms) { T.models = ms; settle(); return { voices: vs }; });
+          return loadModels(k).catch(function () { return []; }).then(function (ms) { T.models = ms; settle(); return { voices: vs, limited: !!vs[0].fallback, key: k }; });
         });
       },
       /** read the voices and models again with the saved key (after adding a voice to the account) */
       refresh: function () {
         if (!T.key) return Promise.resolve(false);
-        return loadVoices().then(function (vs) { T.voices = vs; T.bad = ''; return loadModels(); }).then(function (ms) { T.models = ms; settle(); return true; }, function (e) { T.why = (e && e.text) || ''; if (e && e.code === 'key') T.bad = T.why; return false; });
+        return voicesOrStandard().then(function (vs) { T.voices = vs; T.bad = ''; return loadModels(); }).then(function (ms) { T.models = ms; settle(); return true; }, function (e) { T.why = (e && e.text) || ''; if (e && e.code === 'key') T.bad = T.why; return false; });
       },
       setVoice: function (id) { var v = T.voices.filter(function (x) { return x.id === id; })[0]; if (!v) return; T.voice = v.id; T.voiceName = v.name; T.bad = ''; ls.set('kin.tts.voice', v.id); ls.set('kin.tts.voiceName', v.name); },
       setModel: function (id) { if (!id) return; T.model = id; T.bad = ''; ls.set('kin.tts.model', id); },

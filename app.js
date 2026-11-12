@@ -1834,6 +1834,7 @@
     else if (t.bad) n.textContent = t.bad + ' Until that is fixed Jarvis uses the backup voice.';
     else if (t.why) n.textContent = 'Last problem: ' + t.why + ' Kin used the backup voice for that answer.';
     else if (!t.voices.length) n.textContent = 'A key is saved (' + voice.tts.keyHint() + '). Tap Reload voices to read the account’s voices.';
+    else if (t.voices.length === 1 && t.voices[0].fallback) n.textContent = 'A key is saved (' + voice.tts.keyHint() + '). It cannot list your voices, so Jarvis speaks as Daniel, a standard voice. To pick another, give the key Voices: Read access in ElevenLabs (API keys), then tap Reload voices.';
     else n.textContent = 'A key is saved (' + voice.tts.keyHint() + '). Every sentence is spoken as ' + (t.voiceName || 'the chosen voice') + '.' + (t.calls ? ' This visit: ' + t.calls + (t.calls === 1 ? ' sentence, ' : ' sentences, ') + t.chars + ' characters sent.' : '');
     $('ttsKey').value = '';
   }
@@ -1972,7 +1973,7 @@
   function ttsBusy(msg) { S.ttsBusy = msg || ''; voiceSettings(); }
   $('ttsSave').addEventListener('click', function () {
     gesture(); var k = $('ttsKey').value; ttsBusy('Checking the key with ElevenLabs…');
-    voice.tts.setKey(k).then(function () { S.ttsWhy = ''; ttsBusy(''); refreshSettings(); if (Kin.mac) Kin.mac.saveKey('elevenlabs', k, function () { refreshSettings(); }); }, function (e) { ttsBusy(''); $('ttsNote').textContent = (e && e.text) || 'That key could not be checked.'; });
+    voice.tts.setKey(k).then(function (r) { S.ttsWhy = ''; ttsBusy(''); refreshSettings(); if (Kin.mac) Kin.mac.saveKey('elevenlabs', (r && r.key) || k, function () { refreshSettings(); }); }, function (e) { ttsBusy(''); $('ttsNote').textContent = (e && e.text) || 'That key could not be checked.'; });
   });
   $('ttsDrop').addEventListener('click', function () { voice.stop(); voice.tts.dropKey(); S.ttsWhy = ''; refreshSettings(); });
   $('ttsVoice').addEventListener('change', function (e) { voice.tts.setVoice(e.target.value); S.ttsWhy = ''; voiceSettings(); });
@@ -1985,8 +1986,8 @@
   function clearTalk() { brain.forget(); var t = $('thread'); t.textContent = ''; }
   $('keySave').addEventListener('click', function () {
     var kv = $('apiKey').value, r = brain.setKey(kv); $('apiKey').value = ''; refreshSettings();
-    if (r.ok && Kin.mac) Kin.mac.saveKey('claude', kv, function () { refreshSettings(); }); kv = '';
-    if (!r.ok) $('keyNote').textContent = r.why === 'shared' ? Kin.SHARED_TEXT : r.why === 'storage' ? 'This browser would not save the key. Its storage is blocked or full (private browsing does this).' : 'That does not look like an Anthropic API key. It should start with sk-ant-.';
+    if (r.ok && Kin.mac) Kin.mac.saveKey('claude', r.key || kv, function () { refreshSettings(); }); kv = '';
+    if (!r.ok) $('keyNote').textContent = r.why === 'shared' ? Kin.SHARED_TEXT : r.why === 'storage' ? 'This browser would not save the key. Its storage is blocked or full (private browsing does this).' : 'That does not look like an Anthropic API key: it should start with sk-ant-. Copy it again from console.anthropic.com, API keys (a key is shown in full only once, when it is made).';
   });
   /* the conversation holds pieces of the pack and is sent again as history, so it goes when the key or the pack goes */
   $('keyDrop').addEventListener('click', function () { brain.dropKey(); clearTalk(); refreshSettings(); });

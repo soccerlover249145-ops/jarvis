@@ -746,7 +746,7 @@
     hasKey: function () { return !!ls.get(KEY); },
     keyHint: function () { var k = ls.get(KEY) || ''; return k ? k.slice(0, 10) + '…' + k.slice(-4) : ''; },
     /** { ok } or { ok: false, why: "shared" | "shape" | "storage" } */
-    setKey: function (k) { k = String(k || '').trim(); if (Kin.shared) return { ok: false, why: 'shared' }; if (!/^sk-ant-[A-Za-z0-9_\-]{20,}$/.test(k)) return { ok: false, why: 'shape' }; client = null; return ls.set(KEY, k) ? { ok: true } : { ok: false, why: 'storage' }; },
+    setKey: function (k) { k = Kin.cleanKey ? Kin.cleanKey(k, /sk-ant-[A-Za-z0-9_\-]{20,200}/) : String(k || '').trim(); if (Kin.shared) return { ok: false, why: 'shared' }; if (!/^sk-ant-[A-Za-z0-9_\-]{20,}$/.test(k)) return { ok: false, why: 'shape' }; client = null; return ls.set(KEY, k) ? { ok: true, key: k } : { ok: false, why: 'storage' }; },
     dropKey: function () { ls.del(KEY); client = null; },
     turns: function () { return turns.slice(); },
     /** an answer cut short (the founder talked over it): keep the question and what was given, so a follow-up has its context */
