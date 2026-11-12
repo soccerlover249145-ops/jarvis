@@ -574,3 +574,21 @@ body, .app { background:
 .qwx.slim { justify-content: center; }
 .qwx-slim .qempty { margin: 4px 0 0; font-size: 14px; }
 .qwx-slim .qrow { margin-top: 12px; }
+
+/* ================================================================= the plain stage
+   No dashboard sits on screen by default. The board holds only two floating, optional
+   things (the first-run load-your-data card and the needs-your-OK pill); it never takes
+   grid space, so the dock (the figure, the conversation, the composer) is the whole screen. */
+.wrap { grid-template-columns: 1fr; }
+.board { position: fixed; inset: calc(64px + var(--safe-t)) 0 0; z-index: 5; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 20px 16px 0; overflow: visible; pointer-events: none; }
+.board .loadcard, .board .needsok { pointer-events: auto; }
+#homeCards { display: none; }
+.dock { width: min(760px, 100%); margin: 0 auto; }
+.needsok { display: inline-flex; align-items: center; height: 34px; padding: 0 18px; border-radius: 999px; background: rgba(255, 181, 71, .12); border: 1px solid rgba(255, 181, 71, .35); color: var(--warm, #FFC870); font: 500 13px/1 var(--f-ui); letter-spacing: .02em; box-shadow: 0 0 22px -8px rgba(255, 181, 71, .5); }
+.needsok[hidden] { display: none; }
+@media (min-width: 1100px) {
+  .board { inset: calc(64px + var(--safe-t) + 300px) 0 0; }
+}
+@media (max-width: 1099px) {
+  .board { inset: calc(56px + var(--safe-t)) 0 auto; }
+}
