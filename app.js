@@ -790,6 +790,16 @@
   /** open the conversation at its newest answer, from the top of that answer */
   function convLabel() { var t = $('thread'), on = t && !t.hidden; $('stS').textContent = on ? 'Hide conversation' : 'Conversation'; $('status').setAttribute('aria-expanded', on ? 'true' : 'false'); }
   if (window.MutationObserver) new MutationObserver(convLabel).observe($('thread'), { attributes: true, attributeFilter: ['hidden'] });
+  /* the big figure shrinks to a small presence at the bottom middle whenever Settings, Made or
+     the conversation comes up, and grows back the moment none of them are open */
+  function syncStage() {
+    var up = !$('sheet').hidden || !$('shelf').hidden || !$('thread').hidden;
+    var was = app.dataset.stage === 'compact';
+    app.dataset.stage = up ? 'compact' : '';
+    if (was !== up && bust.resize) setTimeout(bust.resize, 280);
+  }
+  if (window.MutationObserver) { var stageObs = new MutationObserver(syncStage); [$('sheet'), $('shelf'), $('thread')].forEach(function (el) { if (el) stageObs.observe(el, { attributes: true, attributeFilter: ['hidden'] }); }); }
+  syncStage();
   Kin.showThread = function () { showThread(); };
   function showThread() { var t = $('thread'); t.hidden = false; var m = t.querySelector('.msg.kin:last-child'); t.scrollTop = m && m.offsetTop > 0 && m.offsetHeight > t.clientHeight * 0.6 ? Math.max(0, (m.previousElementSibling || m).offsetTop - 12) : t.scrollHeight; }
   /* on a phone the small orb in the bar opens and closes the conversation; the dock's chips open a panel */

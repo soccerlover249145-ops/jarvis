@@ -409,10 +409,14 @@ code, pre, kbd, .md code, .md pre { font-family: var(--f-code) !important; }
    The default look on a computer, drawn in the dock's header where the orb sits (bust.js). The orb stays the look on a
    phone, a touch screen, reduced motion, a low-power device or without WebGL, and whenever the founder picks "Orb". */
 .dock-h #gl.figure { display: none; position: relative; inset: auto; width: 100%; max-width: 640px; height: 480px; margin: -10px auto 0; pointer-events: none;
-  -webkit-mask-image: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent 100%); mask-image: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent 100%); }
+  -webkit-mask-image: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent 100%); mask-image: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent 100%);
+  transition: width var(--dur-2, .4s) var(--ease, ease), height var(--dur-2, .4s) var(--ease, ease), max-width var(--dur-2, .4s) var(--ease, ease), bottom var(--dur-2, .4s) var(--ease, ease), opacity var(--dur-2, .4s) var(--ease, ease); }
 .app[data-fig="on"] .dock-h #gl.figure { display: block; }
 .app[data-fig="on"] .dock-h .orb { display: none; }
 .app[data-fig="on"] .dock .dock-h #caption.caption { margin-top: 6px; }
+/* when a panel comes up (Settings, Made, the conversation), Jarvis shrinks to a small presence
+   at the bottom middle of the screen instead of competing with it for space */
+.app[data-stage="compact"][data-fig="on"] .dock-h #gl.figure { position: fixed; left: 50%; bottom: 18px; width: 128px; max-width: 128px; height: 96px; margin: 0; transform: translateX(-50%); z-index: 40; opacity: .92; }
 @media (max-width: 1099px) { .dock-h #gl.figure { display: none !important; } }
 
 /* ================================================================= the holographic skin

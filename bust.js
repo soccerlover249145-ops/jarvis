@@ -149,6 +149,9 @@
 
   Kin.bust = {
     ready: true,
+    /** call after a CSS-only size change (no real window resize) so the canvas keeps a sharp,
+        undistorted render at its new box size instead of stretching the old buffer into it */
+    resize: function () { resize(); },
     setMood: function (m) {
       if (app) app.dataset.orb = m || 'off';
       S.mood = m; S.energyGoal = { off: 0.04, asleep: 0.02, idle: 0.12, listening: 0.6, thinking: 0.4, speaking: 1 }[m] || 0.12; S.sleepGoal = m === 'asleep' || m === 'off' ? 0.45 : 0; /* dimmer when asleep, but always clearly there */
