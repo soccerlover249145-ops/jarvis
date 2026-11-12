@@ -11,6 +11,12 @@
 const { spawn } = require('child_process');
 const readline = require('readline');
 
+/* after giving up (too many quick deaths in a row) try again on its own after this long. Most
+   runs of bad luck here are the Swift helper or the system speech service having a rough patch,
+   not something that needs a person to notice and reopen Jarvis -- so this keeps trying quietly
+   instead of staying off for good. */
+const STALL_RETRY = 20000;
+
 function parseLine(line) {
   let m; try { m = JSON.parse(line); } catch (e) { return null; }
   if (!m || typeof m !== 'object') return null;
@@ -54,7 +60,11 @@ function makeEars(binPath, opts) {
       if (!want) { emit({ type: 'state', state: 'off', reason: 'stopped' }); return; }
       /* it died: start again, waiting longer each time it dies quickly, and give up after a while */
       fails = Date.now() - lastStart < 5000 ? fails + 1 : 0;
-      if (fails > 6) { want = false; emit({ type: 'state', state: 'off', reason: 'stalled' }); return; }
+      if (fails > 6) {
+        want = false; emit({ type: 'state', state: 'off', reason: 'stalled' });
+        timer = setTimeout(function () { if (!want) { fails = 0; want = true; begin(); } }, STALL_RETRY);
+        return;
+      }
       emit({ type: 'state', state: 'starting', reason: 'restart' });
       timer = setTimeout(begin, Math.min(30000, 500 * Math.pow(2, fails)));
     });
