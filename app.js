@@ -273,7 +273,7 @@
     if (e.state === 'listening' && !coarse) ears.meter(true);
     if (e.state === 'listening') { ls.set('kin.micok', '1'); if (S.talk === 'off') { S.talk = 'asleep'; caption(sayPhrase(), sleepHint()); } else if (S.talk === 'asleep' && !S.talking) caption(sayPhrase(), sleepHint()); }
     if (e.state === 'blocked') { S.talk = S.talk === 'awake' ? 'awake' : 'off'; var bw = blockedWhy(e.reason); caption(bw.short, bw.small); }
-    if (e.state === 'off' && e.reason !== 'stopped') { buf = tail = ''; clearTimeout(hearT); if (S.talk === 'asleep') S.talk = 'off'; if (!S.talking && !S.busy) caption(e.reason === 'stalled' ? 'Listening keeps cutting out here.' : 'The microphone closed.', 'Tap the mic to listen again'); }
+    if (e.state === 'off' && e.reason !== 'stopped') { buf = tail = ''; clearTimeout(hearT); if (S.talk === 'asleep') S.talk = 'off'; if (!S.talking && !S.busy) caption(e.reason === 'stalled' ? 'Listening keeps cutting out here.' : 'The microphone closed.', e.reason === 'stalled' ? 'It should come back on its own in a moment. Or tap the mic' : 'Tap the mic to listen again'); }
     if (e.state === 'off' && e.reason === 'stopped' && S.talk === 'asleep') { S.talk = 'off'; caption(null); }
     paint(); refreshSettings();
   });

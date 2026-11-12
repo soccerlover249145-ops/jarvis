@@ -38,6 +38,9 @@
     making: 240000,    /* a job of making something (a document, a design) may go this long without a sign of life: long thinking is silent */
     ttsWait: 15000,    /* one sentence of the keyed voice may take this long to arrive */
     retry: 300,        /* wait before listening again after the browser ends a session; doubles each time one dies at once */
+    stallRetry: 20000, /* after giving up (too many quick deaths in a row), try again on its own after this long --
+                           most real stalls are the browser's speech backend, not an actual dropped connection, so
+                           waiting it out and trying again beats leaving it off until someone notices and taps the mic */
     beat: 5000,        /* how often the listening heartbeat looks */
     noStart: 8000,     /* a recognizer that has not confirmed it started by then is given up on */
     barge: true,       /* talking while Kin speaks stops it */

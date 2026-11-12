@@ -10,7 +10,7 @@
   var isSafari = isIOS || (/Safari\//.test(ua) && !/Chrome\/|Chromium\/|Edg\//.test(ua));
   var standalone = !!(window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches));
 
-  var subs = [], rec = null, want = false, live = false, held = false, beganAt = 0, lastEvt = 0, quick = 0, restartT = 0, pending = false, lastErr = '', netStall = false, beatI = 0, paused = '';
+  var subs = [], rec = null, want = false, live = false, held = false, beganAt = 0, lastEvt = 0, quick = 0, restartT = 0, pending = false, lastErr = '', netStall = false, beatI = 0, paused = '', stallT = 0;
   function emit(ev) { subs.forEach(function (f) { try { f(ev); } catch (e) {} }); }
   function blockedErr(x) { return x === 'not-allowed' || x === 'service-not-allowed' || x === 'audio-capture'; }
 
@@ -51,7 +51,13 @@
     quick = failed || Date.now() - beganAt < 1500 ? quick + 1 : 0;
     if (quick > 5) {
       want = false; meterOff(); netStall = lastErr === 'network' || navigator.onLine === false;
-      emit({ type: 'state', state: 'off', reason: 'stalled' }); return;
+      emit({ type: 'state', state: 'off', reason: 'stalled' });
+      /* most of the time this is the browser's own speech backend having a bad few seconds, not a real
+         dropped connection (the online/offline check above almost never fires for it) -- so try again on
+         its own after a cooldown instead of staying off until someone happens to notice and tap the mic */
+      clearTimeout(stallT);
+      stallT = setTimeout(function () { if (!want && !held && !paused) { quick = 0; want = true; begin(); } }, Kin.T.stallRetry);
+      return;
     }
     emit({ type: 'state', state: 'starting', reason: 'restart' });
     clearTimeout(restartT); pending = true; restartT = setTimeout(begin, quick ? Math.min(8000, Kin.T.retry * Math.pow(2, quick)) : Kin.T.retry);
@@ -165,9 +171,9 @@
     wanted: function () { return want; },
     lastError: function () { return lastErr; },
     /** Start listening and keep listening. Safe to call again: it does nothing when already listening. */
-    start: function () { if (!SR) return false; want = true; held = false; quick = 0; netStall = false; if (paused && !hidden()) paused = ''; if (!beatI) beatI = setTimeout(beat, Kin.T.beat); return live || !!rec || pending || begin(); },
+    start: function () { if (!SR) return false; want = true; held = false; quick = 0; netStall = false; clearTimeout(stallT); if (paused && !hidden()) paused = ''; if (!beatI) beatI = setTimeout(beat, Kin.T.beat); return live || !!rec || pending || begin(); },
     /** Stop on purpose. Reported as "stopped" at once, whatever the browser says or fails to say afterwards. */
-    stop: function () { want = false; held = false; netStall = false; paused = ''; clearTimeout(restartT); pending = false; drop(); lastErr = ''; meterOff(); emit({ type: 'state', state: 'off', reason: 'stopped' }); },
+    stop: function () { want = false; held = false; netStall = false; paused = ''; clearTimeout(restartT); clearTimeout(stallT); pending = false; drop(); lastErr = ''; meterOff(); emit({ type: 'state', state: 'off', reason: 'stopped' }); },
     /** why listening is paused ('hidden'), or '' */
     paused: function () { return paused; },
     /** How loud the room is right now, 0 to 1, from the microphone with the browser's echo cancelling on,
