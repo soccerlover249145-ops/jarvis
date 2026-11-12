@@ -390,12 +390,17 @@
     'make: a substantial document the founder will keep: a report, memo, proposal, plan document, cover letter, table or one-pager.',
     'design: a visual piece to look at: a poster, flyer, logo, label, invitation, social graphic, slide, banner, packaging or any layout.'
   ].join('\n');
+  var ACT = /^(?:(?:hey|ok|okay|hi)\s+)?(?:(?:jarvis|kin)[,!.]?\s+)?(?:(?:please|can you|could you|would you|will you|go ahead and|just)\s+)*(?:open|launch|start up|show me|pull up|bring up|go to|take me to|navigate to|load|close|quit|switch to|play|search for|look up|find me)\b(?!\s+(?:to\s+(?:ideas|suggestions|hell)|it\b|one\b|nice\b|of\b|cool\b|some\s+love))/i;
+  /** a reply that writes out a tool call as text instead of using one */
+  var FAKE_TOOL = /<\/?\s*(?:invoke|parameter|function_calls|tool_use|antml)\b|<invoke|action result\s*:/i;
   /** sort the message: { route, design, how: 'greeting' | 'model' | 'rules', cost } */
   function classify(c, text, opts) {
     if (smallTalk(text)) return Promise.resolve({ route: 'quick', how: 'greeting', cost: 0 });
     /* a request that starts by asking for a reminder, or to change one or a list, needs the tools, never the small-talk model;
        "design a reminder poster" and "thanks for the reminder" are sorted as usual */
     if (/^(?:(?:hey|ok|okay)\s+)?(?:(?:jarvis|kin)[,!.]?\s+)?(?:(?:please|can you|could you|would you|will you)\s+)*(?:remind me|set (?:a |me a |up a )?reminder|don'?t let me forget|ping me|alert me|nudge me|wake me|(?:cancel|stop|delete|remove|change|move)(?: the| my| that)? [^.?!]{0,40}?reminder|stop reminding me|(?:add|put)\s.+\s(?:to|on|onto)\s(?:my|the)\s.+\slist)\b/i.test(String(text).trim())) return Promise.resolve({ route: 'question', how: 'rules', cost: 0 });
+    /* a request to do something on the computer (open, show, go to, close ...) needs the tools, never the small-talk model */
+    if (ACT.test(String(text).trim())) return Promise.resolve({ route: 'question', how: 'rules', cost: 0 });
     var prev = turns.length >= 2 ? turns[turns.length - 2] : null;
     var body = (prev && prev.role === 'user' ? 'Their previous message: ' + String(prev.content).slice(0, 300) + '\n\n' : '') + 'The message: ' + String(text).slice(0, 1500);
     return c.messages.create({ model: QUICK, max_tokens: 16, system: CLASSIFY, messages: [{ role: 'user', content: body }] }, { signal: opts.signal, timeout: 8000, maxRetries: 0 })
@@ -535,7 +540,11 @@
         total.cost += Kin.mind.costOf(m.model, m.usage);
         if (m.stop_reason === 'refusal') return { text: 'I would rather not answer that one, sir.', refused: true, model: m.model, route: r, cost: total.cost };
         digest(m.content, acc);
-        return { text: acc.parts.join('\n\n') || live, model: m.model, route: r, cost: total.cost, sources: [], made: [] };
+        var qt = acc.parts.join('\n\n') || live;
+        /* the small-talk model has no tools: if it pretends to use one, ask again where the tools are */
+        if (FAKE_TOOL.test(qt) && !opts.noRetry) { var spent = total.cost; if (opts.onText) opts.onText('');
+          return answer(text, Object.assign({}, opts, { noRetry: true }), c, Object.assign({}, k, { route: 'question', cost: 0 })).then(function (a2) { a2.cost = (a2.cost || 0) + spent; return a2; }, function (e2) { if (e2 && typeof e2 === 'object') e2.spent = (e2.spent || 0) + spent; throw e2; }); }
+        return { text: qt, model: m.model, route: r, cost: total.cost, sources: [], made: [] };
       }, function (e) { total.cost += qpm.start ? Kin.mind.partialCost(qpm.model, qpm.start, qpm.chars) : 0; if (e && typeof e === 'object') e.spent = spentSoFar(); throw e; });
     }
 
