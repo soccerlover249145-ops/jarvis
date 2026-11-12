@@ -37,6 +37,10 @@
     convLabel();
     $('stM').textContent = S.micState === 'listening' ? 'Mic on' : S.micState === 'starting' ? 'Mic starting' : S.micState === 'blocked' ? 'Mic blocked' : S.micState === 'paused' ? 'Mic paused' : 'Mic off';
     $('mic').setAttribute('aria-pressed', ears.wanted());
+    /* no visible text bar while voice is actually working: it just listens. The bar comes back
+       the moment it genuinely needs you -- no voice support, the mic blocked, or you turned it
+       off yourself (Space does both: stop listening and bring the bar back to type instead) */
+    app.dataset.composer = (!ears.supported || S.micState === 'blocked' || S.micState === 'off') ? 'show' : 'hide';
     /* the one-word state at the top: what Jarvis is doing right now */
     var ps = S.micState === 'paused' ? 'paused' : m === 'speaking' ? 'speaking' : m === 'thinking' ? 'thinking' : m === 'listening' ? 'listening' : m === 'asleep' ? 'sleeping' : m === 'idle' ? 'awake' : 'off',
       pl = { paused: 'Paused', speaking: 'Speaking', thinking: 'Thinking', listening: 'Listening', sleeping: 'Sleeping', awake: 'Awake', off: 'Off' }[ps],

@@ -234,6 +234,13 @@ code, pre, kbd, .md code, .md pre { font-family: var(--f-code) !important; }
 .sharepill { border-color: rgba(255, 114, 114, .4); background: rgba(255, 114, 114, .08); font: 500 12px/1 var(--f-ui); letter-spacing: .01em; }
 
 .dock .bar { position: relative; left: auto; right: auto; bottom: auto; max-width: 420px; flex: none; margin: 0 auto 14px; height: 44px; padding: 0 5px 0 16px; gap: 2px; border-radius: 999px; background: var(--s2); border: 1px solid var(--line2); }
+/* on the desktop figure, no visible text box while voice is actually working -- just the
+   holographic presence and a small mic icon. Space, or tapping that icon, stops listening and
+   the full bar (typing included) comes straight back. */
+@media (min-width: 1100px) {
+  .app[data-fig="on"][data-composer="hide"] .dock .bar { max-width: 56px; padding: 0; justify-content: center; }
+  .app[data-fig="on"][data-composer="hide"] .dock .bar #ask, .app[data-fig="on"][data-composer="hide"] .dock .bar .send, .app[data-fig="on"][data-composer="hide"] .dock .bar #scr { display: none; }
+}
 .dock .bar input { height: 50px; font: 400 15px/22px var(--f-ui); color: var(--text); }
 .dock .bar input::placeholder { color: var(--text-3); }
 .dock .bar .icon { width: 34px; height: 34px; border-radius: 50%; color: var(--text-2); }
