@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex,nofollow,noarchive">
 <meta name="referrer" content="no-referrer">
 <!-- Only this site, the Anthropic API, (for the optional voice key) the ElevenLabs API, (for the optional Higgsfield sign-in) Higgsfield's sign-in service and picture hosts, and (for the optional Grok Bot bridge, off by default) the founder's relay may be reached. No third-party scripts, fonts or trackers. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' https://accounts.google.com/gsi/style; img-src 'self' data: blob: https://d8j0ntlcm91z4.cloudfront.net https://cdn.higgsfield.ai; media-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://gmail.googleapis.com https://accounts.google.com/gsi/ https://api.anthropic.com https://api.elevenlabs.io https://clerk.higgsfield.ai https://d8j0ntlcm91z4.cloudfront.net https://cdn.higgsfield.ai https://jarvis-relay-next-of-kin.vercel.app https://api.open-meteo.com https://geocoding-api.open-meteo.com https://www.googleapis.com/drive/v3/ https://www.googleapis.com/upload/drive/v3/; frame-src https://accounts.google.com/gsi/; worker-src 'none'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' https://accounts.google.com/gsi/style; img-src 'self' data: blob: https://d8j0ntlcm91z4.cloudfront.net https://cdn.higgsfield.ai; media-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://gmail.googleapis.com https://accounts.google.com/gsi/ https://api.anthropic.com https://api.elevenlabs.io https://clerk.higgsfield.ai https://d8j0ntlcm91z4.cloudfront.net https://cdn.higgsfield.ai https://jarvis-relay-next-of-kin.vercel.app https://api.open-meteo.com https://geocoding-api.open-meteo.com https://www.googleapis.com/drive/v3/ https://www.googleapis.com/upload/drive/v3/ https://www.googleapis.com/calendar/v3/; frame-src https://accounts.google.com/gsi/; worker-src 'none'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="theme-color" content="#07080b">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -59,7 +59,7 @@
 
       <div class="thread" id="thread" hidden></div>
 
-      <div class="sugg" id="sugg" aria-label="Quick actions"><button type="button" class="qchipbtn" data-go="brief">Brief me</button><button type="button" class="qchipbtn" data-go="whatsnew">What&rsquo;s new</button><button type="button" class="qchipbtn" data-go="gauntlet">Test yourself</button></div>
+      <div class="sugg" id="sugg" aria-label="Quick actions"><button type="button" class="qchipbtn" data-go="brief">Brief me</button><button type="button" class="qchipbtn" data-go="whatsnew">What&rsquo;s new</button><button type="button" class="qchipbtn" data-go="inbox">Inbox</button><button type="button" class="qchipbtn" data-go="outbox">Outbox</button><button type="button" class="qchipbtn" data-go="cal">Calendar</button><button type="button" class="qchipbtn" data-go="gauntlet">Test yourself</button></div>
 
       <div class="prow">
         <button type="button" class="sharepill" id="sharePill" hidden aria-label="Jarvis can see your screen. Stop sharing"><i class="rec" aria-hidden="true"></i><span>Sharing your screen</span><b>Stop</b></button>
@@ -79,7 +79,7 @@
   <section class="sheet" id="shelf" hidden aria-label="What Kin made">
     <div class="sheethead"><h2>Made</h2><button type="button" class="icon" id="shelfx" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <div class="sheetbody">
-      <div class="seg" id="shelftabs" role="group"><button type="button" data-tab="made" aria-pressed="true">Made</button><button type="button" data-tab="log" aria-pressed="false">Logbook</button></div>
+      <div class="seg" id="shelftabs" role="group"><button type="button" data-tab="made" aria-pressed="true">Made</button><button type="button" data-tab="log" aria-pressed="false">Logbook</button><button type="button" data-tab="inbox" aria-pressed="false">Inbox</button><button type="button" data-tab="outbox" aria-pressed="false">Outbox</button><button type="button" data-tab="cal" aria-pressed="false">Calendar</button></div>
       <div id="shelfbody"></div>
     </div>
   </section>

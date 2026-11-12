@@ -9,8 +9,10 @@
 (function () {
   'use strict';
   var Kin = window.Kin = window.Kin || {};
-  var K = { cid: 'kin.mail.cid', cap: 'kin.mail.cap', sent: 'kin.mail.sent' };
+  var K = { cid: 'kin.mail.cid', cap: 'kin.mail.cap', sent: 'kin.mail.sent', box: 'kin.mail.outbox' };
   var SCOPE = 'https://www.googleapis.com/auth/gmail.send';
+  var READ_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+  var CAL_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
   var GIS = 'https://accounts.google.com/gsi/client';
   var SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
   var ls = {
@@ -27,10 +29,28 @@
   function setClientId(v) {
     v = String(v || '').trim();
     if (Kin.shared) return { ok: false, why: Kin.SHARED_TEXT };
-    if (!v) { ls.del(K.cid); token = null; return { ok: true }; }
+    if (!v) { ls.del(K.cid); tokens = {}; return { ok: true }; }
     if (!/^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$/i.test(v)) return { ok: false, why: 'That does not look like a Google OAuth Client ID. It ends in .apps.googleusercontent.com.' };
-    ls.set(K.cid, v); token = null; loadGis(); return { ok: true };
+    ls.set(K.cid, v); tokens = {}; loadGis(); return { ok: true };
   }
+
+  /* ---- the outbox: every draft Kin writes is kept here until it is sent or removed, so a batch of
+     emails can be reviewed and sent one after another instead of vanishing with the conversation ---- */
+  var BOX_MAX = 60;
+  function outbox() { try { var a = JSON.parse(ls.get(K.box) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+  function saveBox(a) { ls.set(K.box, JSON.stringify(a.slice(0, BOX_MAX))); }
+  function saveDraft(d) {
+    var a = outbox(), id = 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    a.unshift({ id: id, to: String(d.to || ''), subject: String(d.subject || ''), body: String(d.body || ''), at: Date.now(), status: 'draft' });
+    saveBox(a); return id;
+  }
+  function updateDraft(id, patch) {
+    var a = outbox(), x = a.filter(function (m) { return m.id === id; })[0]; if (!x) return;
+    Object.keys(patch).forEach(function (k) { x[k] = patch[k]; }); saveBox(a);
+  }
+  function dropDraft(id) { saveBox(outbox().filter(function (m) { return m.id !== id; })); }
+  function clearSent() { saveBox(outbox().filter(function (m) { return m.status !== 'sent'; })); }
+  function waiting() { return outbox().filter(function (m) { return m.status !== 'sent'; }); }
 
   /* ---- addresses and the draft ---- */
   var ADDR = /^[^\s@<>(),;:"]+@[^\s@<>(),;:"]+\.[a-z]{2,}$/i;
@@ -61,7 +81,7 @@
   }
 
   /* ---- Google sign-in for sending: Google Identity Services, the gmail.send scope only, token in memory ---- */
-  var token = null, gisP = null;
+  var tokens = {}, gisP = null;
   function loadGis() {
     if (Kin.shared || !clientId()) return Promise.resolve(false);
     if (window.google && google.accounts && google.accounts.oauth2) return Promise.resolve(true);
@@ -69,15 +89,76 @@
     gisP = new Promise(function (res) { var s = document.createElement('script'); s.src = GIS; s.async = true; s.onload = function () { res(true); }; s.onerror = function () { gisP = null; res(false); }; document.head.appendChild(s); });
     return gisP;
   }
-  /* must run inside the founder's tap: the Google window is a popup */
-  function getToken() {
-    if (token && Date.now() < token.exp) return Promise.resolve(token.v);
-    if (!(window.google && google.accounts && google.accounts.oauth2)) return Promise.reject(new Error('Google sign-in did not load yet. Tap Send now again in a moment.'));
+  /* must run inside the founder's tap: the Google window is a popup. Sending and reading are separate
+     permissions with separate tokens, so allowing one never quietly grants the other; both live in memory only. */
+  var WHAT = {}; WHAT[SCOPE] = 'send email'; WHAT[READ_SCOPE] = 'read your inbox'; WHAT[CAL_SCOPE] = 'read your calendar';
+  function getToken(scope) {
+    var cur = tokens[scope];
+    if (cur && Date.now() < cur.exp) return Promise.resolve(cur.v);
+    if (!(window.google && google.accounts && google.accounts.oauth2)) return Promise.reject(new Error('Google sign-in did not load yet. Tap again in a moment.'));
     return new Promise(function (res, rej) {
-      var tc = google.accounts.oauth2.initTokenClient({ client_id: clientId(), scope: SCOPE, prompt: '',
-        callback: function (r) { if (!r || r.error || !r.access_token) { rej(new Error('Google did not give permission to send (' + ((r && (r.error_description || r.error)) || 'cancelled') + ').')); return; } token = { v: r.access_token, exp: Date.now() + Math.max(60, (+r.expires_in || 3600) - 60) * 1000 }; res(token.v); },
+      var tc = google.accounts.oauth2.initTokenClient({ client_id: clientId(), scope: scope, prompt: '',
+        callback: function (r) { if (!r || r.error || !r.access_token) { rej(new Error('Google did not give permission to ' + (WHAT[scope] || 'do that') + ' (' + ((r && (r.error_description || r.error)) || 'cancelled') + ').')); return; } tokens[scope] = { v: r.access_token, exp: Date.now() + Math.max(60, (+r.expires_in || 3600) - 60) * 1000 }; res(tokens[scope].v); },
         error_callback: function (e) { rej(new Error('Google sign-in closed (' + ((e && e.type) || 'cancelled') + ').')); } });
       tc.requestAccessToken();
+    });
+  }
+
+  /* ---- reading the inbox: unread mail, newest first, From / Subject / Date / snippet only. Read on a tap,
+     kept in memory for this visit, never stored on the device. ---- */
+  var LIST_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages';
+  function hdr(m, name) { var h = ((m.payload && m.payload.headers) || []).filter(function (x) { return String(x.name).toLowerCase() === name; })[0]; return h ? String(h.value) : ''; }
+  function inbox(opts) {
+    opts = opts || {};
+    if (Kin.shared) return Promise.reject(new Error(Kin.SHARED_TEXT));
+    if (!clientId()) return Promise.reject(new Error('Reading your inbox needs a Google Client ID in Settings, Email.'));
+    var q = opts.all ? 'in:inbox' : 'in:inbox is:unread', n = Math.min(25, opts.max || 15);
+    return getToken(READ_SCOPE).then(function (tok) {
+      var auth = { credentials: 'omit', referrerPolicy: 'no-referrer', headers: { Authorization: 'Bearer ' + tok } };
+      return fetch(LIST_URL + '?maxResults=' + n + '&q=' + encodeURIComponent(q), auth).then(function (r) {
+        if (!r.ok) { if (r.status === 401) delete tokens[READ_SCOPE]; throw new Error('Gmail would not list the inbox (' + r.status + ').'); }
+        return r.json();
+      }).then(function (j) {
+        var ids = (j.messages || []).map(function (m) { return m.id; });
+        return Promise.all(ids.map(function (id) {
+          return fetch(LIST_URL + '/' + encodeURIComponent(id) + '?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date', auth)
+            .then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+        }));
+      }).then(function (list) {
+        return list.filter(Boolean).map(function (m) {
+          return { id: m.id, thread: m.threadId, from: hdr(m, 'from'), subject: hdr(m, 'subject') || '(no subject)', date: +m.internalDate || Date.parse(hdr(m, 'date')) || 0,
+            snippet: String(m.snippet || '').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'), unread: (m.labelIds || []).indexOf('UNREAD') >= 0 };
+        });
+      });
+    });
+  }
+  /** a Gmail link that opens this message in the founder's own Gmail */
+  function threadUrl(m) { return 'https://mail.google.com/mail/u/0/#inbox/' + encodeURIComponent(m.thread || m.id); }
+
+  /* ---- the calendar: the next few days of the primary calendar, read on a tap with a separate read-only
+     permission, kept in memory for this visit, never stored ---- */
+  var CAL_URL = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
+  function calendar(opts) {
+    opts = opts || {};
+    if (Kin.shared) return Promise.reject(new Error(Kin.SHARED_TEXT));
+    if (!clientId()) return Promise.reject(new Error('Reading your calendar needs a Google Client ID in Settings, Email.'));
+    var days = Math.min(14, Math.max(1, opts.days || 3)), start = new Date(); start.setHours(0, 0, 0, 0);
+    var end = new Date(start.getTime() + days * 864e5);
+    var q = '?singleEvents=true&orderBy=startTime&maxResults=40&timeMin=' + encodeURIComponent(start.toISOString()) + '&timeMax=' + encodeURIComponent(end.toISOString());
+    return getToken(CAL_SCOPE).then(function (tok) {
+      return fetch(CAL_URL + q, { credentials: 'omit', referrerPolicy: 'no-referrer', headers: { Authorization: 'Bearer ' + tok } }).then(function (r) {
+        if (!r.ok) { if (r.status === 401) delete tokens[CAL_SCOPE]; throw new Error('Google Calendar would not answer (' + r.status + ').'); }
+        return r.json();
+      }).then(function (j) {
+        return (j.items || []).filter(function (e) { return e.status !== 'cancelled'; }).map(function (e) {
+          var allDay = !!(e.start && e.start.date && !e.start.dateTime);
+          return { id: e.id, title: String(e.summary || '(no title)'), allDay: allDay,
+            start: allDay ? Date.parse(e.start.date + 'T00:00:00') : Date.parse((e.start && e.start.dateTime) || ''),
+            end: allDay ? Date.parse(((e.end && e.end.date) || e.start.date) + 'T00:00:00') : Date.parse((e.end && e.end.dateTime) || ''),
+            where: String(e.location || ''), link: String(e.htmlLink || ''), meet: String(e.hangoutLink || ''),
+            who: (e.attendees || []).filter(function (a) { return !a.self; }).map(function (a) { return a.displayName || a.email; }).slice(0, 6) };
+        });
+      });
     });
   }
   /** Send one email. Call only from the founder's tap on Send now. */
@@ -87,10 +168,10 @@
     if (!clientId()) return Promise.reject(new Error('Sending from here is not set up. Use Open in Gmail, or add a Google Client ID in Settings, Email.'));
     var why = check(d); if (why) return Promise.reject(new Error(why));
     if (sentToday() >= cap()) return Promise.reject(new Error('Today\'s limit of ' + cap() + ' emails sent from here is reached. Change it in Settings, Email, or use Open in Gmail.'));
-    return getToken().then(function (tok) {
+    return getToken(SCOPE).then(function (tok) {
       return fetch(SEND_URL, { method: 'POST', credentials: 'omit', referrerPolicy: 'no-referrer', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }, body: JSON.stringify({ raw: raw(d) }) })
         .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) {
-          if (!r.ok) { if (r.status === 401) token = null; throw new Error('Gmail did not send it (' + r.status + (j && j.error && j.error.message ? ': ' + j.error.message : '') + ').'); }
+          if (!r.ok) { if (r.status === 401) delete tokens[SCOPE]; throw new Error('Gmail did not send it (' + r.status + (j && j.error && j.error.message ? ': ' + j.error.message : '') + ').'); }
           countSent(); return { ok: true, id: j.id || '' };
         }); });
     });
@@ -99,12 +180,14 @@
   /* ---- the card ---- */
   function el(t, c, txt) { var e = document.createElement(t); if (c) e.className = c; if (txt != null) e.textContent = txt; return e; }
   function pill(label, kind) { var b = el('button', 'pill ' + kind); b.type = 'button'; b.appendChild(el('span', 'pl', label)); return b; }
-  /** An email card in the conversation. opts: { onSay(text) } */
+  var CHIP = { draft: ['Draft · not sent', 'chip warn'], opened: ['Opened in Gmail', 'chip ghost'], sent: ['Sent', 'chip on'] };
+  /** An email card. opts: { onSay(text), id (its outbox entry: edits and status are kept there), status, onChange() } */
   function card(d, opts) {
     opts = opts || {};
-    var box = el('div', 'mailcard'), st = { sent: false };
+    var status = opts.status || 'draft', box = el('div', 'mailcard'), st = { sent: status === 'sent' };
     box.setAttribute('role', 'group'); box.setAttribute('aria-label', 'Email draft');
-    var head = el('div', 'mhead'); head.appendChild(el('span', 'chip warn', 'Draft · not sent')); head.appendChild(el('span', 'chip ghost', 'Email')); box.appendChild(head);
+    var head = el('div', 'mhead'); head.appendChild(el('span', CHIP[status][1], CHIP[status][0])); head.appendChild(el('span', 'chip ghost', 'Email')); box.appendChild(head);
+    function mark(s) { status = s; head.firstChild.textContent = CHIP[s][0]; head.firstChild.className = CHIP[s][1]; if (opts.id) updateDraft(opts.id, { status: s }); if (opts.onChange) opts.onChange(); }
     function field(lbl, val, multi) {
       var w = el('label', 'mrow'); w.appendChild(el('span', 'mlbl', lbl));
       var i = el(multi ? 'textarea' : 'input', 'minput'); if (!multi) { i.type = 'text'; i.autocomplete = 'off'; } else i.rows = Math.min(14, Math.max(5, String(val || '').split('\n').length + 1));
@@ -114,8 +197,12 @@
     var msg = el('p', 'note mnote'); box.appendChild(msg);
     var acts = el('div', 'mact'); box.appendChild(acts);
     function draft() { return { to: to.value, subject: su.value, body: bo.value }; }
+    /* edits are kept in the outbox, so a fixed address or a reworded line survives a reload */
+    if (opts.id) { var saveT = 0; [to, su, bo].forEach(function (i) { i.addEventListener('input', function () { clearTimeout(saveT); saveT = setTimeout(function () { updateDraft(opts.id, draft()); }, 400); }); }); }
+    if (st.sent) [to, su, bo].forEach(function (i) { i.readOnly = true; });
     var gm = pill('Open in Gmail', 'go'), cp = pill('Copy', 'alt');
-    gm.addEventListener('click', function () { var w = check(draft()); if (w && !/subject|empty/i.test(w)) { msg.textContent = w; return; } window.open(composeUrl(draft()), '_blank', 'noopener,noreferrer'); msg.textContent = 'Opened in Gmail. Press Send there when it looks right.'; });
+    gm.addEventListener('click', function () { var w = check(draft()); if (w && !/subject|empty/i.test(w)) { msg.textContent = w; return; } window.open(composeUrl(draft()), '_blank', 'noopener,noreferrer'); msg.textContent = 'Opened in Gmail. Press Send there when it looks right.'; if (!st.sent) mark('opened'); });
+    box.openInGmail = function () { gm.click(); };
     cp.addEventListener('click', function () { var x = draft(), t = 'To: ' + x.to + '\nSubject: ' + x.subject + '\n\n' + x.body; (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { msg.textContent = 'Copied.'; }, function () { msg.textContent = 'This browser would not copy it; select the text instead.'; }); });
     acts.appendChild(gm); acts.appendChild(cp);
     if (!Kin.shared && clientId()) {
@@ -134,7 +221,7 @@
         }
         armed = false; clearTimeout(armT); sn.disabled = true; msg.textContent = 'Sending…';
         send(x, true).then(function () {
-          st.sent = true; sn.querySelector('.pl').textContent = 'Sent'; head.firstChild.textContent = 'Sent'; head.firstChild.className = 'chip on';
+          st.sent = true; sn.querySelector('.pl').textContent = 'Sent'; if (opts.id) updateDraft(opts.id, x); mark('sent');
           [to, su, bo].forEach(function (i) { i.readOnly = true; }); msg.textContent = 'Sent from your Gmail. ' + (cap() - sentToday()) + ' of ' + cap() + ' left today.';
           if (opts.onSay) opts.onSay('Sent, sir.');
         }, function (err) { sn.disabled = false; sn.querySelector('.pl').textContent = 'Send now'; msg.textContent = String((err && err.message) || err); });
@@ -146,6 +233,9 @@
   }
 
   Kin.email = { composeUrl: composeUrl, raw: raw, check: check, send: send, card: card, clientId: clientId, setClientId: setClientId, cap: cap, setCap: setCap, sentToday: sentToday, loadGis: loadGis,
+    outbox: outbox, saveDraft: saveDraft, updateDraft: updateDraft, dropDraft: dropDraft, clearSent: clearSent, waiting: waiting,
+    inbox: inbox, threadUrl: threadUrl, calendar: calendar,
     canSend: function () { return !Kin.shared && !!clientId(); },
-    wipe: function () { [K.cid, K.cap, K.sent].forEach(ls.del); token = null; } };
+    canRead: function () { return !Kin.shared && !!clientId(); },
+    wipe: function () { [K.cid, K.cap, K.sent, K.box].forEach(ls.del); tokens = {}; } };
 })();

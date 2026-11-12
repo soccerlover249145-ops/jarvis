@@ -421,6 +421,24 @@
     if (Kin.desk && deskAsk(text)) return;
     /* apps, files and "do it on my computer" need the Jarvis Mac app; in a browser, say so plainly instead of asking Claude */
     if (Kin.mac && !Kin.mac.available() && Kin.mac.needsMac(text)) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); var mq = localReply(Kin.mac.NEED_TEXT, 'Mac app only'); mq.parentNode.appendChild(Kin.mac.need()); showThread(); return; }
+    /* "check my inbox" / "open my email": the inbox panel; reading itself waits for a tap (Google's window is a popup) */
+    if (Kin.email && /^(?:jarvis |kin )?(?:(?:open|show)(?: me)? (?:my |the )?inbox|(?:check|read)(?: me)? (?:my |the )?(?:inbox|emails?|mail))\b/i.test(ears.norm ? ears.norm(text) : text)) {
+      inp.value = ''; lastLen = 0; touch(); addMsg('you', text); openShelf('inbox');
+      var il = Kin.email.canRead() ? 'Your inbox, sir. Tap Check inbox and I will read what is unread.' : 'To read your inbox I need your Google Client ID in Settings, Email, sir.';
+      addMsg('kin', il); if (S.unlocked && voice.canSpeak()) say(il, true); return;
+    }
+    /* "open my calendar" / "what's on my calendar": the calendar panel; reading waits for a tap */
+    if (Kin.email && /^(?:jarvis |kin )?(?:(?:open|show|check)(?: me)? (?:my |the )?(?:calendar|schedule|agenda)|whats on my (?:calendar|schedule))\b/i.test(ears.norm ? ears.norm(text) : text)) {
+      inp.value = ''; lastLen = 0; touch(); addMsg('you', text); openShelf('cal');
+      var cl = Kin.email.canRead() ? 'Your calendar, sir. Tap Next 3 days and I will read it.' : 'To read your calendar I need your Google Client ID in Settings, Email, sir.';
+      addMsg('kin', cl); if (S.unlocked && voice.canSpeak()) say(cl, true); return;
+    }
+    /* "open my outbox" / "show my drafts": the outbox, no model call needed */
+    if (Kin.email && /^(?:jarvis |kin )?(?:open|show|check)(?: me)? (?:my |the )?(?:outbox|drafts|email drafts|draft emails)\b/i.test(ears.norm ? ears.norm(text) : text)) {
+      inp.value = ''; lastLen = 0; touch(); addMsg('you', text); openShelf('outbox');
+      var n = Kin.email.waiting().length, line = n ? 'Your outbox, sir. ' + n + (n === 1 ? ' email is' : ' emails are') + ' waiting.' : 'Your outbox is empty, sir.';
+      addMsg('kin', line); if (S.unlocked && voice.canSpeak()) say(line, true); return;
+    }
     if (S.busy) return;
     if (Kin.briefBoard && Kin.briefBoard.isBriefRequest(text)) { inp.value = ''; lastLen = 0; touch(); brief(text); return; }
     /* a video or a recording, and Bluetooth or USB devices: their own panels; nothing is sent until the founder picks */
@@ -485,7 +503,7 @@
         onMade: function () { lastSign = Date.now(); refreshMade(); syncTouch(); },
         onRemember: function () { refreshSettings(); syncTouch(); },
         /* an email Kin wrote: a card under the answer; only the founder's tap sends it */
-        onEmail: function (d) { lastSign = Date.now(); if (!Kin.email) return; var box = p && p.parentNode; if (box) box.appendChild(Kin.email.card(d, { onSay: function (t) { if (S.unlocked && voice.canSpeak()) say(t, true); } })); showThread(); },
+        onEmail: function (d) { lastSign = Date.now(); if (!Kin.email) return; var id = Kin.email.saveDraft(d), box = p && p.parentNode; if (box) box.appendChild(Kin.email.card(d, { id: id, onChange: outboxCount, onSay: function (t) { if (S.unlocked && voice.canSpeak()) say(t, true); } })); outboxCount(); showThread(); },
         /* a computer action inside the Mac app: a small card under the answer saying what was asked and what the Mac answered */
         onMac: function (node) { lastSign = Date.now(); var box = p && p.parentNode; if (box) box.appendChild(node); showThread(); },
         confirm: confirmCard,
@@ -622,6 +640,9 @@
     if (k === 'weather') { settingsAt('brief'); return; }
     if (k === 'awaysummary') { awayAsk({ k: 'summary' }); return; }
     if (k === 'thread') { showThread(); return; }
+    if (k === 'outbox') { openShelf('outbox'); return; }
+    if (k === 'inbox') { openShelf('inbox'); return; }
+    if (k === 'cal') { openShelf('cal'); return; }
     if (/^made:/.test(k)) { openShelf('made', k.slice(5)); return; }
     tryIt(k);
   };
@@ -827,7 +848,11 @@
   function openShelf(tab, id) { shelfTab = tab || 'made'; shelfOpen = id || ''; $('shelf').hidden = false; refreshMade(); }
   function refreshMade() {
     var el = $('shelfbody'); if (!el || $('shelf').hidden) return; el.textContent = '';
-    [].forEach.call(document.querySelectorAll('#shelftabs button'), function (b) { b.setAttribute('aria-pressed', b.dataset.tab === shelfTab); });
+    [].forEach.call(document.querySelectorAll('#shelftabs button'), function (b) { b.setAttribute('aria-pressed', b.dataset.tab === shelfTab); if (b.dataset.tab === shelfTab) { var t = $('shelftabs'); if (t.scrollWidth > t.clientWidth) t.scrollLeft = Math.max(0, b.offsetLeft - t.clientWidth / 2 + b.offsetWidth / 2); } });
+    var sh = $('shelf').querySelector('.sheethead h2'); if (sh) sh.textContent = { log: 'Logbook', inbox: 'Inbox', outbox: 'Outbox', cal: 'Calendar' }[shelfTab] || 'Made';
+    if (shelfTab === 'outbox') { outboxShelf(el); return; }
+    if (shelfTab === 'inbox') { inboxShelf(el); return; }
+    if (shelfTab === 'cal') { calShelf(el); return; }
     if (shelfTab === 'log') {
       var log = Kin.mind.log();
       if (!log.length) { var e0 = document.createElement('p'); e0.className = 'empty'; e0.textContent = 'Nothing logged yet. Say "bench, 135 for 8" or "log that I changed the brake pads".'; el.appendChild(e0); return; }
@@ -857,6 +882,146 @@
     }
     if (!made.length) { var e1 = document.createElement('p'); e1.className = 'empty'; e1.textContent = 'Nothing made yet. Ask for a document, a plan, a table or a design, and it lands here.'; el.appendChild(e1); return; }
     made.forEach(function (x) { var b = document.createElement('button'); b.type = 'button'; b.className = 'mrow'; var k = document.createElement('small'); k.textContent = x.kind + ' · ' + new Date(x.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + (x.score != null ? ' · ' + x.score : ''); var t = document.createElement('span'); t.textContent = x.title; b.appendChild(k); b.appendChild(t); b.addEventListener('click', function () { shelfOpen = x.id; refreshMade(); }); el.appendChild(b); });
+  }
+  /** the outbox: every email Kin drafted, newest first, editable in place; a batch is sent one after another */
+  function outboxCount() {
+    var b = document.querySelector('#shelftabs [data-tab="outbox"]'); if (!b || !Kin.email) return;
+    var n = Kin.email.waiting().length; b.textContent = n ? 'Outbox ' + n : 'Outbox';
+  }
+  function outboxShelf(host) {
+    if (!Kin.email) return;
+    outboxCount();
+    var all = Kin.email.outbox(), wait = all.filter(function (m) { return m.status !== 'sent'; }), sent = all.length - wait.length;
+    if (!all.length) { var e0 = document.createElement('p'); e0.className = 'empty'; e0.textContent = 'No drafts yet. Say "email Sam about Friday" or "write to all three suppliers asking for prices", and each email lands here to check and send.'; host.appendChild(e0); return; }
+    var sum = document.createElement('p'); sum.className = 'note'; sum.textContent = wait.length + (wait.length === 1 ? ' email waiting' : ' emails waiting') + (sent ? ', ' + sent + ' sent' : '') + '. Nothing is sent until you send it.'; host.appendChild(sum);
+    var bt = el('div', 'btns pills'); host.appendChild(bt);
+    function pb(label, cls, fn) { var b = el('button', 'pill sm ' + cls); b.type = 'button'; b.appendChild(el('span', 'pl', label)); b.addEventListener('click', function () { gesture(); fn(b); }); bt.appendChild(b); return b; }
+    var cards = {};
+    /* browsers allow one new window per tap, so a batch goes out one tap at a time, oldest first */
+    if (wait.length) pb(wait.length > 1 ? 'Open next in Gmail' : 'Open in Gmail', 'go', function () {
+      var next = Kin.email.outbox().filter(function (m) { return m.status === 'draft'; }).pop() || Kin.email.waiting().pop();
+      if (next && cards[next.id]) { cards[next.id].openInGmail(); cards[next.id].scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    });
+    if (wait.length) pb('Copy all', 'alt', function (b) {
+      var t = Kin.email.waiting().map(function (m) { return 'To: ' + m.to + '\nSubject: ' + m.subject + '\n\n' + m.body; }).join('\n\n----------\n\n');
+      (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { b.querySelector('.pl').textContent = 'Copied'; }, function () { b.querySelector('.pl').textContent = 'Copy failed'; });
+    });
+    if (sent) pb('Clear sent', 'stop', function () { Kin.email.clearSent(); outboxCount(); refreshMade(); });
+    all.forEach(function (m) {
+      var wrap = document.createElement('div'); wrap.className = 'obrow';
+      var when = document.createElement('small'); when.className = 'obwhen'; when.textContent = new Date(m.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); wrap.appendChild(when);
+      var c = Kin.email.card(m, { id: m.id, status: m.status, onChange: outboxCount, onSay: function (t) { if (S.unlocked && voice.canSpeak()) say(t, true); } });
+      cards[m.id] = c; wrap.appendChild(c);
+      var rm = document.createElement('button'); rm.type = 'button'; rm.className = 'lnk dim'; rm.textContent = 'Remove'; rm.addEventListener('click', function () { Kin.email.dropDraft(m.id); outboxCount(); refreshMade(); }); wrap.appendChild(rm);
+      host.appendChild(wrap);
+    });
+  }
+  /** the inbox: unread Gmail, read on a tap with a read-only permission, held in memory for this visit only.
+      Nothing from it goes to Claude unless the founder taps Draft reply or Summarize these. */
+  /* panel buttons that hand a job to Jarvis: while an answer is still running, say so on the button instead of dropping the tap */
+  function handOff(btn, q) {
+    if (S.busy) { var lab = btn.querySelector('.pl') || btn, was = lab.textContent; if (was.indexOf('Still') === 0) return; lab.textContent = 'Still answering, one moment'; setTimeout(function () { lab.textContent = was; }, 2500); return; }
+    $('shelf').hidden = true; ask(q);
+  }
+  var inboxCache = null, inboxBusy = false, inboxErr = '';
+  function nameOf(from) { var m = /^\s*"?([^"<]+?)"?\s*</.exec(from || ''); return m ? m[1].trim() : String(from || '').replace(/[<>]/g, ''); }
+  function inboxShelf(host) {
+    if (!Kin.email) return;
+    function note(t) { var p = document.createElement('p'); p.className = 'note'; p.textContent = t; host.appendChild(p); return p; }
+    if (!Kin.email.canRead()) {
+      var e0 = document.createElement('p'); e0.className = 'empty'; e0.textContent = Kin.shared ? Kin.SHARED_TEXT : 'To read your inbox here, add your Google Client ID in Settings, Email (the same one used for sending). Reading asks Google for a separate, read-only permission.'; host.appendChild(e0);
+      if (!Kin.shared) { var go = el('button', 'pill sm go'); go.type = 'button'; go.appendChild(el('span', 'pl', 'Open Email settings')); go.addEventListener('click', function () { $('shelf').hidden = true; settingsAt('email'); }); host.appendChild(go); }
+      return;
+    }
+    var bt = el('div', 'btns pills'); host.appendChild(bt);
+    function pb(label, cls, fn) { var b = el('button', 'pill sm ' + cls); b.type = 'button'; b.appendChild(el('span', 'pl', label)); b.addEventListener('click', function () { gesture(); fn(b); }); bt.appendChild(b); return b; }
+    function load(all) {
+      if (inboxBusy) return; inboxBusy = true; inboxErr = ''; refreshMade();
+      Kin.email.loadGis().then(function () { return Kin.email.inbox({ all: all }); }).then(function (list) { inboxCache = { list: list, all: all, at: Date.now() }; }, function (err) { inboxErr = String((err && err.message) || err); })
+        .then(function () { inboxBusy = false; refreshMade(); });
+    }
+    pb(inboxCache ? 'Check again' : 'Check inbox', 'go', function () { load(false); });
+    pb('Recent, read or not', 'alt', function () { load(true); });
+    if (inboxBusy) { note('Reading your inbox…'); return; }
+    if (inboxErr) { note(inboxErr); return; }
+    if (!inboxCache) { note('Tap Check inbox. Google asks once for read-only access; the messages stay on this page and are not stored.'); return; }
+    var list = inboxCache.list;
+    if (!list.length) { note(inboxCache.all ? 'Your inbox is empty.' : 'Nothing unread, sir.'); return; }
+    note(list.length + (inboxCache.all ? ' recent' : ' unread') + (list.length === 1 ? ' email' : ' emails') + ', checked ' + new Date(inboxCache.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) + '.');
+    pb('Summarize these', 'alt', function (b) {
+      handOff(b, 'Here are my ' + (inboxCache.all ? 'recent' : 'unread') + ' emails (From, Subject, the start of each):\n\n' + list.map(function (m, i) { return (i + 1) + '. ' + nameOf(m.from) + ' | ' + m.subject + ' | ' + m.snippet; }).join('\n') + '\n\nTell me what needs me, most urgent first, in a few short lines, and which deserve a reply.');
+    });
+    list.forEach(function (m) {
+      var r = document.createElement('div'); r.className = 'ibrow' + (m.unread ? ' unread' : '');
+      var top = document.createElement('div'); top.className = 'ibtop';
+      var who = document.createElement('b'); who.textContent = nameOf(m.from); top.appendChild(who);
+      var when = document.createElement('small'); when.textContent = m.date ? new Date(m.date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''; top.appendChild(when);
+      r.appendChild(top);
+      var sj = document.createElement('p'); sj.className = 'ibsub'; sj.textContent = m.subject; r.appendChild(sj);
+      var sn = document.createElement('p'); sn.className = 'ibsnip'; sn.textContent = m.snippet; r.appendChild(sn);
+      var acts = document.createElement('div'); acts.className = 'btns';
+      var rep = document.createElement('button'); rep.type = 'button'; rep.className = 'lnk'; rep.textContent = 'Draft reply';
+      rep.addEventListener('click', function () { gesture(); handOff(rep, 'Draft a reply to this email, in my voice, short. From: ' + m.from + '. Subject: ' + m.subject + '. It says: "' + m.snippet + '". Put it in an email draft to them with "Re: ' + m.subject.replace(/^re:\s*/i, '') + '" as the subject.'); });
+      var op = document.createElement('button'); op.type = 'button'; op.className = 'lnk dim'; op.textContent = 'Open in Gmail';
+      op.addEventListener('click', function () { window.open(Kin.email.threadUrl(m), '_blank', 'noopener,noreferrer'); });
+      acts.appendChild(rep); acts.appendChild(op); r.appendChild(acts); host.appendChild(r);
+    });
+  }
+  /** the calendar: the next few days from Google Calendar, read on a tap, held in memory for this visit only */
+  var calCache = null, calBusy = false, calErr = '';
+  function calShelf(host) {
+    if (!Kin.email) return;
+    function note(t) { var p = document.createElement('p'); p.className = 'note'; p.textContent = t; host.appendChild(p); return p; }
+    if (!Kin.email.canRead()) {
+      var e0 = document.createElement('p'); e0.className = 'empty'; e0.textContent = Kin.shared ? Kin.SHARED_TEXT : 'To see your calendar here, add your Google Client ID in Settings, Email. Google asks once for read-only calendar access.'; host.appendChild(e0);
+      if (!Kin.shared) { var go = el('button', 'pill sm go'); go.type = 'button'; go.appendChild(el('span', 'pl', 'Open Email settings')); go.addEventListener('click', function () { $('shelf').hidden = true; settingsAt('email'); }); host.appendChild(go); }
+      return;
+    }
+    var bt = el('div', 'btns pills'); host.appendChild(bt);
+    function pb(label, cls, fn) { var b = el('button', 'pill sm ' + cls); b.type = 'button'; b.appendChild(el('span', 'pl', label)); b.addEventListener('click', function () { gesture(); fn(b); }); bt.appendChild(b); return b; }
+    function load(days) {
+      if (calBusy) return; calBusy = true; calErr = ''; refreshMade();
+      Kin.email.loadGis().then(function () { return Kin.email.calendar({ days: days }); }).then(function (list) { calCache = { list: list, days: days, at: Date.now() }; }, function (err) { calErr = String((err && err.message) || err); })
+        .then(function () { calBusy = false; refreshMade(); });
+    }
+    pb(calCache ? 'Check again' : 'Next 3 days', 'go', function () { load(calCache ? calCache.days : 3); });
+    pb('Next 7 days', 'alt', function () { load(7); });
+    if (calBusy) { note('Reading your calendar…'); return; }
+    if (calErr) { note(calErr); return; }
+    if (!calCache) { note('Tap Next 3 days. Google asks once for read-only calendar access; nothing is stored on this device.'); return; }
+    var list = calCache.list;
+    if (!list.length) { note('Nothing on your calendar for the next ' + calCache.days + ' days, sir.'); return; }
+    function hm(t) { return new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); }
+    function span(e) {
+      if (e.allDay) return 'All day';
+      var a = hm(e.start), b = e.end ? hm(e.end) : '', ma = /\s?[AP]M$/i.exec(a), mb = /\s?[AP]M$/i.exec(b);
+      if (ma && mb && ma[0].trim() === mb[0].trim()) a = a.slice(0, ma.index);
+      return b ? a + '–' + b : a;
+    }
+    pb('Plan my day', 'alt', function (b) {
+      handOff(b, 'Here is my calendar for the next ' + calCache.days + ' days:\n\n' + list.map(function (e) { return new Date(e.start).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ', ' + span(e) + ': ' + e.title + (e.where ? ' (' + e.where + ')' : '') + (e.who.length ? ' with ' + e.who.join(', ') : ''); }).join('\n') + '\n\nGive me a short plan: what matters most, where the free time is, and anything I should prepare for.');
+    });
+    var lastDay = '';
+    list.forEach(function (e) {
+      var d = new Date(e.start), day = d.toDateString();
+      if (day !== lastDay) {
+        lastDay = day; var h = document.createElement('h4'); h.className = 'calday';
+        var today = new Date(), tom = new Date(today.getTime() + 864e5);
+        h.textContent = day === today.toDateString() ? 'Today' : day === tom.toDateString() ? 'Tomorrow' : d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+        host.appendChild(h);
+      }
+      var r = document.createElement('div'); r.className = 'calrow' + (!e.allDay && e.end && e.end < Date.now() ? ' past' : '');
+      var t = document.createElement('span'); t.className = 'caltime'; t.textContent = span(e); r.appendChild(t);
+      var body = document.createElement('div'); body.className = 'calbody';
+      var ti = document.createElement('b'); ti.textContent = e.title; body.appendChild(ti);
+      var meta = [e.where, e.who.length ? 'with ' + e.who.join(', ') : ''].filter(Boolean).join(' · ');
+      if (meta) { var m = document.createElement('small'); m.textContent = meta; body.appendChild(m); }
+      var acts = document.createElement('div'); acts.className = 'btns';
+      if (e.meet) { var jn = document.createElement('button'); jn.type = 'button'; jn.className = 'lnk'; jn.textContent = 'Join'; jn.addEventListener('click', function () { window.open(e.meet, '_blank', 'noopener,noreferrer'); }); acts.appendChild(jn); }
+      if (e.link) { var op = document.createElement('button'); op.type = 'button'; op.className = 'lnk dim'; op.textContent = 'Open'; op.addEventListener('click', function () { window.open(e.link, '_blank', 'noopener,noreferrer'); }); acts.appendChild(op); }
+      if (acts.children.length) body.appendChild(acts);
+      r.appendChild(body); host.appendChild(r);
+    });
   }
   /** a chart on the shelf: the chart itself (hover or tap for values), Download SVG, Download PNG, Copy, Remove */
   function chartShelf(host, m) {
@@ -901,6 +1066,7 @@
   $('shelfb').addEventListener('click', function () { gesture(); openShelf(shelfTab); });
   $('shelfx').addEventListener('click', function () { $('shelf').hidden = true; });
   $('shelftabs').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; shelfTab = b.dataset.tab; shelfOpen = ''; refreshMade(); });
+  outboxCount();
   $('thread').addEventListener('click', function (e) { var b = e.target.closest('[data-made]'); if (b) openShelf('made', b.dataset.made); });
   Kin.mind.onTimer(function (t) {
     var el = $('stT');
