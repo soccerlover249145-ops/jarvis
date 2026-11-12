@@ -188,6 +188,29 @@
     }
     return null;
   }
+  /** lists from another device (move.js): items not on a list yet (the same id or the same words), each cleaned,
+      ticked ones still ticked; a list is made only for an item that comes in. dry: nothing changes, and the items that
+      would come in are returned ({ list, text }). Otherwise returns how many came in */
+  function mergeIn(lists, dry) {
+    if (!Array.isArray(lists)) return dry ? [] : 0;
+    var d = read(), adds = [];
+    lists.slice(0, MAX_LISTS).forEach(function (x) {
+      if (!x || typeof x !== 'object' || typeof x.name !== 'string' || !Array.isArray(x.items)) return;
+      var k = key(x.name); if (!k) return;
+      var l = d.lists.filter(function (y) { return y.name === k; })[0];
+      x.items.slice(0, MAX_ITEMS).forEach(function (it) {
+        if (!it || typeof it !== 'object' || typeof it.text !== 'string') return;
+        var t = cap(clean(it.text)); if (!t) return;
+        if (!l) { if (d.lists.length >= MAX_LISTS) return; l = { id: uid('L'), name: k, items: [], made: Date.now() }; d.lists.push(l); }
+        if (l.items.length >= MAX_ITEMS || l.items.some(function (y) { return y.id === it.id || y.text.toLowerCase() === t.toLowerCase(); })) return;
+        l.items.push({ id: typeof it.id === 'string' && /^i[a-z0-9]{4,40}$/.test(it.id) ? it.id : uid('i'), text: t, at: isFinite(it.at) && Math.abs(+it.at) <= 8.64e15 ? Math.round(+it.at) : Date.now(), done: it.done ? (isFinite(it.done) && +it.done > 0 && +it.done <= 8.64e15 ? Math.round(+it.done) : Date.now()) : 0 });
+        adds.push({ list: title(k), text: t });
+      });
+    });
+    if (dry) return adds;
+    if (adds.length) write(d);
+    return adds.length;
+  }
   /** a list in plain words, for Claude when the founder asks about it (read_list in brain.js): open items first */
   function text(name) {
     var l = get(name); if (!l) return null;
@@ -197,5 +220,5 @@
   function onChange(f) { subs.push(f); }
   try { window.addEventListener('storage', function (e) { if (e.key === KEY) subs.forEach(function (f) { try { f(); } catch (x) {} }); }); } catch (e) {}
 
-  Kin.lists = { error: function () { return lastErr; }, instant: instant, all: all, names: names, get: get, add: add, remove: remove, toggle: toggle, clear: clear, undo: undo, restore: restore, drop: drop, key: key, title: title, split: split, text: text, onChange: onChange, findItem: findItem };
+  Kin.lists = { error: function () { return lastErr; }, mergeIn: mergeIn, instant: instant, all: all, names: names, get: get, add: add, remove: remove, toggle: toggle, clear: clear, undo: undo, restore: restore, drop: drop, key: key, title: title, split: split, text: text, onChange: onChange, findItem: findItem };
 })();

@@ -893,16 +893,16 @@
      notification when the page is in the background */
   if (Kin.remind) Kin.remind.onDue(function (r) {
     flare(); voice.chime('wake');
-    var line = 'Reminder, sir: ' + r.text + '.', t = $('thread'), e0 = t.querySelector('.empty'); if (e0) e0.remove();
+    var line = (r.summary ? 'Reminders, sir: ' : 'Reminder, sir: ') + r.text + '.', t = $('thread'), e0 = t.querySelector('.empty'); if (e0) e0.remove();
     var d = document.createElement('div'); d.className = 'msg kin card remind'; d.dataset.remind = r.id;
-    var lab = document.createElement('small'); lab.textContent = r.late ? 'Reminder, missed while Jarvis was closed' : 'Reminder'; d.appendChild(lab);
+    var lab = document.createElement('small'); lab.textContent = (r.summary ? 'Reminders' : 'Reminder') + (r.late ? ', missed while Jarvis was closed' : ''); d.appendChild(lab);
     var tx = document.createElement('p'); tx.className = 'asktitle'; tx.textContent = r.text; d.appendChild(tx);
     var hm = function (x) { return new Date(x).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); };
     var wh = document.createElement('p'); wh.className = 'note'; wh.textContent = (r.late ? 'It was set for ' + Kin.remind.when(r.at) : 'Set for ' + hm(r.at)) + (r.next ? '. Next: ' + Kin.remind.when(r.next) : '') + '.'; d.appendChild(wh);
     var bt = el('div', 'btns pills');
     function pb(label, cls, fn) { var b = el('button', 'pill sm ' + cls); b.type = 'button'; b.appendChild(el('span', 'pl', label)); b.addEventListener('click', function () { gesture(); fn(); refreshCal(); }); bt.appendChild(b); }
     pb('Done', 'go', function () { Kin.remind.done(r.id); d.classList.add('done'); bt.remove(); wh.textContent = r.next ? 'Done. Next: ' + Kin.remind.when(r.next) + '.' : 'Done.'; });
-    pb('Snooze 10 minutes', 'alt', function () { var s2 = Kin.remind.snooze(r.id, 10, r.text); d.classList.add('done'); bt.remove(); wh.textContent = s2 ? 'Snoozed until ' + hm(s2.at) + '.' : 'Could not snooze it.'; });
+    if (!r.summary) pb('Snooze 10 minutes', 'alt', function () { var s2 = Kin.remind.snooze(r.id, 10, r.text); d.classList.add('done'); bt.remove(); wh.textContent = s2 ? 'Snoozed until ' + hm(s2.at) + '.' : 'Could not snooze it.'; });
     if (r.repeat) pb('Stop repeating', 'stop', function () { Kin.remind.cancel(r.id); d.classList.add('done'); bt.remove(); wh.textContent = 'Stopped. It will not come back.'; });
     d.appendChild(bt); t.appendChild(d); showThread();
     caption(line, r.late ? 'Missed while Jarvis was closed' : 'Reminder');
@@ -1736,6 +1736,10 @@
     li(pv.memory + ' ', pv.memory === 1 ? 'thing it remembers, added' : 'things it remembers, added');
     li(pv.made + ' ', pv.made === 1 ? 'piece for the Made shelf' : 'pieces for the Made shelf');
     li(pv.log + ' ', pv.log === 1 ? 'logbook entry' : 'logbook entries');
+    li((pv.reminders || 0) + ' ', pv.reminders === 1 ? 'reminder still to come, added' : 'reminders still to come, added');
+    (pv.remWords || []).slice(0, 8).forEach(function (w) { li('Reminder: ', w); }); if ((pv.remWords || []).length > 8) li('', 'and ' + (pv.remWords.length - 8) + ' more reminders');
+    li((pv.listItems || 0) + ' ', pv.listItems === 1 ? 'list item, added' : 'list items, added');
+    (pv.itemWords || []).slice(0, 8).forEach(function (w) { li('List item: ', w); }); if ((pv.itemWords || []).length > 8) li('', 'and ' + (pv.itemWords.length - 8) + ' more list items');
     if (pv.replaced.length) li('Replaced: ', pv.replaced.join(', '));
     if (pv.added.length) li('Added: ', pv.added.join(', '));
     var cl = $('moveChangeList'); cl.textContent = '';
@@ -1753,7 +1757,7 @@
     if (Kin.shared) { $('moveNote').textContent = Kin.SHARED_TEXT; return; }
     $('moveNote').textContent = 'Preparing the file…';
     Kin.move.exportNow({ turns: $('moveTurns').checked }).then(function (r) {
-      var c = r.counts; $('moveNote').textContent = 'Saved ' + r.name + ': ' + c.memory + ' remembered, ' + c.made + ' made, ' + c.log + ' logbook, ' + c.settings + ' settings' + (c.turns ? ', and the conversation' : '') + '. No keys or tokens are in it.';
+      var c = r.counts; $('moveNote').textContent = 'Saved ' + r.name + ': ' + c.memory + ' remembered, ' + c.made + ' made, ' + c.log + ' logbook, ' + (c.reminders || 0) + ' reminders, ' + (c.listItems || 0) + ' list items, ' + c.settings + ' settings' + (c.turns ? ', and the conversation' : '') + '. No keys or tokens are in it.';
     }, function (err) { $('moveNote').textContent = (err && err.message) || 'The file could not be made.'; });
   });
   $('moveFile').addEventListener('change', function (e) {
@@ -1767,7 +1771,7 @@
     if (!e.isTrusted || !movePlan) return; gesture();
     var plan = movePlan, withTurns = $('moveInTurns').checked === true; moveHide(); $('moveNote').textContent = 'Bringing it in…';
     Kin.move.apply(plan, { turns: withTurns }).then(function (r) {
-      $('moveNote').textContent = 'Done: ' + r.memory + ' remembered, ' + r.made + ' made, ' + r.log + ' logbook, ' + r.settings + ' settings' + (r.refused ? '; ' + r.refused + ' left out by the never-keep rules' : '') + '. Reloading…';
+      $('moveNote').textContent = 'Done: ' + r.memory + ' remembered, ' + r.made + ' made, ' + r.log + ' logbook, ' + (r.reminders || 0) + ' reminders, ' + (r.listItems || 0) + ' list items, ' + r.settings + ' settings' + (r.refused ? '; ' + r.refused + ' left out by the never-keep rules' : '') + '. Reloading…';
       setTimeout(function () { location.reload(); }, 1600);
     }, function (err) { $('moveNote').textContent = (err && err.message) || 'It could not be applied.'; });
   });

@@ -72,6 +72,37 @@
     plan(); return r;
   }
   function cancel(id) { var a = list(), b = a.filter(function (r) { return r.id !== id; }), gone = b.length !== a.length; if (gone) save(b); plan(); return gone; }
+  /** reminders from another device (move.js): only ones not here yet (not the same id, and not the same words at the
+      same times), each checked and cleaned. A one-off that is already due stays behind (that device showed it); a
+      repeating one starts at its next time; at most three that repeat more often than daily come in from one file.
+      dry: nothing changes, and the reminders that would come in are returned. Otherwise returns how many came in */
+  function importAll(items, dry) {
+    if (!Array.isArray(items)) return dry ? [] : 0;
+    var a = list(), have = {}, adds = [], now = Date.now(), open = a.filter(function (r) { return !r.done; }), nOpen = open.length, fast = 0, sigs = {};
+    var sig = function (r) { return String(r.text).toLowerCase() + '|' + (r.repeat || '') + '|' + (r.every || 0) + '|' + (r.hm ? r.hm.join(':') : '') + '|' + (r.dom || 0) + '|' + (r.repeat || r.every ? '' : r.at); };
+    a.forEach(function (r) { have[r.id] = 1; }); open.forEach(function (r) { sigs[sig(r)] = 1; });
+    items.slice(0, 200).forEach(function (x) {
+      if (!x || typeof x !== 'object' || typeof x.id !== 'string' || !/^r[a-z0-9]{4,40}$/.test(x.id) || have[x.id] || x.done || typeof x.text !== 'string' || !(Math.abs(+x.at) <= 8.64e15)) return;
+      if (nOpen >= MAX) return;
+      var r = { id: x.id, at: Math.round(+x.at), text: clean(x.text), made: isFinite(x.made) && +x.made > 0 ? Math.min(now, Math.round(+x.made)) : now };
+      if (x.repeat === 'day' || x.repeat === 'weekday' || x.repeat === 'week' || x.repeat === 'month') r.repeat = x.repeat;
+      else if (typeof x.every === 'number' && x.every >= MIN_EVERY && (x.every <= 7 * DAY || (x.every % (7 * DAY) === 0 && x.every <= 28 * DAY))) r.every = Math.round(x.every);
+      if (r.every && r.every < DAY && fast >= 3) return;
+      if (!r.repeat && !r.every && (r.at <= now || r.at - now > AHEAD)) return;
+      var d0 = new Date(r.at);
+      if (r.repeat || (r.every && r.every % DAY === 0)) r.hm = Array.isArray(x.hm) && x.hm.length === 2 && x.hm[0] >= 0 && x.hm[0] < 24 && x.hm[1] >= 0 && x.hm[1] < 60 ? [Math.floor(x.hm[0]), Math.floor(x.hm[1])] : [d0.getHours(), d0.getMinutes()];
+      if (r.repeat === 'month') r.dom = x.dom >= 1 && x.dom <= 31 ? Math.floor(x.dom) : d0.getDate();
+      if (r.every && r.every % DAY !== 0) { if (r.at <= now) r.at += (Math.floor((now - r.at) / r.every) + 1) * r.every; }
+      else if (r.repeat || r.every) { for (var g = 0; r.at <= now && g < 2000; g++) r.at = step(r, r.at); }
+      if (!(r.at > now) || r.at - now > AHEAD || sigs[sig(r)]) return;
+      if (r.every && r.every < DAY) fast++;
+      sigs[sig(r)] = 1; have[r.id] = 1; adds.push(r); nOpen++;
+    });
+    if (dry) return adds;
+    if (!adds.length) return 0;
+    if (!save(a.concat(adds))) return 0;
+    plan(); return adds.length;
+  }
   /** puts cancelled reminders back (Undo) */
   function restore(items) {
     var a = list(); (Array.isArray(items) ? items : [items]).forEach(function (r) { if (valid(r) && !find(a, r.id)) a.push(r); });
@@ -147,7 +178,8 @@
     });
     if (changed) save(a);
     plan();
-    due.forEach(function (x) { lastFired = { id: x.id, at: Date.now(), repeat: !!x.repeat, text: x.text }; subs.forEach(function (f) { try { f(x); } catch (e) {} }); });
+    if (due.length > 3) { var restD = due.slice(2); due = due.slice(0, 2).concat([{ id: '', summary: true, text: restD.length + ' more: ' + restD.map(function (x) { return x.text; }).join('; ').slice(0, 300), at: restD[0].at, late: restD.some(function (x) { return x.late; }), repeat: '', every: 0, next: 0 }]); }
+    due.forEach(function (x) { if (!x.summary) lastFired = { id: x.id, at: Date.now(), repeat: !!x.repeat, text: x.text }; subs.forEach(function (f) { try { f(x); } catch (e) {} }); });
   }
   /* a timer for the next one, so it fires on time; the 15-second check covers sleep, clock changes and other tabs */
   function plan() {
@@ -622,6 +654,6 @@
     return set(r);
   }
 
-  Kin.remind = { instant: instant, parse: parse, waiting: waiting, dropAsk: dropAsk, list: list, pending: pending, add: add, done: done, snooze: snooze, cancel: cancel, restore: restore, find: findBy,
+  Kin.remind = { importAll: importAll, instant: instant, parse: parse, waiting: waiting, dropAsk: dropAsk, list: list, pending: pending, add: add, done: done, snooze: snooze, cancel: cancel, restore: restore, find: findBy,
     onDue: onDue, check: check, describe: describe, when: when, today: today, error: function () { return lastErr; } };
 })();

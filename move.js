@@ -3,7 +3,8 @@
    Keys, tokens, sign-ins and bridge receipts are never on the list, and the file is checked for every saved
    secret before it is offered. Nothing is uploaded: the file is handed to the browser to save.
    Import: the file is read and checked here, a preview says what would change, and nothing changes until a tap.
-   Settings are replaced; memory, the Made shelf and the logbook are merged without duplicates.
+   Settings are replaced; memory, the Made shelf, the logbook, reminders and lists are merged without duplicates.
+   Reminders and list items from a file are shown word for word in the preview before anything changes.
    At a shared or plain-http address (guard.js) nothing is read or written. */
 (function () {
   'use strict';
@@ -68,12 +69,14 @@
       var local = {}, names = Object.keys(ALLOW).concat(opts && opts.turns ? Object.keys(OPTIONAL) : []);
       names.forEach(function (k) { var v = ls(k); if (v != null && v.length <= MAX_VALUE) local[k] = v; });
       var file = { kind: KIND, version: VERSION, exported: new Date().toISOString(), local: local,
-        mind: { memory: mind ? mind.memory() : [], made: mind ? mind.made() : [], log: mind ? mind.log() : [] } };
+        mind: { memory: mind ? mind.memory() : [], made: mind ? mind.made() : [], log: mind ? mind.log() : [] },
+        /* reminders still to come and every list, kept on this device until now */
+        extra: { reminders: Kin.remind ? Kin.remind.pending() : [], lists: Kin.lists ? Kin.lists.all() : [] } };
       var text = JSON.stringify(file);
       var leak = secrets().some(function (s) { return text.indexOf(s) >= 0; }) || KEYISH.test(text);
-      if (leak) throw fail('A key or token turned up in what would be saved, so nothing was saved. Remove it from what Kin remembers or made, then try again.');
+      if (leak) throw fail('A key or token turned up in what would be saved, so nothing was saved. Remove it from what Kin remembers or made, or from your reminders and lists, then try again.');
       if (text.length > MAX_BYTES) throw fail('This device holds more than 20 MB to move. Remove some large pieces from the Made shelf first.');
-      return { text: text, name: 'kin-device-' + today() + '.json', counts: { settings: Object.keys(local).length, memory: file.mind.memory.length, made: file.mind.made.length, log: file.mind.log.length, turns: !!local['kin.turns'] } };
+      return { text: text, name: 'kin-device-' + today() + '.json', counts: { settings: Object.keys(local).length, memory: file.mind.memory.length, made: file.mind.made.length, log: file.mind.log.length, reminders: file.extra.reminders.length, listItems: file.extra.lists.reduce(function (n, l) { return n + (l.items || []).length; }, 0), turns: !!local['kin.turns'] } };
     });
   }
   function exportNow(opts) {
@@ -130,6 +133,7 @@
       });
       var m = raw.mind && typeof raw.mind === 'object' ? raw.mind : {};
       var inc = { memory: Array.isArray(m.memory) ? m.memory : [], made: Array.isArray(m.made) ? m.made : [], log: Array.isArray(m.log) ? m.log : [] };
+      var ex = raw.extra && typeof raw.extra === 'object' && !Array.isArray(raw.extra) ? raw.extra : {}, extra = { reminders: Array.isArray(ex.reminders) ? ex.reminders.slice(0, 200) : [], lists: Array.isArray(ex.lists) ? ex.lists.slice(0, 30) : [] };
       var mind = Kin.mind;
       return Promise.resolve(mind && !mind.loaded() ? mind.load() : null).then(function () {
         var norm = function (t) { return Kin.ears ? Kin.ears.norm(String(t || '')) : String(t || '').toLowerCase(); };
@@ -140,8 +144,11 @@
         var newLog = inc.log.filter(function (x) { return x && !logHave[x.id]; }).length;
         var replaced = [], added = [];
         Object.keys(local).forEach(function (k) { var label = ALLOW[k]; var list = ls(k) != null ? replaced : added; if (list.indexOf(label) < 0) list.push(label); });
-        return { local: local, turns: turns, mind: inc, exported: typeof raw.exported === 'string' ? raw.exported.slice(0, 40) : '', rejected: rejected,
-          preview: { replaced: replaced, added: added, memory: newMem, made: newMade, log: newLog, turns: !!turns, changes: sensitiveChanges(local) } };
+        /* what would come in, word for word: a file could plant a reminder or a list item, so the founder sees them first */
+        var remIn = Kin.remind && Kin.remind.importAll ? Kin.remind.importAll(extra.reminders, true) : [], itemsIn = Kin.lists && Kin.lists.mergeIn ? Kin.lists.mergeIn(extra.lists, true) : [];
+        return { local: local, turns: turns, mind: inc, extra: extra, exported: typeof raw.exported === 'string' ? raw.exported.slice(0, 40) : '', rejected: rejected,
+          preview: { replaced: replaced, added: added, memory: newMem, made: newMade, log: newLog, reminders: remIn.length, listItems: itemsIn.length,
+            remWords: remIn.map(function (r) { return r.text + ' (' + Kin.remind.describe(r) + ')'; }), itemWords: itemsIn.map(function (x) { return x.list + ': ' + x.text; }), turns: !!turns, changes: sensitiveChanges(local) } };
       });
     });
   }
@@ -154,8 +161,9 @@
     Object.keys(plan.local).forEach(function (k) { if (!has(ALLOW, k)) return; try { localStorage.setItem(k, plan.local[k]); wrote++; } catch (e) {} });
     /* the conversation only with the founder's explicit opt-in on the preview */
     if (opts && opts.turns === true && typeof plan.turns === 'string') { try { localStorage.setItem('kin.turns', plan.turns); wrote++; } catch (e) {} }
-    var got = Kin.mind ? Kin.mind.mergeIn(plan.mind) : { memory: 0, made: 0, log: 0, refused: 0 };
-    return (Kin.mind ? Kin.mind.flush() : Promise.resolve()).then(function () { return { settings: wrote, memory: got.memory, made: got.made, log: got.log, refused: got.refused }; });
+    var got = Kin.mind ? Kin.mind.mergeIn(plan.mind) : { memory: 0, made: 0, log: 0, refused: 0 }, ex = plan.extra || {};
+    var rems = Kin.remind && Kin.remind.importAll ? Kin.remind.importAll(ex.reminders || []) : 0, items = Kin.lists && Kin.lists.mergeIn ? Kin.lists.mergeIn(ex.lists || []) : 0;
+    return (Kin.mind ? Kin.mind.flush() : Promise.resolve()).then(function () { return { settings: wrote, memory: got.memory, made: got.made, log: got.log, reminders: rems, listItems: items, refused: got.refused }; });
   }
 
   Kin.move = { build: build, exportNow: exportNow, read: read, apply: apply, ALLOW: ALLOW, OPTIONAL: OPTIONAL, JSONISH: JSONISH, MAX_BYTES: MAX_BYTES };
