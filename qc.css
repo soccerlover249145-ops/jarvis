@@ -4,11 +4,11 @@
    Fonts are self-hosted (the page's CSP allows fonts from this site only): Jost and IBM Plex Mono, see style.css. */
 
 :root {
-  --bg: #020814; --s1: rgba(18, 52, 104, .30); --s2: rgba(30, 80, 150, .22); --s3: rgba(60, 130, 210, .16);
-  --line: rgba(150, 210, 255, .14); --line2: rgba(150, 210, 255, .26); --line-2: rgba(150, 210, 255, .26);
-  --hi: inset 0 1px 0 rgba(255, 255, 255, .10);
-  --text: #EAF4FF; --text-2: #A9C3DE; --text-3: #7F98B6;
-  --accent: #6FE3FF; --accent-2: #3FB6FF; --accent-ink: #021626;
+  --bg: #000000; --s1: rgba(255, 255, 255, .04); --s2: rgba(255, 255, 255, .06); --s3: rgba(255, 255, 255, .10);
+  --line: rgba(255, 255, 255, .12); --line2: rgba(255, 255, 255, .18); --line-2: rgba(255, 255, 255, .18);
+  --hi: inset 0 1px 0 rgba(255, 255, 255, .06);
+  --text: #F2F5F8; --text-2: #AEB6BF; --text-3: #777E86;
+  --accent: #EAF4FF; --accent-2: #FFFFFF; --accent-ink: #050608;
   --warm: #FFC870; --warm-ink: #2A1600; --ok: #7CF0C0; --bad: #FF8FA6;
   --f-ui: "Jost", "Avenir Next", "Futura", "Century Gothic", system-ui, sans-serif;
   --f-serif: "Jost", "Avenir Next", "Futura", system-ui, sans-serif;
@@ -16,9 +16,9 @@
   --f-lab: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --ease: cubic-bezier(.2, .75, .2, 1); --dur-1: 160ms; --dur-2: 260ms; --dur-3: 480ms;
   --gap: 18px; --dock: clamp(380px, 30vw, 440px);
-  --holo: linear-gradient(162deg, rgba(64, 140, 220, .22) 0%, rgba(22, 60, 120, .18) 46%, rgba(8, 22, 52, .40) 100%);
-  --holo-edge: rgba(150, 210, 255, .22);
-  --holo-glow: 0 24px 60px -24px rgba(0, 10, 30, .9), 0 0 0 1px rgba(150, 210, 255, .06), inset 0 1px 0 rgba(255, 255, 255, .14);
+  --holo: #000000;
+  --holo-edge: rgba(255, 255, 255, .14);
+  --holo-glow: none;
 
   /* the older stylesheets read these names */
   --fg: var(--text); --fg2: var(--text-2); --dim: var(--text-3); --read: var(--text-2); --signal: var(--accent);
@@ -37,9 +37,8 @@ code, pre, kbd, .md code, .md pre { font-family: var(--f-code) !important; }
 
 /* ================================================================= the page frame */
 .app { background: var(--bg); display: flex; flex-direction: column; }
-.app::before { content: ""; position: absolute; inset: -20% auto auto -10%; width: 70vw; height: 70vh; background: radial-gradient(closest-side, rgba(58, 166, 232, .12), transparent 70%); pointer-events: none; }
-.flare { background: radial-gradient(40% 40% at 85% 22%, rgba(116, 212, 255, .16), transparent 70%); }
-.flare.down { background: radial-gradient(40% 40% at 85% 22%, rgba(116, 212, 255, .06), transparent 70%); }
+.app::before { display: none; }
+.flare, .flare.down { display: none; }
 
 .top { position: relative; flex: none; height: calc(68px + var(--safe-t)); padding: var(--safe-t) 28px 0; gap: 12px; z-index: 5; }
 .mark { display: inline-flex; align-items: center; gap: 10px; font: 600 16px/1 var(--f-ui); letter-spacing: -.01em; color: var(--text); }
@@ -171,7 +170,7 @@ code, pre, kbd, .md code, .md pre { font-family: var(--f-code) !important; }
 .qladder span.on { background: var(--accent); }
 
 /* the first-run card sits at the top of the board */
-.board .loadcard { position: relative; left: auto; top: auto; transform: none; width: auto; max-width: none; margin: 0 0 var(--gap); padding: 20px 24px; border-radius: 22px; background: linear-gradient(170deg, rgba(116, 212, 255, .08), rgba(116, 212, 255, .01) 60%), var(--s1); border: 1px solid rgba(116, 212, 255, .2); box-shadow: var(--hi); -webkit-backdrop-filter: none; backdrop-filter: none; font: 400 14px/1.55 var(--f-ui); color: var(--text-2); z-index: 1; }
+.board .loadcard { position: relative; left: auto; top: auto; transform: none; width: auto; max-width: none; margin: 0 0 var(--gap); padding: 20px 0 0; border-radius: 0; background: none; border: 0; border-top: 1px solid var(--line); box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; font: 400 14px/1.55 var(--f-ui); color: var(--text-2); z-index: 1; text-align: center; }
 .board .loadcard p b { font: 400 30px/1.1 var(--f-serif); color: var(--text); }
 .loadbtn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px; border-radius: 999px; background: var(--text); color: #07080b; font: 500 15px/1 var(--f-ui); letter-spacing: 0; }
 
@@ -304,9 +303,9 @@ code, pre, kbd, .md code, .md pre { font-family: var(--f-code) !important; }
 
 /* ================================================================= panels: one right sheet (a bottom sheet on a phone) */
 .wl, .dl, .bb {
-  justify-content: flex-end; align-items: stretch; padding: 16px; background: radial-gradient(900px 700px at 70% 20%, rgba(30, 90, 180, .16), transparent 60%), rgba(1, 5, 12, .80); -webkit-backdrop-filter: none; backdrop-filter: none;
+  justify-content: flex-end; align-items: stretch; padding: 16px; background: rgba(0, 0, 0, .82); -webkit-backdrop-filter: none; backdrop-filter: none;
 }
-.wl-panel, .dl-panel, .bb-panel { flex: none; width: min(560px, 100%); max-width: none; margin: 0; align-self: flex-start; min-height: 100%; padding: 22px 24px 28px; border-radius: 32px; background: linear-gradient(170deg, #0a2142 0%, #061632 45%, #030b1c 100%); border: 1px solid var(--holo-edge); box-shadow: var(--holo-glow), 0 40px 120px -20px rgba(0, 0, 0, .9); animation: qsheet var(--dur-2) var(--ease); }
+.wl-panel, .dl-panel, .bb-panel { flex: none; width: min(560px, 100%); max-width: none; margin: 0; align-self: flex-start; min-height: 100%; padding: 22px 24px 28px; border-radius: 32px; background: #060708; border: 1px solid var(--holo-edge); box-shadow: 0 40px 120px -20px rgba(0, 0, 0, .9); animation: qsheet var(--dur-2) var(--ease); }
 .wn .wl-panel { max-width: none; width: min(600px, 100%); }
 .gx .wl-panel { max-width: none; width: min(640px, 100%); }
 .acx .wl-panel { width: min(600px, 100%); }
@@ -418,11 +417,8 @@ code, pre, kbd, .md code, .md pre { font-family: var(--f-code) !important; }
 /* ================================================================= the holographic skin
    Every surface is lit glass: a blue gradient fill, a cool rim, a sheen along the top edge and a soft glow below.
    Labels are IBM Plex Mono in spaced capitals; words and numbers are Jost; the big numbers glow faintly. */
-body, .app { background:
-  radial-gradient(1200px 760px at 22% -8%, rgba(40, 120, 220, .22), transparent 60%),
-  radial-gradient(1000px 700px at 96% 108%, rgba(20, 80, 170, .20), transparent 62%),
-  linear-gradient(180deg, #030c1d 0%, #020814 60%, #01050d 100%); }
-.app::before { background: radial-gradient(closest-side, rgba(63, 182, 255, .14), transparent 70%); }
+body, .app { background: #000000; }
+.app::before { display: none; }
 
 /* the header */
 .mark { font: 400 18px/1 var(--f-ui); letter-spacing: .34em; text-transform: uppercase; color: var(--text); }
@@ -501,7 +497,7 @@ body, .app { background:
 .qbtn:focus-visible, .lnk:focus-visible, .qchipbtn:focus-visible, .wl-pill:focus-visible, .dl-pill:focus-visible, .bb-pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 /* the dock and the conversation */
-.dock { border-radius: 32px; background: linear-gradient(175deg, rgba(20, 60, 120, .34) 0%, rgba(8, 26, 60, .42) 40%, rgba(3, 10, 24, .82) 100%); border: 1px solid var(--holo-edge); box-shadow: var(--holo-glow), 0 30px 80px -30px rgba(0, 0, 0, .8); }
+.dock { border-radius: 0; background: none; border: 0; box-shadow: none; }
 .dock::before { content: ""; position: absolute; left: 22px; right: 22px; top: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(190, 235, 255, .6), transparent); }
 .dock-h { border-bottom-color: rgba(150, 210, 255, .10); }
 .app .dock .dock-h #caption.caption { font: 300 17px/24px var(--f-ui); color: #fff; }
@@ -517,7 +513,7 @@ body, .app { background:
 .src small, .meta, .thumb, .madeb { font: 500 11px/1.4 var(--f-lab); letter-spacing: .14em; text-transform: uppercase; }
 .src ol { font: 400 13px/19px var(--f-ui); color: var(--text-2); }
 .src a { color: var(--accent); }
-.dock .bar { background: rgba(2, 10, 24, .55); border-color: rgba(150, 210, 255, .28); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08); }
+.dock .bar { background: rgba(255, 255, 255, .04); border-color: var(--line2); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06); }
 .dock .bar input { color: #fff; }
 .dock .bar input::placeholder { color: var(--text-3); }
 .dock .bar #mic[aria-pressed="true"] { background: linear-gradient(180deg, #c4f5ff, var(--accent)); color: var(--accent-ink); box-shadow: 0 0 20px rgba(111, 227, 255, .6); }
@@ -538,7 +534,7 @@ body, .app { background:
 .mailcard .mlbl { font: 500 11px/36px var(--f-lab); letter-spacing: .14em; text-transform: uppercase; }
 
 /* sheets: settings and the Made shelf */
-.sheet { border-radius: 32px; background: linear-gradient(175deg, #0a2142 0%, #061632 40%, #030b1c 100%); border-color: var(--holo-edge); box-shadow: var(--holo-glow), 0 40px 120px -20px rgba(0, 0, 0, .9), 0 0 0 200vmax rgba(1, 5, 12, .78); }
+.sheet { border-radius: 32px; background: #060708; border-color: var(--holo-edge); box-shadow: 0 40px 120px -20px rgba(0, 0, 0, .9), 0 0 0 200vmax rgba(0, 0, 0, .78); }
 .sheethead { border-bottom-color: rgba(150, 210, 255, .12); }
 .sheethead h2, .mtitle { font: 300 30px/1 var(--f-ui); letter-spacing: .01em; color: #fff; text-shadow: 0 0 24px rgba(111, 227, 255, .25); }
 .sheethead .icon { border-color: var(--holo-edge); }
@@ -553,13 +549,12 @@ body, .app { background:
 .steps .step b { font: 500 11px/1.3 var(--f-lab); letter-spacing: .16em; text-transform: uppercase; color: var(--text-3); }
 .mrow, .logrow, .memrow, .gbjob { background: rgba(120, 190, 255, .07); border: 1px solid rgba(150, 210, 255, .14); border-radius: 18px; }
 .mrow small, .logrow small, .memrow small { font: 500 11px/1.3 var(--f-lab); letter-spacing: .14em; text-transform: uppercase; color: var(--text-2); }
-.board .loadcard { background: var(--holo); border-color: var(--holo-edge); box-shadow: var(--holo-glow); }
 .board .loadcard p b { font: 300 30px/1.1 var(--f-ui); color: #fff; }
 
 /* phone: the frosted bar and the conversation sheet in the same glass */
 @media (max-width: 1099px) {
   .dock .bar { background: rgba(4, 16, 36, .88); border-color: rgba(150, 210, 255, .3); box-shadow: 0 0 0 1px rgba(150, 210, 255, .06), 0 20px 60px -20px rgba(0, 0, 0, .9), inset 0 1px 0 rgba(255, 255, 255, .1); }
-  .app .dock .thread:not([hidden]) { background: linear-gradient(180deg, #0a2142 0%, #041128 60%, #020814 100%); border-top-color: var(--holo-edge); }
+  .app .dock .thread:not([hidden]) { background: #050607; border-top-color: var(--holo-edge); }
   .app .dock .dock-h #caption.caption { background: #071a36; border-color: var(--holo-edge); font: 400 14px/20px var(--f-ui); }
 }
 @media (max-width: 700px) {
