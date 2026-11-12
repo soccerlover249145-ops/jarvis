@@ -922,9 +922,85 @@
         bx.appendChild(cp); d.appendChild(bx);
       }
       box.appendChild(d); return;
+    } else if (c.kind === 'coin' || c.kind === 'dice' || c.kind === 'num') {
+      d.classList.add('plcard'); var rolls = (c.rolls || []).slice(0, 10).map(function (x) { return Math.round(+x) || 0; }), sides = Math.round(+c.sides) || 6;
+      if (c.kind === 'coin') { d.appendChild(coinFace(c.v === 'Tails' ? 'Tails' : 'Heads')); b.textContent = 'Coin flip'; big.textContent = c.v === 'Tails' ? 'Tails' : 'Heads'; d.setAttribute('aria-label', 'Coin flip'); }
+      else if (c.kind === 'num') { d.appendChild(anTile('', '#', 'calc')); b.textContent = 'From ' + c.lo + ' to ' + c.hi; big.textContent = String(c.v); d.setAttribute('aria-label', 'Random number'); }
+      else {
+        b.textContent = 'Rolled ' + String(c.what || 'dice'); d.setAttribute('aria-label', 'Dice');
+        if (rolls.length === 1) { d.appendChild(sides === 6 ? dieFace(rolls[0], true) : anTile('D' + sides, String(rolls[0]))); big.textContent = String(rolls[0]); }
+        else {
+          d.appendChild(sides === 6 ? dieFace(5, true) : anTile('D' + sides, '\u00d7' + rolls.length)); var row = el('div', 'dice'); row.setAttribute('role', 'img'); row.setAttribute('aria-label', rolls.join(', '));
+          rolls.forEach(function (v) { row.appendChild(sides === 6 ? dieFace(v) : el('span', 'die dnum', String(v))); });
+          tx.insertBefore(row, big); big.textContent = 'Total ' + rolls.reduce(function (a, x) { return a + x; }, 0); big.classList.add('long');
+        }
+      }
+      d.appendChild(tx);
+      /* "Flip again", "Roll again", "Again": the same words once more, the card redrawn in its place */
+      if (c.again && Kin.quick) {
+        var pbx = el('div', 'tmb'), ag = el('button', '', c.kind === 'coin' ? 'Flip again' : c.kind === 'dice' ? 'Roll again' : 'Again'); ag.type = 'button';
+        ag.addEventListener('click', function () {
+          gesture(); var r2 = Kin.quick.instant(String(c.again)); if (!r2 || !r2.card) return;
+          var tmp = document.createElement('div'); ansCard(r2.card, tmp); var nc = tmp.firstChild; if (!nc) return;
+          /* the words above the card follow it */
+          var wrap = d.parentNode, mdp = wrap.querySelector('.md'); if (mdp && r2.show) { mdp.textContent = ''; Kin.mind.md(r2.show, mdp); }
+          var had = document.activeElement === ag; wrap.replaceChild(nc, d); if (had) { var b2 = nc.querySelector('.tmb button'); if (b2) b2.focus({ preventScroll: true }); }
+          caption(r2.say, 'Done here, no call needed'); captionFade(5000);
+        });
+        pbx.appendChild(ag); d.appendChild(pbx);
+      }
+      box.appendChild(d); return;
+    } else if (c.kind === 'sw') {
+      /* the stopwatch has one card: it moves down to the newest answer about it */
+      var was = document.querySelector('.swcard[data-live="1"]');
+      if (was) { box.appendChild(was); swPaint(was); swEnsure(); return; }
+      d.classList.add('swcard'); d.dataset.live = '1'; d.setAttribute('aria-label', 'Stopwatch');
+      var g = svgEl('svg', { viewBox: '0 0 64 64', 'class': 'tmring', 'aria-hidden': 'true' });
+      g.appendChild(svgEl('circle', { 'class': 'trk', cx: 32, cy: 32, r: 27 }));
+      g.appendChild(svgEl('circle', { 'class': 'arc', cx: 32, cy: 32, r: 27, 'stroke-dasharray': TM_C.toFixed(2), transform: 'rotate(-90 32 32)' }));
+      g.appendChild(svgEl('path', { 'class': 'tmglyph', d: 'M29 21.5h6M32 21.5v3M32 35.5v-5' })); g.appendChild(svgEl('circle', { 'class': 'tmglyph', cx: 32, cy: 35.5, r: 9 }));
+      d.appendChild(g); b.textContent = 'Stopwatch'; big.setAttribute('role', 'timer'); d.appendChild(tx); d.appendChild(el('div', 'tmb'));
+      box.appendChild(d); swPaint(d); swEnsure(); return;
     } else return;
     d.appendChild(tx); box.appendChild(d);
   }
+  /* a coin: H in gold, T in blue */
+  function coinFace(v) {
+    var g = svgEl('svg', { viewBox: '0 0 64 64', 'class': 'coin' + (v === 'Tails' ? ' tails' : ''), 'aria-hidden': 'true' });
+    g.appendChild(svgEl('circle', { cx: 32, cy: 32, r: 27 })); g.appendChild(svgEl('circle', { 'class': 'cin', cx: 32, cy: 32, r: 21 }));
+    var t = svgEl('text', { x: 32, y: 40.5, 'text-anchor': 'middle' }); t.textContent = v === 'Tails' ? 'T' : 'H'; g.appendChild(t); return g;
+  }
+  /* a six-sided die with its pips */
+  var PIPS = { 1: [[20, 20]], 2: [[12, 12], [28, 28]], 3: [[12, 12], [20, 20], [28, 28]], 4: [[12, 12], [28, 12], [12, 28], [28, 28]], 5: [[12, 12], [28, 12], [20, 20], [12, 28], [28, 28]], 6: [[12, 11], [28, 11], [12, 20], [28, 20], [12, 29], [28, 29]] };
+  function dieFace(v, tile) {
+    var g = svgEl('svg', { viewBox: '0 0 40 40', 'class': tile ? 'die dtile' : 'die', 'aria-hidden': 'true' });
+    g.appendChild(svgEl('rect', { x: 2, y: 2, width: 36, height: 36, rx: 8, 'class': 'dbody' }));
+    (PIPS[v] || []).forEach(function (p) { g.appendChild(svgEl('circle', { cx: p[0], cy: p[1], r: 3.4, 'class': 'dpip' })); }); return g;
+  }
+  /* the stopwatch card: the time to a tenth, the ring sweeping once a minute, and Stop, Resume, Reset or Start */
+  var swIv = 0;
+  function swText(ms) { var t = Math.max(0, Math.floor(ms / 100)), s = Math.floor(t / 10), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60, p = function (n) { return ('0' + n).slice(-2); }; return (h ? h + ':' + p(m) : m) + ':' + p(x) + '.' + (t % 10); }
+  function swPaint(c) {
+    var w = Kin.quick && Kin.quick.stopwatch ? Kin.quick.stopwatch() : null, st = !w ? 'clear' : w.running ? 'run' : 'stop';
+    c.querySelector('.tmt').textContent = w ? swText(w.ms) : '0:00.0';
+    c.querySelector('.tml small').textContent = st === 'run' ? 'Running' : st === 'stop' ? 'Stopped' : 'Cleared';
+    c.querySelector('.arc').style.strokeDashoffset = w ? (TM_C * (1 - (w.ms % 60000) / 60000)).toFixed(2) : TM_C.toFixed(2);
+    if (c.dataset.sw === st) return;
+    c.dataset.sw = st; var bx = c.querySelector('.tmb'), had = bx.contains(document.activeElement); bx.textContent = '';
+    var mk = function (label, phrase) { var x = el('button', '', label); x.type = 'button'; x.setAttribute('aria-label', label + ' the stopwatch'); x.addEventListener('click', function () { gesture(); var r2 = Kin.quick.instant(phrase); if (r2) { caption(r2.say, 'Done here, no call needed'); captionFade(5000); } swEnsure(); }); bx.appendChild(x); };
+    if (st === 'run') mk('Stop', 'stop the stopwatch'); else if (st === 'stop') { mk('Resume', 'resume the stopwatch'); mk('Reset', 'reset the stopwatch'); } else mk('Start', 'start a stopwatch');
+    if (had && bx.firstChild) bx.firstChild.focus({ preventScroll: true });
+  }
+  function swTick() {
+    var cs = document.querySelectorAll('.swcard[data-live="1"]'), w = Kin.quick && Kin.quick.stopwatch ? Kin.quick.stopwatch() : null;
+    if (!cs.length || !w || !w.running) { clearInterval(swIv); swIv = 0; }
+    /* out of sight, nothing to paint (it catches up when the conversation opens) */
+    if (cs.length && (document.hidden || $('thread').hidden) && w && w.running) return;
+    [].forEach.call(cs, function (c) { try { swPaint(c); } catch (e) {} });
+  }
+  /* another tab started, resumed or reset it */
+  try { window.addEventListener('storage', function (e) { if (e.key === 'kin.sw') swEnsure(); }); } catch (e) {}
+  function swEnsure() { swTick(); var w = Kin.quick && Kin.quick.stopwatch ? Kin.quick.stopwatch() : null; if (w && w.running && !swIv && document.querySelector('.swcard[data-live="1"]')) swIv = setInterval(swTick, 100); }
   /** the weather under its answer: the brief board's icon, the temperature, and high, low and rain */
   function wxCard(c, box) {
     var d = el('div', 'wxcard'), ic = Kin.briefBoard && Kin.briefBoard._icon && c.icon ? Kin.briefBoard._icon(c.icon, c.day, 56) : null;

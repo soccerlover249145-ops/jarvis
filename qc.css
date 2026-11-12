@@ -1069,6 +1069,24 @@ body:has(.sheet.win:not([hidden])) .app::after { content: ""; position: fixed; i
 .thread .msg .ckcard .ckc { fill: #6FE3FF; }
 @media (max-width: 420px) { .thread .msg .ancard .antile, .thread .msg .ckcard .ckface { width: 50px; height: 50px; } .thread .msg .ancard .anmid { font-size: 22px; } }
 @media (prefers-reduced-motion: reduce) { .thread .msg .ckcard .cks { display: none; } }
+/* play cards: a coin (gold heads, blue tails), dice with pips, a number, the stopwatch */
+.thread .msg .plcard .coin { width: 60px; height: 60px; display: block; animation: coinflip .35s ease-out; }
+.thread .msg .plcard .coin circle { fill: rgba(255, 200, 112, .14); stroke: #FFC870; stroke-width: 2; }
+.thread .msg .plcard .coin .cin { fill: none; stroke: rgba(255, 200, 112, .45); stroke-width: 1; }
+.thread .msg .plcard .coin text { fill: #FFC870; font: 600 24px var(--f-ui); }
+.thread .msg .plcard .coin.tails circle { fill: rgba(111, 227, 255, .12); stroke: #6FE3FF; }
+.thread .msg .plcard .coin.tails .cin { fill: none; stroke: rgba(111, 227, 255, .45); }
+.thread .msg .plcard .coin.tails text { fill: #6FE3FF; }
+.thread .msg .plcard svg.die { width: 30px; height: 30px; display: block; }
+.thread .msg .plcard svg.die.dtile { width: 60px; height: 60px; }
+.thread .msg .plcard .dbody { fill: rgba(255, 255, 255, .06); stroke: rgba(111, 227, 255, .5); stroke-width: 1.5; }
+.thread .msg .plcard .dpip { fill: #F2F5F8; }
+.thread .msg .plcard .dnum { display: block; min-width: 30px; height: 30px; padding: 0 6px; box-sizing: border-box; border-radius: 8px; border: 1.5px solid rgba(111, 227, 255, .5); font: 500 15px/27px var(--f-ui); text-align: center; color: #F2F5F8; }
+.thread .msg .plcard .dice { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 4px; }
+@keyframes coinflip { from { transform: scaleX(.1); } to { transform: scaleX(1); } }
+.thread .msg .swcard .arc { transition: none; }
+@media (prefers-reduced-motion: reduce) { .thread .msg .plcard .coin { animation: none; } }
+@media (max-width: 420px) { .thread .msg .plcard .coin, .thread .msg .plcard svg.die.dtile { width: 50px; height: 50px; } }
 /* the reminder card is a timer card: the text may run to two lines, the time is a little smaller */
 .thread .msg .rmcard .tml b { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .thread .msg .rmcard .tmt { font-size: 30px; }

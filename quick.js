@@ -90,27 +90,28 @@
   var TIMEISH = /\d\s*[ap]\.?\s?m\b|\d:\d\d|\b(?:noon|midnight|o'?clock|half past|quarter (?:past|to)|end of the (?:work ?)?day|eod)\b/i;
   /* ---------------------------------------------------------------- the words */
   var LEAD = /^(?:(?:hey|ok|okay)\s+)?(?:(?:jarvis|kin)[,!.]?\s+)?(?:(?:please|can you|could you|would you|will you|quickly)\s+)*/;
-  function instant(raw) { try { return answer(raw); } catch (e) { return null; } }
+  /* every stopwatch answer carries the live stopwatch card (app.js) */
+  function instant(raw) { try { var r = answer(raw); if (r && !r.card && /stop ?watch/i.test(String(raw || ''))) r.card = { kind: 'sw' }; return r; } catch (e) { return null; } }
   function answer(raw) {
     var t0 = String(raw || ''); if (!t0 || t0.length > 120) return null;
     var t = t0.toLowerCase().replace(/[‘’]/g, "'").replace(/\s+/g, ' ').trim().replace(/[?!.]+$/, '').replace(/,? (?:jarvis|sir|please)$/, '').replace(LEAD, '');
     var m;
     /* a coin */
-    if (/^(?:flip|toss)(?: me)? a coin$|^heads or tails$|^coin (?:flip|toss)$/.test(t)) { var hd = rand(0, 1) === 0 ? 'Heads' : 'Tails'; return { say: hd + ', sir.', show: 'Coin: ' + hd + '.' }; }
+    if (/^(?:flip|toss)(?: me)? a coin$|^heads or tails$|^coin (?:flip|toss)$/.test(t)) { var hd = rand(0, 1) === 0 ? 'Heads' : 'Tails'; return { say: hd + ', sir.', show: 'Coin: ' + hd + '.', card: { kind: 'coin', v: hd, again: 'flip a coin' } }; }
     /* dice: "roll a die", "roll two dice", "roll 3d6", "roll a d20" */
     if ((m = /^roll(?: me)?(?: (a|an|one|two|three|four|five|six|a pair of|\d{1,2}))?(?: (?:six[- ]sided )?(?:dice|die)| ?d(\d{1,3}))$/.exec(t)) || (m = /^roll(?: me)? (\d{1,2})d(\d{1,3})$/.exec(t))) {
       var n = m[1] ? num(m[1].replace(/ /g, '_')) : 1, sides = m[2] ? +m[2] : 6;
       if (!(n >= 1 && n <= 10) || !(sides >= 2 && sides <= 1000)) return null;
       var rolls = []; for (var k = 0; k < n; k++) rolls.push(rand(1, sides));
       var sum = rolls.reduce(function (a, b) { return a + b; }, 0), what = sides === 6 ? (n === 1 ? 'a die' : n + ' dice') : (n === 1 ? 'a d' + sides : n + ' d' + sides + 's');
-      return { say: n === 1 ? 'You rolled a ' + rolls[0] + ', sir.' : joinAnd(rolls) + ', sir. ' + sum + ' in all.', show: 'Rolled ' + what + ': ' + rolls.join(', ') + (n > 1 ? ' (total ' + sum + ')' : '') + '.' };
+      return { say: n === 1 ? 'You rolled a ' + rolls[0] + ', sir.' : joinAnd(rolls) + ', sir. ' + sum + ' in all.', show: 'Rolled ' + what + ': ' + rolls.join(', ') + (n > 1 ? ' (total ' + sum + ')' : '') + '.', card: { kind: 'dice', rolls: rolls, sides: sides, what: what, again: t } };
     }
     /* a number: "pick a number between 1 and 10", "random number from 1 to 100", "a random number up to 50" */
     if ((m = /^(?:pick|choose|give me|say|think of)? ?(?:a )?(?:random )?number (?:between|from) (-?\d{1,9}) (?:and|to) (-?\d{1,9})$/.exec(t)) || (m = /^(?:pick|choose|give me)? ?(?:a )?random number(?: (up to|to|under|below|less than) (\d{1,9}))?$/.exec(t))) {
       var two = /number (?:between|from)/.test(t), lo = two ? +m[1] : 1, hi = two ? +m[2] : (m[2] ? +m[2] - (/^(?:under|below|less than)$/.test(m[1]) ? 1 : 0) : 100);
       if (!two && hi < 1) return null;
       if (lo > hi) { var tmp = lo; lo = hi; hi = tmp; }
-      var v = rand(lo, hi); return { say: v + ', sir.', show: 'A random number from ' + lo + ' to ' + hi + ': ' + v + '.' };
+      var v = rand(lo, hi); return { say: v + ', sir.', show: 'A random number from ' + lo + ' to ' + hi + ': ' + v + '.', card: { kind: 'num', v: v, lo: lo, hi: hi, again: 'pick a number between ' + lo + ' and ' + hi } };
     }
     /* the stopwatch */
     if (/^(?:start|begin)(?: a| the| my)?(?: new)? stop ?watch$/.test(t)) { var cur = sw(); if (cur && !cur.stop) return { say: 'It is already running, sir: ' + span(Date.now() - cur.start) + '.', show: 'Stopwatch running: ' + clockText(Date.now() - cur.start) + '.' }; var was = cur && cur.stop ? cur.stop - cur.start : 0; swSet({ start: Date.now() }); return { say: was ? 'A new stopwatch, from zero, sir. The last one stopped at ' + span(was) + '.' : 'Stopwatch started, sir.', show: (was ? 'Started again from zero (the last one stopped at ' + clockText(was) + '). ' : 'Stopwatch started. ') + 'Say "stop the stopwatch" to stop it' + (was ? '' : ', or "resume the stopwatch" after a stop') + '.' }; }
