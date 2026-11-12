@@ -830,6 +830,31 @@
   /* on a phone the small orb in the bar opens and closes the conversation; the dock's chips open a panel */
   if ($('miniOrb')) $('miniOrb').addEventListener('click', function () { gesture(); $('status').click(); });
   Array.prototype.forEach.call(document.querySelectorAll('[data-go]'), function (b) { b.addEventListener('click', function (e) { if (e.isTrusted) Kin.go(b.dataset.go); }); });
+  /* the composer: chips for what Jarvis is working with, and a + menu of quick actions; every item only opens a panel */
+  (function () {
+    var pk = $('packname'), cp = $('ctxPack'), ct = $('ctxPackT');
+    function syncPack() { var n = pk.textContent.trim(); cp.hidden = !n; ct.textContent = n; }
+    if (pk && cp && ct) { syncPack(); if (window.MutationObserver) new MutationObserver(syncPack).observe(pk, { childList: true, characterData: true, subtree: true }); }
+    var wt = $('ctxWhereT'); if (wt) wt.textContent = Kin.mac && Kin.mac.available() ? 'This computer' : 'This browser';
+    var plus = $('bplus'), bar = $('bar'), menu = null;
+    var ITEMS = [['brief', 'Brief me'], ['whatsnew', 'What\u2019s new'], ['inbox', 'Inbox'], ['outbox', 'Outbox'], ['cal', 'Calendar'], ['watch', 'Watch or listen to something'], ['devices', 'Bluetooth and USB devices'], ['gauntlet', 'Test yourself'], ['settings', 'Settings']];
+    function close() { if (!menu) return; menu.remove(); menu = null; plus.setAttribute('aria-expanded', 'false'); }
+    function open() {
+      menu = document.createElement('div'); menu.className = 'bmenu'; menu.setAttribute('role', 'menu'); menu.setAttribute('aria-label', 'Quick actions');
+      ITEMS.forEach(function (it) { var b = document.createElement('button'); b.type = 'button'; b.setAttribute('role', 'menuitem'); b.dataset.k = it[0]; b.textContent = it[1]; b.addEventListener('click', function () { close(); Kin.go(it[0]); }); menu.appendChild(b); });
+      menu.addEventListener('keydown', function (e) {
+        var items = [].slice.call(menu.children), i = items.indexOf(document.activeElement);
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus(); }
+      });
+      bar.appendChild(menu); plus.setAttribute('aria-expanded', 'true'); menu.firstChild.focus();
+    }
+    if (plus && bar) {
+      plus.addEventListener('click', function () { gesture(); if (menu) close(); else open(); });
+      document.addEventListener('pointerdown', function (e) { if (menu && !menu.contains(e.target) && !plus.contains(e.target)) close(); }, true);
+      /* Escape closes the menu only; it does not also stop Jarvis talking */
+      document.addEventListener('keydown', function (e) { if (menu && e.key === 'Escape') { e.stopPropagation(); close(); plus.focus(); } }, true);
+    }
+  })();
   $('status').addEventListener('click', function () { var t = $('thread'); if (!t.hidden) { t.hidden = true; return; } showThread(); if (!t.children.length) { var d = document.createElement('p'); d.className = 'empty'; d.textContent = 'Nothing said yet.'; t.appendChild(d); } });
   document.addEventListener('keydown', function (e) {
     var tag = (e.target.tagName || '').toLowerCase(), typing = tag === 'input';

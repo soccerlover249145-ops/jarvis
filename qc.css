@@ -852,3 +852,68 @@ body:has(.sheet.win:not([hidden])) .wrap, body:has(.sheet.win:not([hidden])) .to
 .wl .wl-panel, .dl .dl-panel { margin: 0 auto 32px; align-self: flex-start; }
 @media (max-width: 600px) { .wl .wl-panel, .dl .dl-panel { margin: 0; min-height: 100%; } }
 .wl .wl-ask:focus-within { border-color: rgba(76, 141, 246, .6); box-shadow: 0 0 0 3px rgba(76, 141, 246, .18); }
+
+/* ---------- the composer: a "Do anything" card. Chips on top, the words in the middle, tools along the bottom ---------- */
+.dock .bar .bchips, .dock .bar .btools { display: none; }
+.bchip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, .08); background: rgba(255, 255, 255, .06); color: #C9CCD2; font: 500 12.5px/1 var(--f-ui); letter-spacing: 0; text-transform: none; white-space: nowrap; cursor: pointer; }
+.bchip svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.bchip:hover { background: rgba(255, 255, 255, .1); color: #fff; }
+.bchip:focus-visible, .bplus:focus-visible { outline: 2px solid #4C8DF6; outline-offset: 2px; }
+.bchip span { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; }
+.bchip.bsafe { color: #8FD8A8; background: rgba(60, 196, 110, .10); border-color: rgba(60, 196, 110, .25); }
+.bchip.bmodel { background: transparent; border-color: transparent; color: #A9ADB5; }
+.bchip.bmodel:hover { background: rgba(255, 255, 255, .06); }
+.bplus { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; flex: none; border: 1px solid rgba(255, 255, 255, .1); background: transparent; color: #C9CCD2; cursor: pointer; }
+.bplus svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.bplus:hover, .bplus[aria-expanded="true"] { background: rgba(255, 255, 255, .1); color: #fff; }
+.bplus[aria-expanded="true"] svg { transform: rotate(45deg); }
+.bplus svg { transition: transform .18s; }
+.dock .bar .send { background: #4C8DF6; color: #fff; border: 0; box-shadow: none; }
+.dock .bar .send:hover { background: #3d7fe9; }
+.dock .bar .send svg { stroke: #fff; }
+.app[data-mood="listening"] .dock .bar, .app[data-mood="speaking"] .dock .bar { border-color: rgba(76, 141, 246, .55); box-shadow: 0 0 0 3px rgba(76, 141, 246, .12), 0 24px 60px -24px rgba(0, 0, 0, .9); }
+/* the + menu: every quick action, each only opens its panel */
+.bmenu { position: absolute; left: 8px; bottom: calc(100% + 8px); z-index: 40; min-width: 250px; padding: 6px; border-radius: 12px; background: #1B1C1F; border: 1px solid rgba(255, 255, 255, .1); box-shadow: 0 1px 0 rgba(255, 255, 255, .06) inset, 0 24px 60px -16px rgba(0, 0, 0, .9); animation: winrise .18s cubic-bezier(.2, .9, .25, 1); }
+.bmenu button { display: block; width: 100%; padding: 9px 12px; border: 0; border-radius: 8px; background: transparent; color: #F4F5F7; font: 500 14px/1.2 var(--f-ui); text-align: left; letter-spacing: 0; text-transform: none; cursor: pointer; }
+.bmenu button:hover, .bmenu button:focus-visible { background: rgba(76, 141, 246, .9); color: #fff; outline: none; }
+@media (min-width: 1100px) {
+  .dock .sugg { display: none; }
+  .dock .bar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; grid-template-areas: "chips chips chips chips chips" "ask ask ask ask ask" "tools . scr mic send";
+    align-items: center; column-gap: 6px; row-gap: 0; width: calc(100% - 40px); max-width: 720px; height: auto; margin: 0 auto 18px; padding: 10px 10px 10px 12px;
+    border-radius: 18px; background: #1B1C1F; border: 1px solid rgba(255, 255, 255, .09); box-shadow: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 24px 60px -24px rgba(0, 0, 0, .9); }
+  .dock .bar .bchips { grid-area: chips; display: flex; gap: 6px; padding: 0 0 2px; min-width: 0; }
+  .dock .bar #ask { grid-area: ask; height: 46px; padding: 0 4px; border: 0; background: transparent; font: 400 16px/1.4 var(--f-ui); }
+  .dock .bar .btools { grid-area: tools; display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .dock .bar #scr { grid-area: scr; } .dock .bar #mic { grid-area: mic; } .dock .bar .send { grid-area: send; }
+  .dock .bar .icon { width: 34px; height: 34px; }
+  .app[data-fig="on"][data-composer="hide"] .dock .bar { display: flex; width: 56px; max-width: 56px; height: 56px; padding: 0; border-radius: 50%; justify-content: center; }
+  .app[data-fig="on"][data-composer="hide"] .dock .bar :is(.bchips, .btools, .bmenu) { display: none; }
+}
+@media (max-width: 1099px) {
+  .dock .bar { border-radius: 20px; background: rgba(27, 28, 31, .94); border: 1px solid rgba(255, 255, 255, .1); gap: 4px; }
+  .dock .bar .btools { display: flex; align-items: center; }
+  .dock .bar .btools .bchip { display: none; }
+  .dock .bar #ask, .dock .bar #scr, .dock .bar #mic, .dock .bar .send { order: 1; }
+  .bmenu { left: 0; }
+}
+
+/* ---------- one type voice in the conversation and on every button: sentence case, the UI face ---------- */
+.qbtn, .qchipbtn, .lnk, .chip, .qchip, .pill .pl, .vpill, .packname, .when, .meta, .src small, .thumb, .madeb, .thread .msg small, .dock .caption small,
+.md h3, .md h4, .md th, .jstat .lab, .jsteps .step, .dock .status, .qt, .qlabel, .qmore, .qtl-t, .qcost, .sharepill, .mailcard .mlbl {
+  font-family: var(--f-ui); letter-spacing: 0; text-transform: none; }
+.thread .msg small { font-size: 12.5px; font-weight: 600; color: #8E929B; }
+.meta { font-size: 12px; font-weight: 500; color: #8E929B; }
+.src small { font-size: 12.5px; font-weight: 600; color: #8E929B; }
+.dock .caption small { font-size: 13px; font-weight: 500; color: #8E929B; }
+.md h3, .md h4 { font-size: 15px; font-weight: 600; color: #fff; }
+.md th { font-size: 12.5px; font-weight: 600; color: #A9ADB5; }
+.qchipbtn, .lnk, .qbtn { font-size: 13px; font-weight: 500; }
+.chip { font-size: 12px; font-weight: 600; }
+.pill .pl { font-size: 14px; font-weight: 500; }
+.vpill, .packname, .when { font-size: 12.5px; font-weight: 500; }
+.jstat .lab, .jsteps .step { font-size: 12px; font-weight: 600; }
+.thread .msg.you p { background: #2A2B2F; border: 1px solid rgba(255, 255, 255, .06); border-radius: 18px; }
+.thread .msg.card, .chartcard, .thread .msg .maccard { border-radius: 16px; background: #1B1C1F; border: 1px solid rgba(255, 255, 255, .09); box-shadow: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 24px 60px -28px rgba(0, 0, 0, .9); }
+.thread .msg.card .asktitle { font: 600 18px/1.3 var(--f-ui); color: #fff; }
+.qbtn.primary, .bigpill, .loadbtn { background: #4C8DF6; color: #fff; border-color: #4C8DF6; }
+.qbtn.primary:hover, .bigpill:hover { background: #3d7fe9; }
