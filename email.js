@@ -37,17 +37,29 @@
 
   /* ---- the outbox: every draft Kin writes is kept here until it is sent or removed, so a batch of
      emails can be reviewed and sent one after another instead of vanishing with the conversation ---- */
-  var BOX_MAX = 60;
+  var SENT_MAX = 30, SENT_DAYS = 7;
   function outbox() { try { var a = JSON.parse(ls.get(K.box) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
-  function saveBox(a) { ls.set(K.box, JSON.stringify(a.slice(0, BOX_MAX))); }
+  /* drafts still waiting are never dropped; sent ones are kept for a week, thirty at most */
+  function saveBox(a) {
+    var old = Date.now() - SENT_DAYS * 864e5, sent = 0;
+    ls.set(K.box, JSON.stringify(a.filter(function (m) { if (m.status !== 'sent') return true; sent++; return sent <= SENT_MAX && (m.sentAt || m.at || 0) >= old; })));
+  }
+  function same(x, y) { return String(x || '').replace(/\s+/g, ' ').trim().toLowerCase() === String(y || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
+  /** a new draft; a rewrite of one still waiting (same To and Subject, not yet opened or sent) replaces it instead of piling up */
   function saveDraft(d) {
-    var a = outbox(), id = 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    a.unshift({ id: id, to: String(d.to || ''), subject: String(d.subject || ''), body: String(d.body || ''), at: Date.now(), status: 'draft' });
+    var a = outbox(), to = String(d.to || ''), su = String(d.subject || ''), x = a.filter(function (m) { return m.status === 'draft' && same(m.to, to) && same(m.subject, su); })[0];
+    if (x) { a = a.filter(function (m) { return m !== x; }); x.body = String(d.body || ''); x.at = Date.now(); a.unshift(x); saveBox(a); tell(x.id, { body: x.body }); return x.id; }
+    var id = 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    a.unshift({ id: id, to: to, subject: su, body: String(d.body || ''), at: Date.now(), status: 'draft' });
     saveBox(a); return id;
   }
+  function getDraft(id) { return outbox().filter(function (m) { return m.id === id; })[0] || null; }
+  /* every card showing the same draft (in the conversation and in the Outbox) hears about a change */
+  function tell(id, patch) { try { window.dispatchEvent(new CustomEvent('kin:draft', { detail: { id: id, patch: patch } })); } catch (e) {} }
   function updateDraft(id, patch) {
     var a = outbox(), x = a.filter(function (m) { return m.id === id; })[0]; if (!x) return;
-    Object.keys(patch).forEach(function (k) { x[k] = patch[k]; }); saveBox(a);
+    Object.keys(patch).forEach(function (k) { x[k] = patch[k]; }); if (patch.status === 'sent') x.sentAt = Date.now(); saveBox(a);
+    if (patch.status) tell(id, { status: patch.status });
   }
   function dropDraft(id) { saveBox(outbox().filter(function (m) { return m.id !== id; })); }
   function clearSent() { saveBox(outbox().filter(function (m) { return m.status !== 'sent'; })); }
@@ -98,13 +110,30 @@
     if (cur && Date.now() < cur.exp) return Promise.resolve(cur.v);
     if (!(window.google && google.accounts && google.accounts.oauth2)) return Promise.reject(new Error('Google sign-in did not load yet. Tap again in a moment.'));
     return new Promise(function (res, rej) {
-      var tc = google.accounts.oauth2.initTokenClient({ client_id: clientId(), scope: scope, prompt: '',
-        callback: function (r) { if (!r || r.error || !r.access_token) { rej(new Error('Google did not give permission to ' + (WHAT[scope] || 'do that') + ' (' + ((r && (r.error_description || r.error)) || 'cancelled') + ').')); return; } tokens[scope] = { v: r.access_token, exp: Date.now() + Math.max(60, (+r.expires_in || 3600) - 60) * 1000 }; res(tokens[scope].v); },
-        error_callback: function (e) { rej(new Error('Google sign-in closed (' + ((e && e.type) || 'cancelled') + ').')); } });
+      /* a window that never answers (closed behind another, blocked) must not leave a panel on "Reading…" */
+      var done = false, tt = setTimeout(function () { if (!done) { done = true; rej(new Error('Google sign-in did not finish. Tap again.')); } }, 120000);
+      function fin(f, v) { if (done) return; done = true; clearTimeout(tt); f(v); }
+      /* include_granted_scopes off: a read token never quietly carries the send permission, or the other way round */
+      var tc = google.accounts.oauth2.initTokenClient({ client_id: clientId(), scope: scope, prompt: '', include_granted_scopes: false,
+        callback: function (r) {
+          if (!r || r.error || !r.access_token) { fin(rej, new Error('Google did not give permission to ' + (WHAT[scope] || 'do that') + ' (' + ((r && (r.error_description || r.error)) || 'cancelled') + ').')); return; }
+          var o2 = google.accounts.oauth2;
+          if (o2.hasGrantedAllScopes && !o2.hasGrantedAllScopes(r, scope)) { fin(rej, new Error('Google gave a different permission than asked: tick the box to ' + (WHAT[scope] || 'allow it') + ' and try again.')); return; }
+          tokens[scope] = { v: r.access_token, exp: Date.now() + Math.max(60, (+r.expires_in || 3600) - 60) * 1000 }; fin(res, tokens[scope].v);
+        },
+        error_callback: function (e) { fin(rej, new Error('Google sign-in closed (' + ((e && e.type) || 'cancelled') + ').')); } });
       tc.requestAccessToken();
     });
   }
 
+  /** a refusal from Google: forget the token (it may lack the permission) and say why, in Google's words */
+  function refused(r, scope, what) {
+    if (r.status === 401 || r.status === 403) delete tokens[scope];
+    return r.json().catch(function () { return {}; }).then(function (j) {
+      var why = j && j.error && j.error.message ? String(j.error.message).slice(0, 220) : '';
+      throw new Error(what + ' (' + r.status + (why ? ': ' + why : '') + ').' + (r.status === 403 && /not been used|disabled|enable/i.test(why) ? ' Turn that API on in Google Cloud (Settings, Email has the steps).' : ''));
+    });
+  }
   /* ---- reading the inbox: unread mail, newest first, From / Subject / Date / snippet only. Read on a tap,
      kept in memory for this visit, never stored on the device. ---- */
   var LIST_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages';
@@ -116,8 +145,9 @@
     var q = opts.all ? 'in:inbox' : 'in:inbox is:unread', n = Math.min(25, opts.max || 15);
     return getToken(READ_SCOPE).then(function (tok) {
       var auth = { credentials: 'omit', referrerPolicy: 'no-referrer', headers: { Authorization: 'Bearer ' + tok } };
+      if (!mailbox) fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', auth).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { if (j && j.emailAddress) mailbox = String(j.emailAddress); }).catch(function () {});
       return fetch(LIST_URL + '?maxResults=' + n + '&q=' + encodeURIComponent(q), auth).then(function (r) {
-        if (!r.ok) { if (r.status === 401) delete tokens[READ_SCOPE]; throw new Error('Gmail would not list the inbox (' + r.status + ').'); }
+        if (!r.ok) return refused(r, READ_SCOPE, 'Gmail would not list the inbox');
         return r.json();
       }).then(function (j) {
         var ids = (j.messages || []).map(function (m) { return m.id; });
@@ -128,13 +158,18 @@
       }).then(function (list) {
         return list.filter(Boolean).map(function (m) {
           return { id: m.id, thread: m.threadId, from: hdr(m, 'from'), subject: hdr(m, 'subject') || '(no subject)', date: +m.internalDate || Date.parse(hdr(m, 'date')) || 0,
-            snippet: String(m.snippet || '').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'), unread: (m.labelIds || []).indexOf('UNREAD') >= 0 };
+            snippet: unent(m.snippet), unread: (m.labelIds || []).indexOf('UNREAD') >= 0 };
         });
       });
     });
   }
-  /** a Gmail link that opens this message in the founder's own Gmail */
-  function threadUrl(m) { return 'https://mail.google.com/mail/u/0/#inbox/' + encodeURIComponent(m.thread || m.id); }
+  function unent(x) {
+    return String(x || '').replace(/&#(\d{1,6});/g, function (a, n) { return String.fromCodePoint(Math.min(+n, 0x10FFFF)); }).replace(/&#x([0-9a-f]{1,6});/gi, function (a, h) { return String.fromCodePoint(Math.min(parseInt(h, 16), 0x10FFFF)); })
+      .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&');
+  }
+  /** a Gmail link that opens this message in the right account, when several are signed in */
+  var mailbox = '';
+  function threadUrl(m) { return 'https://mail.google.com/mail/' + (mailbox ? '?authuser=' + encodeURIComponent(mailbox) : 'u/0/') + '#all/' + encodeURIComponent(m.thread || m.id); }
 
   /* ---- the calendar: the next few days of the primary calendar, read on a tap with a separate read-only
      permission, kept in memory for this visit, never stored ---- */
@@ -148,7 +183,7 @@
     var q = '?singleEvents=true&orderBy=startTime&maxResults=40&timeMin=' + encodeURIComponent(start.toISOString()) + '&timeMax=' + encodeURIComponent(end.toISOString());
     return getToken(CAL_SCOPE).then(function (tok) {
       return fetch(CAL_URL + q, { credentials: 'omit', referrerPolicy: 'no-referrer', headers: { Authorization: 'Bearer ' + tok } }).then(function (r) {
-        if (!r.ok) { if (r.status === 401) delete tokens[CAL_SCOPE]; throw new Error('Google Calendar would not answer (' + r.status + ').'); }
+        if (!r.ok) return refused(r, CAL_SCOPE, 'Google Calendar would not answer');
         return r.json();
       }).then(function (j) {
         return (j.items || []).filter(function (e) { return e.status !== 'cancelled'; }).map(function (e) {
@@ -173,7 +208,7 @@
       var auth = { credentials: 'omit', referrerPolicy: 'no-referrer', headers: { Authorization: 'Bearer ' + tok } }, out = [];
       function page(next, n) {
         return fetch(PEOPLE_URL + '?personFields=names,emailAddresses&pageSize=1000' + (next ? '&pageToken=' + encodeURIComponent(next) : ''), auth).then(function (r) {
-          if (!r.ok) { if (r.status === 401) delete tokens[PEOPLE_SCOPE]; throw new Error('Google Contacts would not answer (' + r.status + ').'); }
+          if (!r.ok) return refused(r, PEOPLE_SCOPE, 'Google Contacts would not answer');
           return r.json();
         }).then(function (j) {
           (j.connections || []).forEach(function (pp) {
@@ -210,7 +245,7 @@
     return getToken(SCOPE).then(function (tok) {
       return fetch(SEND_URL, { method: 'POST', credentials: 'omit', referrerPolicy: 'no-referrer', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }, body: JSON.stringify({ raw: raw(d) }) })
         .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) {
-          if (!r.ok) { if (r.status === 401) delete tokens[SCOPE]; throw new Error('Gmail did not send it (' + r.status + (j && j.error && j.error.message ? ': ' + j.error.message : '') + ').'); }
+          if (!r.ok) { if (r.status === 401 || r.status === 403) delete tokens[SCOPE]; throw new Error('Gmail did not send it (' + r.status + (j && j.error && j.error.message ? ': ' + j.error.message : '') + ').'); }
           countSent(); return { ok: true, id: j.id || '' };
         }); });
     });
@@ -226,7 +261,24 @@
     var status = opts.status || 'draft', box = el('div', 'mailcard'), st = { sent: status === 'sent' };
     box.setAttribute('role', 'group'); box.setAttribute('aria-label', 'Email draft');
     var head = el('div', 'mhead'); head.appendChild(el('span', CHIP[status][1], CHIP[status][0])); head.appendChild(el('span', 'chip ghost', 'Email')); box.appendChild(head);
-    function mark(s) { status = s; head.firstChild.textContent = CHIP[s][0]; head.firstChild.className = CHIP[s][1]; if (opts.id) updateDraft(opts.id, { status: s }); if (opts.onChange) opts.onChange(); }
+    function show(s) { status = s; head.firstChild.textContent = CHIP[s][0]; head.firstChild.className = CHIP[s][1]; }
+    function mark(s) { show(s); if (opts.id) updateDraft(opts.id, { status: s }); if (opts.onChange) opts.onChange(); }
+    /* sent from its other copy (the conversation or the Outbox): this copy can no longer send it again */
+    function stale() {
+      if (!opts.id || st.sent) return st.sent;
+      var cur = getDraft(opts.id); if (!cur || cur.status !== 'sent') return false;
+      sentHere(); msg.textContent = 'Already sent, from the Outbox or the conversation.'; return true;
+    }
+    function sentHere() { st.sent = true; show('sent'); [to, su, bo].forEach(function (i) { i.readOnly = true; }); if (box.sendBtn) { box.sendBtn.disabled = true; box.sendBtn.querySelector('.pl').textContent = 'Sent'; } fr.hidden = true; }
+    if (opts.id) {
+      var hear = function (ev) {
+        if (!box.isConnected) { window.removeEventListener('kin:draft', hear); return; }
+        var d0 = ev.detail || {}; if (d0.id !== opts.id || !d0.patch) return;
+        if (d0.patch.status === 'sent') sentHere(); else if (d0.patch.status && !st.sent) show(d0.patch.status);
+        if (typeof d0.patch.body === 'string' && document.activeElement !== bo && !st.sent) bo.value = d0.patch.body;
+      };
+      window.addEventListener('kin:draft', hear);
+    }
     function field(lbl, val, multi) {
       var w = el('label', 'mrow'); w.appendChild(el('span', 'mlbl', lbl));
       var i = el(multi ? 'textarea' : 'input', 'minput'); if (!multi) { i.type = 'text'; i.autocomplete = 'off'; } else i.rows = Math.min(14, Math.max(5, String(val || '').split('\n').length + 1));
@@ -239,12 +291,13 @@
     function draft() { return { to: to.value, subject: su.value, body: bo.value }; }
     /* edits are kept in the outbox, so a fixed address or a reworded line survives a reload */
     if (opts.id) { var saveT = 0; [to, su, bo].forEach(function (i) { i.addEventListener('input', function () { clearTimeout(saveT); saveT = setTimeout(function () { updateDraft(opts.id, draft()); }, 400); }); }); }
+    if (!st.sent && opts.id) { var c0 = getDraft(opts.id); if (c0 && c0.status === 'sent') { st.sent = true; status = 'sent'; head.firstChild.textContent = CHIP.sent[0]; head.firstChild.className = CHIP.sent[1]; } }
     if (st.sent) [to, su, bo].forEach(function (i) { i.readOnly = true; });
     /* a name in To instead of an address: one tap looks it up in Google Contacts (read-only, on this page only) */
     function findRow() {
       fr.textContent = ''; var names = bareNames(to.value);
       fr.hidden = st.sent || Kin.shared || !clientId() || !names.length; if (fr.hidden) return;
-      var fb = el('button', 'lnk', 'Find ' + names[0] + ' in Contacts'); fb.type = 'button'; fr.appendChild(fb);
+      loadGis(); var fb = el('button', 'lnk', 'Find ' + names[0] + ' in Contacts'); fb.type = 'button'; fr.appendChild(fb);
       fb.addEventListener('click', function () {
         fb.disabled = true; fb.textContent = 'Looking in your contacts…';
         loadGis().then(function () { return contacts(); }).then(function (list) {
@@ -264,15 +317,16 @@
     to.addEventListener('input', function () { var n = bareNames(to.value)[0] || ''; if (n !== fr.dataset.n) { fr.dataset.n = n; findRow(); } });
     fr.dataset.n = bareNames(to.value)[0] || ''; findRow();
     var gm = pill('Open in Gmail', 'go'), cp = pill('Copy', 'alt');
-    gm.addEventListener('click', function () { var w = check(draft()); if (w && !/subject|empty/i.test(w)) { msg.textContent = w; return; } window.open(composeUrl(draft()), '_blank', 'noopener,noreferrer'); msg.textContent = 'Opened in Gmail. Press Send there when it looks right.'; if (!st.sent) mark('opened'); });
+    gm.addEventListener('click', function () { if (stale()) return; var w = check(draft()); if (w && !/subject|empty/i.test(w)) { msg.textContent = w; return; } window.open(composeUrl(draft()), '_blank', 'noopener,noreferrer'); msg.textContent = 'Opened in Gmail. Press Send there when it looks right.'; if (!st.sent) mark('opened'); });
     box.openInGmail = function () { gm.click(); };
     cp.addEventListener('click', function () { var x = draft(), t = 'To: ' + x.to + '\nSubject: ' + x.subject + '\n\n' + x.body; (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { msg.textContent = 'Copied.'; }, function () { msg.textContent = 'This browser would not copy it; select the text instead.'; }); });
     acts.appendChild(gm); acts.appendChild(cp);
     if (!Kin.shared && clientId()) {
       loadGis();
       var sn = pill('Send now', 'warn'), armed = false, armT = 0;
+      box.sendBtn = sn;
       sn.addEventListener('click', function (e) {
-        if (!e.isTrusted || st.sent) return;
+        if (!e.isTrusted || st.sent || stale()) return;
         var x = draft(), w = check(x); if (w) { msg.textContent = w; return; }
         /* first tap: read it back; second tap within 10 seconds: send */
         if (!armed) {
@@ -295,7 +349,94 @@
     return box;
   }
 
-  Kin.email = { contacts: contacts, findPeople: findPeople, bareNames: bareNames, composeUrl: composeUrl, raw: raw, check: check, send: send, card: card, clientId: clientId, setClientId: setClientId, cap: cap, setCap: setCap, sentToday: sentToday, loadGis: loadGis,
+  /* ---- calendar event drafts: a card the founder adds with a tap. Google Calendar's own page opens filled in
+     (they press Save there), or a .ics file goes to Apple Calendar or Outlook. Nothing is added from here. ---- */
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function evCheck(e) {
+    if (!String(e.title || '').trim()) return 'Add a title.';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(e.date || '') || isNaN(Date.parse(e.date + 'T00:00:00'))) return 'Pick a date.';
+    if (!e.allDay) {
+      if (!/^\d{2}:\d{2}$/.test(e.start || '')) return 'Add a start time, or make it all day.';
+      if (e.end && !/^\d{2}:\d{2}$/.test(e.end)) return 'The end time is not a time.';
+      if (e.end && e.end <= e.start) return 'It ends before it starts.';
+    }
+    return '';
+  }
+  function stampLocal(d) { return d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + 'T' + pad2(d.getHours()) + pad2(d.getMinutes()) + '00'; }
+  /** start and end in calendar form: YYYYMMDD for all day (the end is the next day), else local YYYYMMDDTHHMMSS */
+  function evTimes(e) {
+    if (e.allDay) { var nx = new Date(Date.parse(e.date + 'T12:00:00') + 864e5); return { allDay: true, s: e.date.replace(/-/g, ''), t: nx.getFullYear() + pad2(nx.getMonth() + 1) + pad2(nx.getDate()) }; }
+    var a = new Date(e.date + 'T' + e.start + ':00'), b = e.end ? new Date(e.date + 'T' + e.end + ':00') : new Date(a.getTime() + 3600e3);
+    return { allDay: false, s: stampLocal(a), t: stampLocal(b) };
+  }
+  function eventUrl(e) {
+    var t = evTimes(e), q = 'action=TEMPLATE&text=' + encodeURIComponent(String(e.title).trim()) + '&dates=' + t.s + '/' + t.t, tz = '';
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (x) {}
+    if (tz && !t.allDay) q += '&ctz=' + encodeURIComponent(tz);
+    if (e.details) q += '&details=' + encodeURIComponent(e.details);
+    if (e.location) q += '&location=' + encodeURIComponent(e.location);
+    var g = splitAddrs(e.guests).filter(function (x) { return ADDR.test(x); });
+    if (g.length) q += '&add=' + encodeURIComponent(g.join(','));
+    return 'https://calendar.google.com/calendar/render?' + q;
+  }
+  function icsText(x) { return String(x || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n'); }
+  function icsFold(line) { var out = [], s = line; while (s.length > 74) { out.push(s.slice(0, 74)); s = ' ' + s.slice(74); } out.push(s); return out.join('\r\n'); }
+  /** an iCalendar file for Apple Calendar, Outlook or a phone. Times are local ("floating"); guests are listed in
+      the notes rather than invited, so opening the file never sends anyone an invitation. */
+  function ics(e) {
+    var t = evTimes(e), n = new Date(), stamp = n.getUTCFullYear() + pad2(n.getUTCMonth() + 1) + pad2(n.getUTCDate()) + 'T' + pad2(n.getUTCHours()) + pad2(n.getUTCMinutes()) + pad2(n.getUTCSeconds()) + 'Z';
+    var uid = (window.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)) + '@jarvis';
+    var L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Jarvis//Event draft//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'BEGIN:VEVENT', 'UID:' + uid, 'DTSTAMP:' + stamp,
+      (t.allDay ? 'DTSTART;VALUE=DATE:' : 'DTSTART:') + t.s, (t.allDay ? 'DTEND;VALUE=DATE:' : 'DTEND:') + t.t, 'SUMMARY:' + icsText(String(e.title).trim())];
+    if (e.location) L.push('LOCATION:' + icsText(e.location));
+    var gs = splitAddrs(e.guests), notes = [e.details || '', gs.length ? 'Guests: ' + gs.join(', ') : ''].filter(Boolean).join('\n\n');
+    if (notes) L.push('DESCRIPTION:' + icsText(notes));
+    L.push('END:VEVENT', 'END:VCALENDAR');
+    return L.map(icsFold).join('\r\n') + '\r\n';
+  }
+  var ECHIP = { draft: ['Event · not added', 'chip warn'], opened: ['Opened in Google Calendar', 'chip ghost'], saved: ['Downloaded', 'chip ghost'] };
+  /** An event card. opts: { onSay(text) } */
+  function eventCard(e0, opts) {
+    opts = opts || {};
+    var box = el('div', 'mailcard evcard'); box.setAttribute('role', 'group'); box.setAttribute('aria-label', 'Calendar event draft');
+    var head = el('div', 'mhead'), chip = el('span', ECHIP.draft[1], ECHIP.draft[0]); head.appendChild(chip); head.appendChild(el('span', 'chip ghost', 'Calendar')); box.appendChild(head);
+    function mark(k) { chip.textContent = ECHIP[k][0]; chip.className = ECHIP[k][1]; }
+    function inp(type, val) { var i = el('input', 'minput'); i.type = type; i.value = val || ''; i.autocomplete = 'off'; return i; }
+    function row(lbl, i) { var w = el('label', 'mrow'); w.appendChild(el('span', 'mlbl', lbl)); w.appendChild(i); box.appendChild(w); return i; }
+    var ti = row('Title', inp('text', e0.title)), dt = row('Date', inp('date', e0.date));
+    var st = inp('time', e0.allDay ? '' : e0.start), en = inp('time', e0.allDay ? '' : e0.end), ad = el('input'); ad.type = 'checkbox'; ad.checked = !!e0.allDay;
+    st.setAttribute('aria-label', 'Starts'); en.setAttribute('aria-label', 'Ends');
+    var tr = el('div', 'mrow evtimes'), tb = el('div', 'evt'), al = el('label', 'evall'); tr.appendChild(el('span', 'mlbl', 'Time'));
+    tb.appendChild(st); tb.appendChild(el('span', 'evto', 'to')); tb.appendChild(en); al.appendChild(ad); al.appendChild(document.createTextNode('All day')); tb.appendChild(al); tr.appendChild(tb); box.appendChild(tr);
+    function syncAll() { st.disabled = en.disabled = ad.checked; tr.classList.toggle('isall', ad.checked); }
+    ad.addEventListener('change', syncAll); syncAll();
+    var wh = row('Where', inp('text', e0.location)), gu = row('Guests', inp('text', e0.guests)); gu.placeholder = 'Email addresses, comma separated';
+    var no = el('textarea', 'minput'); no.rows = 3; no.value = e0.details || ''; var nw = el('label', 'mrow'); nw.appendChild(el('span', 'mlbl', 'Notes')); nw.appendChild(no); box.appendChild(nw);
+    var msg = el('p', 'note mnote'), acts = el('div', 'mact'); box.appendChild(msg); box.appendChild(acts);
+    function draft() { return { title: ti.value, date: dt.value, start: st.value, end: en.value, allDay: ad.checked, location: wh.value, guests: gu.value, details: no.value }; }
+    var add = pill('Add to Google Calendar', 'go'), dl = pill('Download .ics', 'alt'), cp = pill('Copy', 'alt');
+    add.addEventListener('click', function () {
+      var x = draft(), w = evCheck(x); if (w) { msg.textContent = w; return; }
+      window.open(eventUrl(x), '_blank', 'noopener,noreferrer'); mark('opened');
+      msg.textContent = 'Opened Google Calendar with it filled in. Press Save there to add it.'; if (opts.onSay) opts.onSay('It is open in Google Calendar, sir. Press Save there.');
+    });
+    dl.addEventListener('click', function () {
+      var x = draft(), w = evCheck(x); if (w) { msg.textContent = w; return; }
+      var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([ics(x)], { type: 'text/calendar' }));
+      a.download = (String(x.title).trim().replace(/[^\w\- ]+/g, '').trim().slice(0, 40).replace(/\s+/g, '-') || 'event') + '.ics';
+      document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1500); mark('saved');
+      msg.textContent = 'Downloaded. Open the file to add it to Apple Calendar or Outlook.';
+    });
+    cp.addEventListener('click', function () {
+      var x = draft(), t = x.title + '\n' + x.date + (x.allDay ? ', all day' : ', ' + x.start + (x.end ? '\u2013' + x.end : '')) + (x.location ? '\n' + x.location : '') + (x.guests ? '\nGuests: ' + x.guests : '') + (x.details ? '\n\n' + x.details : '');
+      (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { msg.textContent = 'Copied.'; }, function () { msg.textContent = 'Copy failed.'; });
+    });
+    acts.appendChild(add); acts.appendChild(dl); acts.appendChild(cp);
+    msg.textContent = evCheck(draft()) || 'Check it, then add it with a tap. Nothing is added until you do.';
+    return box;
+  }
+
+  Kin.email = { eventCard: eventCard, eventUrl: eventUrl, ics: ics, evCheck: evCheck, contacts: contacts, findPeople: findPeople, bareNames: bareNames, composeUrl: composeUrl, raw: raw, check: check, send: send, card: card, clientId: clientId, setClientId: setClientId, cap: cap, setCap: setCap, sentToday: sentToday, loadGis: loadGis,
     outbox: outbox, saveDraft: saveDraft, updateDraft: updateDraft, dropDraft: dropDraft, clearSent: clearSent, waiting: waiting,
     inbox: inbox, threadUrl: threadUrl, calendar: calendar,
     canSend: function () { return !Kin.shared && !!clientId(); },

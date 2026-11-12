@@ -179,8 +179,8 @@
       <label class="row"><span>Emails a day</span><input type="text" inputmode="numeric" id="mailCap" maxlength="3" autocomplete="off" aria-label="Emails sent from here per day"></label>
       <details class="guide"><summary>How to get a Google Client ID (about 5 minutes)</summary><ol>
         <li>Open console.cloud.google.com and create a project (any name).</li>
-        <li>APIs &amp; Services, Library: turn on the <b>Gmail API</b>.</li>
-        <li>OAuth consent screen: External, keep it in <b>Testing</b>, add your own Gmail address as a test user. Add the scope gmail.send.</li>
+        <li>APIs &amp; Services, Library: turn on the <b>Gmail API</b>, the <b>Google Calendar API</b> and the <b>People API</b> (the last two are only for the Calendar panel and finding names in Contacts).</li>
+        <li>OAuth consent screen: External, keep it in <b>Testing</b>, add your own Gmail address as a test user. Add the scopes <b>gmail.send</b>, <b>gmail.readonly</b>, <b>calendar.readonly</b> and <b>contacts.readonly</b>. Jarvis asks for each one separately, only when you use it.</li>
         <li>Credentials, Create credentials, OAuth client ID, <b>Web application</b>. Authorised JavaScript origin: <code>https://jarvis.unwebbed.app</code>. No redirect URI is needed.</li>
         <li>Copy the Client ID (it ends in .apps.googleusercontent.com) and paste it above. It is not a secret, but it only works from this site.</li>
         <li>For Sync across computers too: in the same project, APIs &amp; Services, Library: turn on the <b>Google Drive API</b>, and add the scope drive.appdata on the consent screen. Jarvis then sees only its own hidden folder, never your other files.</li>

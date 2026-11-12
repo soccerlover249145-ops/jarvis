@@ -717,7 +717,9 @@ body, .app { background: #000000; }
 @media (prefers-reduced-motion: reduce) { .sheet.win { animation: none; } }
 
 /* the window sits over a softened, dimmed app, like a sheet over a desktop */
-body:has(.sheet.win:not([hidden])) .wrap, body:has(.sheet.win:not([hidden])) .top { filter: blur(6px) saturate(.8); transition: filter .25s; }
+/* the blur is its own fixed layer under the window: a filter on .wrap would make it the box its fixed children
+   (the phone bar, the caption) are placed in, and they would jump */
+body:has(.sheet.win:not([hidden]))::after { content: ""; position: fixed; inset: 0; z-index: 29; pointer-events: none; -webkit-backdrop-filter: blur(6px) saturate(.8); backdrop-filter: blur(6px) saturate(.8); }
 
 /* ---------- email card: a compose window, in the chat and in the Outbox ---------- */
 .mailcard { padding: 0; border-radius: 14px; background: #1B1C1F; border: 1px solid rgba(255, 255, 255, .09); overflow: hidden; box-shadow: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 24px 60px -24px rgba(0, 0, 0, .8); }
@@ -914,7 +916,7 @@ body:has(.sheet.win:not([hidden])) .wrap, body:has(.sheet.win:not([hidden])) .to
 .jstat .lab, .jsteps .step { font-size: 12px; font-weight: 600; }
 .thread .msg.you p { background: #2A2B2F; border: 1px solid rgba(255, 255, 255, .06); border-radius: 18px; }
 .thread .msg.card, .chartcard, .thread .msg .maccard { border-radius: 16px; background: #1B1C1F; border: 1px solid rgba(255, 255, 255, .09); box-shadow: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 24px 60px -28px rgba(0, 0, 0, .9); }
-.thread .msg.card .asktitle { font: 600 18px/1.3 var(--f-ui); color: #fff; }
+.thread .msg.card .asktitle { font: 600 18px/1.3 var(--f-ui); color: #fff; text-transform: none; letter-spacing: 0; }
 .qbtn.primary, .bigpill, .loadbtn { background: #4C8DF6; color: #fff; border-color: #4C8DF6; }
 .qbtn.primary:hover, .bigpill:hover { background: #3d7fe9; }
 
@@ -937,3 +939,31 @@ body:has(.sheet.win:not([hidden])) .wrap, body:has(.sheet.win:not([hidden])) .to
 .mailcard .mfpick b { font: 600 13px/1.2 var(--f-ui); }
 .mailcard .mfpick span { font: 400 12px/1.2 var(--f-ui); color: #A9ADB5; }
 .mailcard .mfpick:hover, .mailcard .mfpick:focus-visible { border-color: #4C8DF6; outline: none; }
+
+/* the small presence during a conversation sits beside the composer, not on top of it */
+@media (min-width: 1100px) {
+  .app[data-stage="compact"][data-fig="on"] .dock-h #gl.figure { left: max(12px, calc(50% - 360px - 150px)); bottom: 28px; transform: none; }
+}
+/* cards in the conversation: one blue primary, quiet secondary, sentence case */
+.thread .msg.card .pill.go, .thread .msg.card .askyes { background: #4C8DF6; border-color: #4C8DF6; color: #fff; box-shadow: none; }
+.thread .msg.card .pill.go:hover, .thread .msg.card .askyes:hover { background: #3d7fe9; }
+.thread .msg.card .pill.go .pn, .thread .msg.card .askyes .pn { color: rgba(255, 255, 255, .85); }
+
+/* ---------- event card: the email compose window's sibling ---------- */
+.mailcard .minput { color-scheme: dark; }
+.mailcard .mrow.evtimes { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; padding: 0 14px; border-bottom: 1px solid rgba(255, 255, 255, .07); }
+.mailcard .mrow.evtimes .mlbl { font: 500 13px/1 var(--f-ui); letter-spacing: 0; text-transform: none; color: #8E929B; }
+.mailcard .evt { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 0; }
+.mailcard .evt .minput { width: auto; min-width: 0; flex: 0 1 120px; padding: 6px 0; }
+.mailcard .evt .minput:disabled { opacity: .35; }
+.mailcard .evto { font: 400 13px/1 var(--f-ui); color: #8E929B; }
+.mailcard .evall { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font: 500 13px/1 var(--f-ui); color: #C9CCD2; cursor: pointer; }
+.mailcard .evall input { width: 16px; height: 16px; accent-color: #4C8DF6; }
+.mailcard.evcard label.mrow:has(textarea) { grid-template-columns: 64px minmax(0, 1fr); }
+.mailcard.evcard label.mrow:has(textarea) .mlbl { position: static; width: auto; height: auto; overflow: visible; clip: auto; align-self: start; padding-top: 14px; }
+.mailcard.evcard textarea.minput { min-height: 70px; }
+
+/* documents on the Made shelf keep their own heading sizes inside a window */
+.sheet.win .md h3, .sheet.win .md h4 { margin: 20px 0 8px; padding: 0; border: 0; text-transform: none; letter-spacing: 0; text-shadow: none; }
+.sheet.win .md h3 { font: 600 19px/1.3 var(--f-ui); color: #fff; }
+.sheet.win .md h4 { font: 600 15px/1.35 var(--f-ui); color: #E6E8EC; }

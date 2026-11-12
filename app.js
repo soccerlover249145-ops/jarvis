@@ -40,7 +40,7 @@
     /* no visible text bar while voice is actually working: it just listens. The bar comes back
        the moment it genuinely needs you -- no voice support, the mic blocked, or you turned it
        off yourself (Space does both: stop listening and bring the bar back to type instead) */
-    app.dataset.composer = (!ears.supported || S.micState === 'blocked' || S.micState === 'off') ? 'show' : 'hide';
+    app.dataset.composer = (!ears.supported || S.micState === 'blocked' || S.micState === 'off' || S.typeOpen) ? 'show' : 'hide';
     /* the one-word state at the top: what Jarvis is doing right now */
     var ps = S.micState === 'paused' ? 'paused' : m === 'speaking' ? 'speaking' : m === 'thinking' ? 'thinking' : m === 'listening' ? 'listening' : m === 'asleep' ? 'sleeping' : m === 'idle' ? 'awake' : 'off',
       pl = { paused: 'Paused', speaking: 'Speaking', thinking: 'Thinking', listening: 'Listening', sleeping: 'Sleeping', awake: 'Awake', off: 'Off' }[ps],
@@ -412,8 +412,12 @@
   }
   Kin.confirm = confirmCard;
 
-  function ask(text) {
+  function ask(text, o) {
+    o = o || {};
     text = String(text || '').trim(); if (!text) return;
+    /* a hand-off from a panel (emails to sum up or answer, a day to plan) goes straight to Claude: no shortcut on
+       this page may act on the email or calendar text inside it */
+    if (!o.direct) {
     if (pendingConfirm && pendingConfirm.answer(text)) { inp.value = ''; lastLen = 0; return; }
     /* "Turn on away mode, sir?" answered with a plain yes, within two minutes */
     if (awayYes && Date.now() < awayYes) { var yes = /^(?:yes|yeah|yep|yes please|please do|do it|go ahead|turn it on|sure)(?:,? sir)?[.!]*$/i.test(text.trim()); awayYes = 0; if (yes) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); awayAsk({ k: 'on' }); return; } }
@@ -426,23 +430,15 @@
     if (Kin.desk && deskAsk(text)) return;
     /* apps, files and "do it on my computer" need the Jarvis Mac app; in a browser, say so plainly instead of asking Claude */
     if (Kin.mac && !Kin.mac.available() && Kin.mac.needsMac(text)) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); var mq = localReply(Kin.mac.NEED_TEXT, 'Mac app only'); mq.parentNode.appendChild(Kin.mac.need()); showThread(); return; }
-    /* "check my inbox" / "open my email": the inbox panel; reading itself waits for a tap (Google's window is a popup) */
-    if (Kin.email && /^(?:jarvis |kin )?(?:(?:open|show)(?: me)? (?:my |the )?inbox|(?:check|read)(?: me)? (?:my |the )?(?:inbox|emails?|mail))\b/i.test(ears.norm ? ears.norm(text) : text)) {
-      inp.value = ''; lastLen = 0; touch(); addMsg('you', text); openShelf('inbox');
-      var il = Kin.email.canRead() ? 'Your inbox, sir. Tap Check inbox and I will read what is unread.' : 'To read your inbox I need your Google Client ID in Settings, Email, sir.';
-      addMsg('kin', il); if (S.unlocked && voice.canSpeak()) say(il, true); return;
-    }
-    /* "open my calendar" / "what's on my calendar": the calendar panel; reading waits for a tap */
-    if (Kin.email && /^(?:jarvis |kin )?(?:(?:open|show|check)(?: me)? (?:my |the )?(?:calendar|schedule|agenda)|whats on my (?:calendar|schedule))\b/i.test(ears.norm ? ears.norm(text) : text)) {
-      inp.value = ''; lastLen = 0; touch(); addMsg('you', text); openShelf('cal');
-      var cl = Kin.email.canRead() ? 'Your calendar, sir. Tap Next 3 days and I will read it.' : 'To read your calendar I need your Google Client ID in Settings, Email, sir.';
-      addMsg('kin', cl); if (S.unlocked && voice.canSpeak()) say(cl, true); return;
-    }
-    /* "open my outbox" / "show my drafts": the outbox, no model call needed */
-    if (Kin.email && /^(?:jarvis |kin )?(?:open|show|check)(?: me)? (?:my |the )?(?:outbox|drafts|email drafts|draft emails)\b/i.test(ears.norm ? ears.norm(text) : text)) {
-      inp.value = ''; lastLen = 0; touch(); addMsg('you', text); openShelf('outbox');
-      var n = Kin.email.waiting().length, line = n ? 'Your outbox, sir. ' + n + (n === 1 ? ' email is' : ' emails are') + ' waiting.' : 'Your outbox is empty, sir.';
-      addMsg('kin', line); if (S.unlocked && voice.canSpeak()) say(line, true); return;
+    /* "check my inbox", "what's on my calendar", "show my drafts": their panels, no model call. Only when that is the
+       whole request: "check my email for typos" or "the schedule for the game" go to Claude as usual */
+    var pn = panelAsk(text);
+    if (pn) {
+      inp.value = ''; lastLen = 0; touch(); addMsg('you', text); openShelf(pn);
+      var pl = pn === 'outbox' ? (Kin.email.waiting().length ? 'Your outbox, sir. ' + Kin.email.waiting().length + (Kin.email.waiting().length === 1 ? ' email is' : ' emails are') + ' waiting.' : 'Your outbox is empty, sir.')
+        : !Kin.email.canRead() ? 'To read your ' + (pn === 'cal' ? 'calendar' : 'inbox') + ' I need your Google Client ID in Settings, Email, sir.'
+        : pn === 'cal' ? 'Your calendar, sir. Tap Next 3 days and I will read it.' : 'Your inbox, sir. Tap Check inbox and I will read what is unread.';
+      addMsg('kin', pl); if (S.unlocked && voice.canSpeak() && !S.busy && !S.talking) say(pl, true); return;
     }
     if (S.busy) return;
     if (Kin.briefBoard && Kin.briefBoard.isBriefRequest(text)) { inp.value = ''; lastLen = 0; touch(); brief(text); return; }
@@ -456,13 +452,16 @@
     if (Kin.gauntlet && Kin.gauntlet.isRequest(text)) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); gauntlet(true); return; }
     /* "what's new": a list of the newest abilities; each Try it only opens a panel */
     if (Kin.whatsNew && Kin.whatsNew.isRequest(text)) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); whatsNew(true); return; }
-    var now = Kin.mind.instant(text);
+    }
+    if (S.busy) return;
+    var now = o.direct ? null : Kin.mind.instant(text);
     if (now) { instantly(text, now); return; }
     var me = ++S.askN, hushed = function () { return S.hushed === me; };
     var aloud = S.talk === 'awake', p = null, got = false, t0 = Date.now(), momT = 0, watchI = 0, sess = null, lastSign = Date.now(), stalled = false, pr, making = false, job = null;
     inp.value = ''; lastLen = 0; multi = single = 0; S.asks++; touch();
-    addMsg('you', text); p = addMsg('kin', '…');
-    caption(text.length > 150 ? text.slice(0, 147) + '…' : text, 'Thinking', 'you');
+    var shown = o.label || text;
+    addMsg('you', shown); p = addMsg('kin', '…');
+    caption(shown.length > 150 ? shown.slice(0, 147) + '…' : shown, 'Thinking', 'you');
     S.busy = true; S.ctl = new AbortController(); S.speakTyped = !aloud && S.unlocked; paint();
     var speakIt = (aloud || S.speakTyped) && S.unlocked;
     /* a long silence feels broken: say so once, and never wait forever, before the first word or after it */
@@ -478,11 +477,11 @@
       var box = p.parentNode;
       if (r.detail) p.textContent = out + '\n' + r.detail; else settle(p, out, r, text);
       if (r.todo && !job && box) box.appendChild(el('p', 'note todo', r.todo));
-      if ((r.stalled || /^(busy|api|network|timeout)$/.test(r.code || '')) && !job) { var rb = el('button', 'pill alt retry'); rb.type = 'button'; rb.appendChild(el('span', 'pl', 'Retry')); rb.addEventListener('click', function () { gesture(); rb.disabled = true; if (!S.busy) ask(text); }); if (box) box.appendChild(rb); }
+      if ((r.stalled || /^(busy|api|network|timeout)$/.test(r.code || '')) && !job) { var rb = el('button', 'pill alt retry'); rb.type = 'button'; rb.appendChild(el('span', 'pl', 'Retry')); rb.addEventListener('click', function () { gesture(); rb.disabled = true; if (!S.busy) ask(text, o); }); if (box) box.appendChild(rb); }
       if (r.canContinue && !job && box) { var cb = el('button', 'pill go cont'); cb.type = 'button'; cb.appendChild(el('span', 'pl', 'Continue')); cb.addEventListener('click', function () { gesture(); cb.disabled = true; ask('Carry on with that from where you stopped, and finish it.'); }); box.appendChild(cb); }
       if (r.code === 'limit') { S.queued = ''; if (S.talk === 'awake') sleep(true); caption(out, 'Change the limit in settings'); if (speakIt) say(out, true); else captionFade(9000); refreshSettings(); return; }
       /* talked over: the rest of this answer stays on screen and is not read out; a new question goes next */
-      if (r.code === 'stopped' && !stalled && hushed()) brain.keepTurn(text, got ? plain(p.textContent) + ' [interrupted by the founder]' : '[interrupted by the founder before the answer]');
+      if (r.code === 'stopped' && !stalled && hushed()) brain.keepTurn(text, got ? plain(p.textContent) + ' [interrupted by the founder]' : '[interrupted by the founder before the answer]', !!o.untrusted);
       if (r.code === 'stopped' && got && !stalled) { if (sess && !hushed()) voice.stop(); if (!hushed()) caption(null); if (hushed() && S.queued && S.talk === 'awake') { var q0 = S.queued; S.queued = ''; setTimeout(function () { ask(q0); }, 120); } return; }
       if (sess && !hushed()) { var fin = spoken(out); S.said = ears.norm(fin); sess.finish(fin); }
       else if (speakIt && !hushed() && voice.canSpeak()) { var one = r.studio || job ? (/^.*?[.!?](\s|$)/.exec(plain(out)) || [plain(out)])[0].trim() : out; caption(spoken(one).slice(0, 190), r.detail || job ? 'The details are on screen' : ''); say(one, !!(r.studio || job)); }
@@ -495,7 +494,7 @@
       if (S.queued && S.talk === 'awake') { var q = S.queued; S.queued = ''; setTimeout(function () { ask(q); }, 300); }
     }
     try {
-      var aopts = { aloud: aloud, signal: S.ctl.signal,
+      var aopts = { aloud: aloud, signal: S.ctl.signal, untrusted: !!o.untrusted,
         onText: function (t) { got = true; lastSign = Date.now(); p.textContent = t; var m = /^(.{30,190}?[.!?])(\s|$)/.exec(spoken(t)); if (m && !S.talking) caption(m[1], 'Jarvis');
           /* with a voice key, the first whole sentence is spoken while the rest is still arriving */
           /* only a spoken conversation is spoken while it streams: a typed answer is checked first, then its opening is read out */
@@ -504,11 +503,13 @@
         /* every event of a stream is a sign of life: thinking, a tool's input arriving, a search */
         onBeat: function () { lastSign = Date.now(); },
         onRoute: function (route) { making = route === 'make' || route === 'design'; },
-        onStatus: function (st) { lastSign = Date.now(); if (job) job.status(st); if (!S.talking && !got) caption(text.length > 150 ? text.slice(0, 147) + '…' : text, st, 'you'); else if (!S.talking) $('capS').textContent = st; },
+        onStatus: function (st) { lastSign = Date.now(); if (job) job.status(st); if (!S.talking && !got) caption(shown.length > 150 ? shown.slice(0, 147) + '…' : shown, st, 'you'); else if (!S.talking) $('capS').textContent = st; },
         onMade: function () { lastSign = Date.now(); refreshMade(); syncTouch(); },
         onRemember: function () { refreshSettings(); syncTouch(); },
         /* an email Kin wrote: a card under the answer; only the founder's tap sends it */
         onEmail: function (d) { lastSign = Date.now(); if (!Kin.email) return; var id = Kin.email.saveDraft(d), box = p && p.parentNode; if (box) box.appendChild(Kin.email.card(d, { id: id, onChange: outboxCount, onSay: function (t) { if (S.unlocked && voice.canSpeak()) say(t, true); } })); outboxCount(); showThread(); },
+        /* an event Jarvis prepared: a card under the answer; it goes on a calendar only when the founder taps */
+        onEvent: function (e) { lastSign = Date.now(); if (!Kin.email || !Kin.email.eventCard) return; var box = p && p.parentNode; if (box) box.appendChild(Kin.email.eventCard(e, { onSay: function (t) { if (S.unlocked && voice.canSpeak()) say(t, true); } })); showThread(); },
         /* a computer action inside the Mac app: a small card under the answer saying what was asked and what the Mac answered */
         onMac: function (node) { lastSign = Date.now(); var box = p && p.parentNode; if (box) box.appendChild(node); showThread(); },
         confirm: confirmCard,
@@ -857,15 +858,19 @@
       plus.addEventListener('click', function () { gesture(); if (menu) close(); else open(); });
       document.addEventListener('pointerdown', function (e) { if (menu && !menu.contains(e.target) && !plus.contains(e.target)) close(); }, true);
       /* Escape closes the menu only; it does not also stop Jarvis talking */
-      document.addEventListener('keydown', function (e) { if (menu && e.key === 'Escape') { e.stopPropagation(); close(); plus.focus(); } }, true);
+      document.addEventListener('keydown', function (e) { if (!menu || e.key !== 'Escape') return; var seen = menu.getClientRects().length > 0; close(); if (seen) { e.stopPropagation(); plus.focus(); } }, true);
     }
   })();
   $('status').addEventListener('click', function () { var t = $('thread'); if (!t.hidden) { t.hidden = true; return; } showThread(); if (!t.children.length) { var d = document.createElement('p'); d.className = 'empty'; d.textContent = 'Nothing said yet.'; t.appendChild(d); } });
   document.addEventListener('keydown', function (e) {
     var tag = (e.target.tagName || '').toLowerCase(), typing = tag === 'input';
-    if (e.key === 'Escape') { if (!$('sheet').hidden) { $('sheet').hidden = true; return; } stopAll(); }
+    /* Escape closes what is open first (Settings, then Made, Inbox, Outbox or Calendar); only then does it stop Jarvis */
+    if (e.key === 'Escape') { if (!$('sheet').hidden) { $('sheet').hidden = true; return; } if (!$('shelf').hidden) { $('shelf').hidden = true; return; } stopAll(); }
     else if (e.key === ' ' && spaceOk(e)) { e.preventDefault(); if (e.repeat || ptt.down) return; ptt.down = true; ptt.t = setTimeout(pttStart, 250); }
+    /* just start typing: while listening hides the text box, a letter brings it back with that letter in it */
+    else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && app.dataset.composer === 'hide' && spaceOk(e)) { S.typeOpen = true; paint(); inp.focus(); }
   });
+  inp.addEventListener('blur', function () { if (S.typeOpen && !inp.value.trim()) { S.typeOpen = false; paint(); } });
   /* Space: a quick tap turns listening on or off, as it always has. Held down, it is push-to-talk: no wake phrase,
      Jarvis stops talking, everything said while it is held is kept, and it is all sent the moment Space is let go */
   var ptt = { down: false, on: false, started: false, t: 0 };
@@ -1005,11 +1010,26 @@
   }
   /** the inbox: unread Gmail, read on a tap with a read-only permission, held in memory for this visit only.
       Nothing from it goes to Claude unless the founder taps Draft reply or Summarize these. */
-  /* panel buttons that hand a job to Jarvis: while an answer is still running, say so on the button instead of dropping the tap */
-  function handOff(btn, q) {
-    if (S.busy) { var lab = btn.querySelector('.pl') || btn, was = lab.textContent; if (was.indexOf('Still') === 0) return; lab.textContent = 'Still answering, one moment'; setTimeout(function () { lab.textContent = was; }, 2500); return; }
-    $('shelf').hidden = true; ask(q);
+  var PLEAD = '^(?:(?:hey |ok |okay )?(?:jarvis|kin) )?(?:(?:can|could|would|will) you |please )?', PTAIL = '(?: (?:please|now|for me|sir|thanks|thank you))*$';
+  var PANEL_RE = {
+    inbox: new RegExp(PLEAD + '(?:(?:open|show|check|read)(?: me)? (?:my |the )?(?:inbox|e ?mails?|mail)|(?:do i have|have i got|is there|are there) (?:any )?(?:new |unread )?(?:e ?mails?|mail)|whats in my inbox)(?: (?:today|this morning))?' + PTAIL),
+    cal: new RegExp(PLEAD + '(?:(?:open|show|check|read)(?: me)? (?:my |the )?(?:calendar|schedule|agenda)|(?:whats|what is|what do i have|what have i got) on (?:my |the )?(?:calendar|schedule|agenda)|whats my (?:schedule|agenda))(?: (?:for )?(?:today|tomorrow|this week|the week))?' + PTAIL),
+    outbox: new RegExp(PLEAD + '(?:open|show|check)(?: me)? (?:my |the )?(?:outbox|email drafts|draft emails|drafts)' + PTAIL)
+  };
+  function panelAsk(text) {
+    if (!Kin.email) return '';
+    var n = ears.norm ? ears.norm(text) : String(text).toLowerCase();
+    for (var k in PANEL_RE) if (PANEL_RE[k].test(n)) return k;
+    return '';
   }
+  Kin.panelAsk = panelAsk;
+  /* panel buttons that hand a job to Jarvis: while an answer is still running, say so on the button instead of dropping the tap */
+  function handOff(btn, q, label) {
+    if (S.busy) { var lab = btn.querySelector('.pl') || btn, was = lab.textContent; if (was.indexOf('Still') === 0) return; lab.textContent = 'Still answering, one moment'; setTimeout(function () { lab.textContent = was; }, 2500); return; }
+    $('shelf').hidden = true; ask(q, { direct: true, untrusted: true, label: label });
+  }
+  /** mail or calendar text, fenced off as data: a closing tag inside it cannot end the fence early */
+  function fence(tag, body) { return '<' + tag + '>\n' + String(body).replace(/<\/?\s*(emails?|calendar)\b[^>]*>/gi, '') + '\n</' + tag + '>'; }
   var inboxCache = null, inboxBusy = false, inboxErr = '';
   function nameOf(from) { var m = /^\s*"?([^"<]+?)"?\s*</.exec(from || ''); return m ? m[1].trim() : String(from || '').replace(/[<>]/g, ''); }
   function inboxShelf(host) {
@@ -1020,6 +1040,8 @@
       if (!Kin.shared) { var go = el('button', 'pill sm go'); go.type = 'button'; go.appendChild(el('span', 'pl', 'Open Email settings')); go.addEventListener('click', function () { $('shelf').hidden = true; settingsAt('email'); }); host.appendChild(go); }
       return;
     }
+    /* Google's sign-in script is fetched now, so the tap below opens its window straight away (Safari needs that) */
+    Kin.email.loadGis();
     var bt = el('div', 'btns pills'); host.appendChild(bt);
     function pb(label, cls, fn) { var b = el('button', 'pill sm ' + cls); b.type = 'button'; b.appendChild(el('span', 'pl', label)); b.addEventListener('click', function () { gesture(); fn(b); }); bt.appendChild(b); return b; }
     function load(all) {
@@ -1036,7 +1058,8 @@
     if (!list.length) { note(inboxCache.all ? 'Your inbox is empty.' : 'Nothing unread, sir.'); return; }
     note(list.length + (inboxCache.all ? ' recent' : ' unread') + (list.length === 1 ? ' email' : ' emails') + ', checked ' + new Date(inboxCache.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) + '.');
     pb('Summarize these', 'alt', function (b) {
-      handOff(b, 'Here are my ' + (inboxCache.all ? 'recent' : 'unread') + ' emails (From, Subject, the start of each):\n\n' + list.map(function (m, i) { return (i + 1) + '. ' + nameOf(m.from) + ' | ' + m.subject + ' | ' + m.snippet; }).join('\n') + '\n\nTell me what needs me, most urgent first, in a few short lines, and which deserve a reply.');
+      handOff(b, 'Here are my ' + (inboxCache.all ? 'recent' : 'unread') + ' emails (From, Subject, the start of each), between the emails tags:\n\n' + fence('emails', list.map(function (m, i) { return (i + 1) + '. ' + nameOf(m.from) + ' | ' + m.subject + ' | ' + m.snippet; }).join('\n')) + '\n\nTell me what needs me, most urgent first, in a few short lines, and which deserve a reply.',
+        'Sum up my ' + list.length + (inboxCache.all ? ' recent' : ' unread') + (list.length === 1 ? ' email' : ' emails'));
     });
     list.forEach(function (m) {
       var r = document.createElement('div'); r.className = 'ibrow' + (m.unread ? ' unread' : ''); r.tabIndex = 0; r.setAttribute('role', 'button');
@@ -1051,7 +1074,7 @@
       r.addEventListener('keydown', function (e) { if ((e.key === 'Enter' || e.key === ' ') && e.target === r) { e.preventDefault(); r.classList.toggle('open'); } });
       var acts = document.createElement('div'); acts.className = 'btns ibacts';
       var rep = document.createElement('button'); rep.type = 'button'; rep.className = 'lnk'; rep.textContent = 'Draft reply';
-      rep.addEventListener('click', function () { gesture(); handOff(rep, 'Draft a reply to this email, in my voice, short. From: ' + m.from + '. Subject: ' + m.subject + '. It says: "' + m.snippet + '". Put it in an email draft to them with "Re: ' + m.subject.replace(/^re:\s*/i, '') + '" as the subject.'); });
+      rep.addEventListener('click', function () { gesture(); handOff(rep, 'Draft a reply, in my voice, short, to the email between the email tags. Put it in an email draft to the sender with "Re: ' + m.subject.replace(/^re:\s*/i, '') + '" as the subject.\n\n' + fence('email', 'From: ' + m.from + '\nSubject: ' + m.subject + '\n' + m.snippet), 'Draft a reply to ' + nameOf(m.from) + ': ' + m.subject); });
       var op = document.createElement('button'); op.type = 'button'; op.className = 'lnk dim'; op.textContent = 'Open in Gmail';
       op.addEventListener('click', function () { window.open(Kin.email.threadUrl(m), '_blank', 'noopener,noreferrer'); });
       acts.appendChild(rep); acts.appendChild(op); r.appendChild(acts); host.appendChild(r);
@@ -1067,6 +1090,7 @@
       if (!Kin.shared) { var go = el('button', 'pill sm go'); go.type = 'button'; go.appendChild(el('span', 'pl', 'Open Email settings')); go.addEventListener('click', function () { $('shelf').hidden = true; settingsAt('email'); }); host.appendChild(go); }
       return;
     }
+    Kin.email.loadGis();
     var bt = el('div', 'btns pills'); host.appendChild(bt);
     function pb(label, cls, fn) { var b = el('button', 'pill sm ' + cls); b.type = 'button'; b.appendChild(el('span', 'pl', label)); b.addEventListener('click', function () { gesture(); fn(b); }); bt.appendChild(b); return b; }
     function load(days) {
@@ -1082,18 +1106,24 @@
     var list = calCache.list;
     if (!list.length) { note('Nothing on your calendar for the next ' + calCache.days + ' days, sir.'); return; }
     function hm(t) { return new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); }
+    function dshort(t) { return new Date(t).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }); }
     function span(e) {
-      if (e.allDay) return 'All day';
+      /* all-day ends are the next morning (exclusive); a timed event that crosses midnight shows both days */
+      if (e.allDay) return e.end && e.end - e.start > 864e5 + 36e5 ? 'All day, until ' + dshort(e.end - 864e5) : 'All day';
+      if (e.end && new Date(e.end).toDateString() !== new Date(e.start).toDateString()) return hm(e.start) + ' – ' + dshort(e.end) + ', ' + hm(e.end);
       var a = hm(e.start), b = e.end ? hm(e.end) : '', ma = /\s?[AP]M$/i.exec(a), mb = /\s?[AP]M$/i.exec(b);
       if (ma && mb && ma[0].trim() === mb[0].trim()) a = a.slice(0, ma.index);
       return b ? a + '–' + b : a;
     }
+    function safeUrl(u) { return /^https:\/\//i.test(String(u || '')) ? String(u) : ''; }
     pb('Plan my day', 'alt', function (b) {
-      handOff(b, 'Here is my calendar for the next ' + calCache.days + ' days:\n\n' + list.map(function (e) { return new Date(e.start).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ', ' + span(e) + ': ' + e.title + (e.where ? ' (' + e.where + ')' : '') + (e.who.length ? ' with ' + e.who.join(', ') : ''); }).join('\n') + '\n\nGive me a short plan: what matters most, where the free time is, and anything I should prepare for.');
+      handOff(b, 'Here is my calendar for the next ' + calCache.days + ' days, between the calendar tags:\n\n' + fence('calendar', list.map(function (e) { return new Date(e.start).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ', ' + span(e) + ': ' + e.title + (e.where ? ' (' + e.where + ')' : '') + (e.who.length ? ' with ' + e.who.join(', ') : ''); }).join('\n')) + '\n\nGive me a short plan: what matters most, where the free time is, and anything I should prepare for.',
+        'Plan my day from my calendar');
     });
-    var lastDay = '';
+    var lastDay = '', mid = new Date(); mid.setHours(0, 0, 0, 0);
     list.forEach(function (e) {
-      var d = new Date(e.start), day = d.toDateString();
+      /* something that began before today and is still going is listed under Today, not under a past day */
+      var d = new Date(Math.max(e.start, mid.getTime())), day = d.toDateString();
       if (day !== lastDay) {
         lastDay = day; var h = document.createElement('h4'); h.className = 'calday';
         var today = new Date(), tom = new Date(today.getTime() + 864e5);
@@ -1107,8 +1137,9 @@
       var meta = [e.where, e.who.length ? 'with ' + e.who.join(', ') : ''].filter(Boolean).join(' · ');
       if (meta) { var m = document.createElement('small'); m.textContent = meta; body.appendChild(m); }
       var acts = document.createElement('div'); acts.className = 'btns';
-      if (e.meet) { var jn = document.createElement('button'); jn.type = 'button'; jn.className = 'lnk'; jn.textContent = 'Join'; jn.addEventListener('click', function () { window.open(e.meet, '_blank', 'noopener,noreferrer'); }); acts.appendChild(jn); }
-      if (e.link) { var op = document.createElement('button'); op.type = 'button'; op.className = 'lnk dim'; op.textContent = 'Open'; op.addEventListener('click', function () { window.open(e.link, '_blank', 'noopener,noreferrer'); }); acts.appendChild(op); }
+      var meetU = safeUrl(e.meet), linkU = safeUrl(e.link);
+      if (meetU) { var jn = document.createElement('button'); jn.type = 'button'; jn.className = 'lnk'; jn.textContent = 'Join'; jn.addEventListener('click', function () { window.open(meetU, '_blank', 'noopener,noreferrer'); }); acts.appendChild(jn); }
+      if (linkU) { var op = document.createElement('button'); op.type = 'button'; op.className = 'lnk dim'; op.textContent = 'Open'; op.addEventListener('click', function () { window.open(linkU, '_blank', 'noopener,noreferrer'); }); acts.appendChild(op); }
       if (acts.children.length) body.appendChild(acts);
       r.appendChild(body); r.appendChild(t); host.appendChild(r);
     });
