@@ -1144,3 +1144,68 @@ body:has(.sheet.win:not([hidden])) .app::after { content: ""; position: fixed; i
 .thread .msg .md blockquote { margin: 6px 0 14px; padding: 10px 14px; border-left: 3px solid #6FE3FF; border-radius: 0 12px 12px 0; background: rgba(111, 227, 255, .06); color: var(--text, #F2F5F8); }
 .thread .msg .md pre { padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, .08); background: rgba(255, 255, 255, .03); }
 .thread .msg .md hr { border: 0; height: 1px; margin: 16px 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .18), transparent); }
+
+/* the set-up card (cues.js): every check with its state, the one in hand lit, and Next / Skip / Stop during a walk */
+.thread .msg .setupcard { display: block; max-width: 560px; padding: 14px 14px 12px; }
+.thread .msg .setupcard .su-head { display: grid; grid-template-columns: 60px minmax(0, 1fr); align-items: center; column-gap: 14px; }
+.thread .msg .setupcard .su-ring { width: 60px; height: 60px; display: block; overflow: visible; }
+.thread .msg .setupcard .su-ring .trk { fill: none; stroke: rgba(255, 255, 255, .09); stroke-width: 4; }
+.thread .msg .setupcard .su-ring .arc { fill: none; stroke: #6FE3FF; stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset .5s ease, stroke .3s; filter: drop-shadow(0 0 5px rgba(111, 227, 255, .55)); }
+.thread .msg .setupcard .su-ring .arc.full { stroke: #8CF5C0; filter: drop-shadow(0 0 5px rgba(140, 245, 192, .55)); }
+.thread .msg .setupcard .su-ring .num { fill: #fff; font: 600 13px/1 var(--f-ui); letter-spacing: .01em; font-variant-numeric: tabular-nums; }
+.thread .msg .setupcard .su-ht { min-width: 0; }
+.thread .msg .setupcard .su-ht b { display: block; font: 600 11px/1.3 var(--f-ui); letter-spacing: .14em; text-transform: uppercase; color: #9FEBFF; }
+.thread .msg .setupcard .su-big { margin-top: 2px; font: 600 22px/1.2 var(--f-ui); letter-spacing: -.01em; color: #fff; overflow-wrap: anywhere; }
+.thread .msg .setupcard .su-ht small { display: block; margin-top: 3px; font: 400 12.5px/1.4 var(--f-ui); color: rgba(255, 255, 255, .74); white-space: normal; }
+.thread .msg .setupcard .su-list { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 6px; }
+.thread .msg .setupcard .su-row { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto auto; align-items: center; column-gap: 10px; min-height: 52px; margin: 0; padding: 8px 10px 8px 12px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, .08); background: rgba(255, 255, 255, .03); }
+.thread .msg .setupcard .su-row::before, .thread .msg .setupcard .su-row::marker { content: none; }
+.thread .msg .setupcard .su-dot { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; border: 1.5px solid rgba(255, 255, 255, .34); font: 700 12px/1 var(--f-ui); color: #0A0E14; }
+.thread .msg .setupcard .su-row.ok .su-dot { border-color: #8CF5C0; background: #8CF5C0; }
+.thread .msg .setupcard .su-row.cur .su-dot { border-color: #6FE3FF; background: #6FE3FF; box-shadow: 0 0 0 4px rgba(111, 227, 255, .16); }
+.thread .msg .setupcard .su-row.bad .su-dot { border-color: #FFA59D; background: #FFA59D; }
+.thread .msg .setupcard .su-row.cur { border-color: rgba(111, 227, 255, .55); background: rgba(111, 227, 255, .08); }
+.thread .msg .setupcard .su-row.bad { border-color: rgba(255, 165, 157, .4); }
+.thread .msg .setupcard .su-mid { min-width: 0; display: block; }
+.thread .msg .setupcard .su-mid b { display: block; font: 600 14px/1.3 var(--f-ui); color: #fff; }
+.thread .msg .setupcard .su-mid small { display: block; margin-top: 1px; font: 400 12.5px/1.4 var(--f-ui); color: rgba(255, 255, 255, .74); overflow-wrap: anywhere; }
+.thread .msg .setupcard .su-row.skip .su-mid b { color: rgba(255, 255, 255, .8); }
+.thread .msg .setupcard .su-chip { padding: 3px 9px; border-radius: 999px; font: 600 10.5px/1.4 var(--f-ui); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; color: rgba(255, 255, 255, .8); background: rgba(255, 255, 255, .07); }
+.thread .msg .setupcard .su-row.ok .su-chip { color: #8CF5C0; background: rgba(140, 245, 192, .12); }
+.thread .msg .setupcard .su-row.bad .su-chip { color: #FFA59D; background: rgba(255, 165, 157, .12); }
+.thread .msg .setupcard .su-row.must:not(.ok):not(.bad) .su-chip { color: #FFC870; background: rgba(255, 200, 112, .14); }
+.thread .msg .setupcard .su-fix, .thread .msg .setupcard .su-btn { min-height: 34px; padding: 6px 14px; border-radius: 999px; border: 1px solid rgba(111, 227, 255, .45); background: rgba(111, 227, 255, .1); color: #DDF8FF; font: 600 12.5px/1.2 var(--f-ui); cursor: pointer; white-space: nowrap; transition: background .15s, border-color .15s, transform .15s; }
+.thread .msg .setupcard .su-fix:hover, .thread .msg .setupcard .su-btn:hover { background: rgba(111, 227, 255, .2); border-color: #6FE3FF; transform: translateY(-1px); }
+.thread .msg .setupcard .su-fix:focus-visible, .thread .msg .setupcard .su-btn:focus-visible { outline: 2px solid #6FE3FF; outline-offset: 2px; }
+.thread .msg .setupcard .su-foot { margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.thread .msg .setupcard .su-foot .su-btn:first-child { background: #6FE3FF; border-color: #6FE3FF; color: #06121A; }
+.thread .msg .setupcard .su-foot .su-btn:first-child:hover { background: #9FEBFF; }
+.thread .msg .setupcard .su-foot small { margin-left: auto; font: 400 12px/1.4 var(--f-ui); color: rgba(255, 255, 255, .72); }
+@media (pointer: coarse) { .thread .msg .setupcard .su-fix, .thread .msg .setupcard .su-btn { min-height: 44px; padding: 10px 16px; } }
+@media (max-width: 460px) {
+  .thread .msg .setupcard .su-row { grid-template-columns: 24px minmax(0, 1fr) auto; column-gap: 10px; }
+  /* on a phone a row that can be fixed shows its button where the state chip was; the needed one is amber */
+  .thread .msg .setupcard .su-row.hasfix .su-chip { display: none; }
+  .thread .msg .setupcard .su-row .su-fix { grid-column: 3; justify-self: end; }
+  .thread .msg .setupcard .su-row.must .su-fix { border-color: rgba(255, 200, 112, .6); background: rgba(255, 200, 112, .12); color: #FFE2B0; }
+  .thread .msg .setupcard .su-big { font-size: 19px; }
+  .thread .msg .setupcard .su-foot small { margin-left: 0; flex-basis: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { .thread .msg .setupcard .su-ring .arc, .thread .msg .setupcard .su-fix, .thread .msg .setupcard .su-btn { transition: none; } .thread .msg .setupcard .su-fix:hover, .thread .msg .setupcard .su-btn:hover { transform: none; } }
+@media (forced-colors: active) { .thread .msg .setupcard .su-row, .thread .msg .setupcard .su-fix, .thread .msg .setupcard .su-btn { border: 1px solid ButtonText; } .thread .msg .setupcard .su-dot { border: 1px solid ButtonText; } }
+/* the showcase card: "show me what you can do" */
+.thread .msg .showcard .sc-head b { display: block; font: 600 11px/1.3 var(--f-ui); letter-spacing: .14em; text-transform: uppercase; color: #9FEBFF; }
+.thread .msg .showcard .sc-big { margin-top: 2px; font: 600 24px/1.15 var(--f-ui); letter-spacing: -.015em; color: #fff; }
+.thread .msg .showcard .sc-head small { display: block; margin-top: 4px; font: 400 12.5px/1.4 var(--f-ui); color: rgba(255, 255, 255, .74); }
+.thread .msg .showcard .sc-grp { margin-top: 14px; padding: 12px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, .08); background: linear-gradient(180deg, rgba(111, 227, 255, .06), rgba(255, 255, 255, .02)); }
+.thread .msg .showcard .sc-gh { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 10px; }
+.thread .msg .showcard .sc-gt { font: 600 14px/1.3 var(--f-ui); color: #fff; }
+.thread .msg .showcard .sc-gs { font: 400 12px/1.3 var(--f-ui); color: rgba(255, 255, 255, .7); }
+.thread .msg .showcard .sc-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.thread .msg .showcard .sc-chip { min-height: 36px; padding: 7px 14px; border-radius: 999px; border: 1px solid rgba(111, 227, 255, .4); background: rgba(111, 227, 255, .08); color: #DDF8FF; font: 500 13px/1.25 var(--f-ui); text-align: left; cursor: pointer; transition: background .15s, border-color .15s, transform .15s; }
+.thread .msg .showcard .sc-chip:hover { background: rgba(111, 227, 255, .2); border-color: #6FE3FF; transform: translateY(-1px); }
+.thread .msg .showcard .sc-chip:focus-visible { outline: 2px solid #6FE3FF; outline-offset: 2px; }
+.thread .msg .showcard .sc-grp.off .sc-chip { border-color: rgba(255, 255, 255, .18); background: rgba(255, 255, 255, .04); color: rgba(255, 255, 255, .78); }
+.thread .msg .showcard .sc-grp.off .sc-gs { color: #FFD38A; }
+@media (pointer: coarse) { .thread .msg .showcard .sc-chip { min-height: 44px; padding: 10px 16px; } }
+@media (prefers-reduced-motion: reduce) { .thread .msg .showcard .sc-chip { transition: none; } .thread .msg .showcard .sc-chip:hover { transform: none; } }

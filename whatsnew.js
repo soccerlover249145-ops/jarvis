@@ -11,6 +11,7 @@
   var Kin = window.Kin = window.Kin || {};
 
   var ITEMS = [
+    { key: 'cues', title: 'Spoken cues', say: 'Show me what you can do', instant: true, note: 'Say “show me what you can do” for a quick tour with a tap for each thing. Say “set it all up” and I answer “Setting everything up, sir”, then walk you through what is missing one thing at a time: say “next”, “skip” or “stop setup”. Also “run a systems check”, “can you hear me”, “what’s left to set up”, “say that again”, “speak slower”, “stop listening”, “open the voice settings” and “close that”. All on this device, with no call to Claude.' },
     { key: 'remind', title: 'Reminders', say: 'Remind me at 3pm to call Sam', note: 'I understand it here, with no call to Claude, and keep it on this device. When it is due I chime, say it and show Done and Snooze. Say “every weekday at 8”, “every other Friday” or “on the 1st of every month” to repeat one; the Calendar panel lists them.' },
     { key: 'lists', title: 'Lists', say: 'Add eggs and milk to my shopping list', note: 'Shopping, to-do, packing, or any name. Kept on this device, with no call to Claude. Ask what is on one, tick things off, or open the Lists tab to tap through it.' },
     { key: 'quick', title: 'Coin, dice, stopwatch, countdowns', say: 'How many days until Christmas?', note: 'Flip a coin, roll dice, pick a number, time something with a stopwatch, or count the days to a date or a holiday. Answered at once on this device, with no call to Claude, each with its own card: the coin, the dice, a live stopwatch with Stop and Reset.' },

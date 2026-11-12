@@ -14,6 +14,8 @@
     line: '', lines: [], spokeAt: 0, bargeAt: 0, voiceBargeAt: 0, barges: 0, askN: 0, hushed: -1 };
   var buf = '', tail = '', hearT = 0, greetT = 0, idleT = 0, typeT = 0, capT = 0, flareT = 0, beatI = 0, pendWake = false, lastLen = 0, multi = 0, single = 0;
   voice.set({ mode: ls.get('kin.vmode', 'jarvis'), who: ls.get('kin.voice', 'arthur') });
+  /* how fast Jarvis speaks ("speak slower", "speak faster"): between 0.8 and 1.2 */
+  (function () { var r = +ls.get('kin.rate', '') || 0; if (r >= 0.8 && r <= 1.2) voice.set({ rate: r }); })();
 
   /* ------------------------------------------------------------ what is on screen */
   function caption(text, small, kind) {
@@ -220,7 +222,7 @@
     if (!silent) say(voice.CLIPS.standby, true);
     caption(S.talk === 'asleep' ? sayPhrase() : 'Standing by, sir.', S.talk === 'asleep' ? sleepHint() : 'Tap here to wake Kin'); paint();
   }
-  function stopAll() { voice.stop(); S.queued = ''; if (S.busy && S.ctl) S.ctl.abort(); if (Kin.bridge) Kin.bridge.stopAll(); if (Kin.gauntlet) Kin.gauntlet.stop(); if (Kin.mac && Kin.mac.busy()) Kin.mac.stop(); caption(null); }
+  function stopAll() { voice.stop(); S.queued = ''; if (Kin.cues) Kin.cues.stop(); if (S.busy && S.ctl) S.ctl.abort(); if (Kin.bridge) Kin.bridge.stopAll(); if (Kin.gauntlet) Kin.gauntlet.stop(); if (Kin.mac && Kin.mac.busy()) Kin.mac.stop(); caption(null); }
   /** typed or spoken words that are orders to Kin itself, not questions */
   function command(text) {
     if (ears.wakeIn(text, S.wake, true)) { if (S.talk !== 'awake') cue(); else { flare(); voice.chime('wake'); touch(); } greetNow(''); return true; }
@@ -657,6 +659,7 @@
       if (Kin.awayPanel) Kin.awayPanel.open('calls', { onSay: panelSay }); return;
     }
     if (k === 'talk') { settingsAt('voice'); return; }
+    if (k === 'cues') { $('sheet').hidden = true; var cq = 'Show me what you can do', cr = Kin.cues ? Kin.mind.instant(cq) : null; if (cr) instantly(cq, cr); showThread(); return; }
     if (k === 'gauntlet') { if (Kin.gauntlet) gauntlet(false); return; }
     if (k === 'grok') { settingsAt('grok'); return; }
     if (k === 'move') { settingsAt('privacy'); return; }
@@ -899,6 +902,8 @@
   function isoWeek(d) { var t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())), wd = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - wd); return Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7); }
   function anTile(top, mid, cls) { var t = el('div', 'antile' + (cls ? ' ' + cls : '')); t.setAttribute('aria-hidden', 'true'); t.appendChild(el('span', 'antop', top)); t.appendChild(el('span', 'anmid', mid)); return t; }
   function ansCard(c, box) {
+    /* the set-up card (cues.js): every check with its state, live while it is on screen */
+    if (c && c.kind === 'setup' && Kin.cues) { Kin.cues.card(c, box); return; }
     var d = el('div', 'tmcard ancard'), now = new Date(), tx = el('div', 'tml'), b = el('b', ''), big = el('div', 'tmt'), sm = el('small', ''), mon = function (x) { var o = { month: 'short' }; try { o.calendar = 'gregory'; return new Intl.DateTimeFormat(undefined, o).format(x).replace(/\.$/, '').toUpperCase(); } catch (e) { return x.toLocaleDateString(undefined, { month: 'short' }).replace(/\.$/, '').toUpperCase(); } };
     tx.appendChild(b); tx.appendChild(big); tx.appendChild(sm); d.setAttribute('role', 'group');
     if (c.kind === 'clock') {
@@ -2056,6 +2061,8 @@
   }
   if ($('lookSeg')) [].forEach.call($('lookSeg').children, function (b) { b.addEventListener('click', function () { gesture(); if (Kin.shared) return; Kin.bust.setLook(b.dataset.look); lookSettings(); }); });
   if ($('gauntletOpen')) $('gauntletOpen').addEventListener('click', function () { gesture(); if (Kin.gauntlet) gauntlet(false); });
+  /* Settings > Start > Set it all up: the same walk as saying it */
+  if ($('setupGo')) $('setupGo').addEventListener('click', function () { gesture(); var sq = 'Set it all up', sr = Kin.cues ? Kin.mind.instant(sq) : null; if (!sr) return; instantly(sq, sr); if (!Kin.cues.walking()) $('sheet').hidden = true; });
   if ($('whatsNewOpen')) $('whatsNewOpen').addEventListener('click', function () { gesture(); if (Kin.whatsNew) whatsNew(false); });
   if ($('awayOpen')) $('awayOpen').addEventListener('click', function () { gesture(); if (Kin.shared) { localReply(Kin.SHARED_TEXT); return; } if (Kin.awayPanel) Kin.awayPanel.open('settings', { onSay: panelSay }); });
   $('notifyOn').addEventListener('click', function () { gesture(); if (Kin.desk) Kin.desk.notify.ask().then(function () { deskSettings(); }); });
@@ -2172,6 +2179,11 @@
     if (Kin.shared || (!brain.hasKey() && !Kin.pack.get() && !S.autoListen)) { $('sheet').hidden = false; refreshSettings(); }
     /* said last, so the start-up lines do not cover it */
     return hfBack.then(function (ok) { if (ok === true) { caption('Higgsfield is connected, sir.', 'Designs can use real pictures now'); captionFade(9000); } else if (ok === false) { $('sheet').hidden = false; refreshSettings(); } });
+  });
+  /* spoken cues: the set-up walk speaks by itself when a step gets done, and Jarvis is awake for the usual moment after, so "next" is heard */
+  if (Kin.cues) Kin.cues.wire({
+    say: function (line, small) { if (!line || S.busy) return; if (S.talk === 'asleep') S.talk = 'awake'; if (S.talk === 'awake') touch(); addMsg('kin', line); caption(line, small || ''); if (S.unlocked) say(line, true); else captionFade(9000); paint(); },
+    steps: function () { var mp = localReply('To update the Mac app, sir, run its installer again. The steps are below.', 'Mac app'); if (Kin.mac && Kin.mac.need) mp.parentNode.appendChild(Kin.mac.need()); showThread(); }
   });
   /* inside the Jarvis Mac app: a key this page lacks comes from the Mac's Keychain (never shown), and a finished task is reported */
   if (Kin.mac) {
