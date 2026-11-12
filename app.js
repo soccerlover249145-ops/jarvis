@@ -846,10 +846,26 @@
   /* ------------------------------------------------------------ the shelf: what Kin made, and the logbook */
   var shelfTab = 'made', shelfOpen = '';
   function openShelf(tab, id) { shelfTab = tab || 'made'; shelfOpen = id || ''; $('shelf').hidden = false; refreshMade(); }
+  /* the window look: an app icon per tab, a coloured initial for each person, and times that read like a mail app */
+  var WICON = { made: 'M12 3l2.2 5.3L19.5 10l-5.3 2.2L12 17.5l-2.2-5.3L4.5 10l5.3-1.7z', log: 'M7 4h10v16H7zM10 8h4M10 12h4', inbox: 'M4 6h16v12H4zM4 7l8 6 8-6', outbox: 'M4 12l16-8-5 16-3-6.5z', cal: 'M4 6h16v14H4zM4 10h16M8 3.5v4M16 3.5v4' };
+  var AVC = ['#4FA8F5', '#F2685C', '#3CC46E', '#A47CF0', '#F5B43C', '#2EC4B0', '#F27BB5'];
+  function avatar(name) {
+    var n = String(name || '?').replace(/^[^A-Za-z0-9]+/, ''), h = 0; for (var i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) >>> 0;
+    var a = document.createElement('span'); a.className = 'av'; a.setAttribute('aria-hidden', 'true'); a.textContent = (n.charAt(0) || '?').toUpperCase(); a.style.background = AVC[h % AVC.length]; return a;
+  }
+  function relTime(t) {
+    if (!t) return ''; var d = new Date(t), now = new Date(), ms = now - d;
+    if (ms >= 0 && ms < 15 * 60e3) return 'Just now';
+    if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    if (d.toDateString() === new Date(now - 864e5).toDateString()) return 'Yesterday';
+    if (ms > 0 && ms < 6 * 864e5) return d.toLocaleDateString(undefined, { weekday: 'short' });
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
   function refreshMade() {
     var el = $('shelfbody'); if (!el || $('shelf').hidden) return; el.textContent = '';
     [].forEach.call(document.querySelectorAll('#shelftabs button'), function (b) { b.setAttribute('aria-pressed', b.dataset.tab === shelfTab); if (b.dataset.tab === shelfTab) { var t = $('shelftabs'); if (t.scrollWidth > t.clientWidth) t.scrollLeft = Math.max(0, b.offsetLeft - t.clientWidth / 2 + b.offsetWidth / 2); } });
     var sh = $('shelf').querySelector('.sheethead h2'); if (sh) sh.textContent = { log: 'Logbook', inbox: 'Inbox', outbox: 'Outbox', cal: 'Calendar' }[shelfTab] || 'Made';
+    var ic = $('shelficon'); if (ic) { ic.dataset.tab = WICON[shelfTab] ? shelfTab : 'made'; ic.innerHTML = '<svg viewBox="0 0 24 24"><path d="' + (WICON[shelfTab] || WICON.made) + '"/></svg>'; }
     if (shelfTab === 'outbox') { outboxShelf(el); return; }
     if (shelfTab === 'inbox') { inboxShelf(el); return; }
     if (shelfTab === 'cal') { calShelf(el); return; }
@@ -909,7 +925,10 @@
     if (sent) pb('Clear sent', 'stop', function () { Kin.email.clearSent(); outboxCount(); refreshMade(); });
     all.forEach(function (m) {
       var wrap = document.createElement('div'); wrap.className = 'obrow';
-      var when = document.createElement('small'); when.className = 'obwhen'; when.textContent = new Date(m.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); wrap.appendChild(when);
+      var hd = document.createElement('div'); hd.className = 'obhead'; hd.appendChild(avatar(m.to || '?'));
+      var hm = document.createElement('div'); hm.className = 'ibmain'; var tw = document.createElement('b'); tw.className = 'ibwho'; tw.textContent = m.to ? 'To ' + m.to : 'No recipient yet'; hm.appendChild(tw);
+      var hs = document.createElement('p'); hs.className = 'ibsub'; hs.textContent = m.subject || '(no subject)'; hm.appendChild(hs); hd.appendChild(hm);
+      var when = document.createElement('small'); when.className = 'obwhen'; when.textContent = relTime(m.at); when.title = new Date(m.at).toLocaleString(); hd.appendChild(when); wrap.appendChild(hd);
       var c = Kin.email.card(m, { id: m.id, status: m.status, onChange: outboxCount, onSay: function (t) { if (S.unlocked && voice.canSpeak()) say(t, true); } });
       cards[m.id] = c; wrap.appendChild(c);
       var rm = document.createElement('button'); rm.type = 'button'; rm.className = 'lnk dim'; rm.textContent = 'Remove'; rm.addEventListener('click', function () { Kin.email.dropDraft(m.id); outboxCount(); refreshMade(); }); wrap.appendChild(rm);
@@ -952,14 +971,17 @@
       handOff(b, 'Here are my ' + (inboxCache.all ? 'recent' : 'unread') + ' emails (From, Subject, the start of each):\n\n' + list.map(function (m, i) { return (i + 1) + '. ' + nameOf(m.from) + ' | ' + m.subject + ' | ' + m.snippet; }).join('\n') + '\n\nTell me what needs me, most urgent first, in a few short lines, and which deserve a reply.');
     });
     list.forEach(function (m) {
-      var r = document.createElement('div'); r.className = 'ibrow' + (m.unread ? ' unread' : '');
-      var top = document.createElement('div'); top.className = 'ibtop';
-      var who = document.createElement('b'); who.textContent = nameOf(m.from); top.appendChild(who);
-      var when = document.createElement('small'); when.textContent = m.date ? new Date(m.date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''; top.appendChild(when);
-      r.appendChild(top);
-      var sj = document.createElement('p'); sj.className = 'ibsub'; sj.textContent = m.subject; r.appendChild(sj);
-      var sn = document.createElement('p'); sn.className = 'ibsnip'; sn.textContent = m.snippet; r.appendChild(sn);
-      var acts = document.createElement('div'); acts.className = 'btns';
+      var r = document.createElement('div'); r.className = 'ibrow' + (m.unread ? ' unread' : ''); r.tabIndex = 0; r.setAttribute('role', 'button');
+      r.appendChild(avatar(nameOf(m.from)));
+      var mid = document.createElement('div'); mid.className = 'ibmain';
+      var who = document.createElement('b'); who.className = 'ibwho'; who.textContent = nameOf(m.from); mid.appendChild(who);
+      var sj = document.createElement('p'); sj.className = 'ibsub'; sj.textContent = m.subject; mid.appendChild(sj);
+      var sn = document.createElement('p'); sn.className = 'ibsnip'; sn.textContent = m.snippet; mid.appendChild(sn);
+      r.appendChild(mid);
+      var when = document.createElement('small'); when.className = 'ibwhen'; when.textContent = relTime(m.date); if (m.date) when.title = new Date(m.date).toLocaleString(); r.appendChild(when);
+      r.addEventListener('click', function (e) { if (e.target.closest('button')) return; r.classList.toggle('open'); });
+      r.addEventListener('keydown', function (e) { if ((e.key === 'Enter' || e.key === ' ') && e.target === r) { e.preventDefault(); r.classList.toggle('open'); } });
+      var acts = document.createElement('div'); acts.className = 'btns ibacts';
       var rep = document.createElement('button'); rep.type = 'button'; rep.className = 'lnk'; rep.textContent = 'Draft reply';
       rep.addEventListener('click', function () { gesture(); handOff(rep, 'Draft a reply to this email, in my voice, short. From: ' + m.from + '. Subject: ' + m.subject + '. It says: "' + m.snippet + '". Put it in an email draft to them with "Re: ' + m.subject.replace(/^re:\s*/i, '') + '" as the subject.'); });
       var op = document.createElement('button'); op.type = 'button'; op.className = 'lnk dim'; op.textContent = 'Open in Gmail';
@@ -1011,7 +1033,7 @@
         host.appendChild(h);
       }
       var r = document.createElement('div'); r.className = 'calrow' + (!e.allDay && e.end && e.end < Date.now() ? ' past' : '');
-      var t = document.createElement('span'); t.className = 'caltime'; t.textContent = span(e); r.appendChild(t);
+      var bar = document.createElement('i'); bar.className = 'calbar'; bar.style.background = AVC[(e.title || '').length % AVC.length]; r.appendChild(bar); var t = document.createElement('span'); t.className = 'caltime'; t.textContent = span(e);
       var body = document.createElement('div'); body.className = 'calbody';
       var ti = document.createElement('b'); ti.textContent = e.title; body.appendChild(ti);
       var meta = [e.where, e.who.length ? 'with ' + e.who.join(', ') : ''].filter(Boolean).join(' · ');
@@ -1020,7 +1042,7 @@
       if (e.meet) { var jn = document.createElement('button'); jn.type = 'button'; jn.className = 'lnk'; jn.textContent = 'Join'; jn.addEventListener('click', function () { window.open(e.meet, '_blank', 'noopener,noreferrer'); }); acts.appendChild(jn); }
       if (e.link) { var op = document.createElement('button'); op.type = 'button'; op.className = 'lnk dim'; op.textContent = 'Open'; op.addEventListener('click', function () { window.open(e.link, '_blank', 'noopener,noreferrer'); }); acts.appendChild(op); }
       if (acts.children.length) body.appendChild(acts);
-      r.appendChild(body); host.appendChild(r);
+      r.appendChild(body); r.appendChild(t); host.appendChild(r);
     });
   }
   /** a chart on the shelf: the chart itself (hover or tap for values), Download SVG, Download PNG, Copy, Remove */

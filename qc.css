@@ -636,3 +636,117 @@ body, .app { background: #000000; }
 .calrow { grid-template-columns: 112px 1fr; }
 .calrow .caltime { white-space: nowrap; }
 @media (max-width: 480px) { .calrow { grid-template-columns: 1fr; gap: 4px; } .calrow .caltime { font-size: 12px; letter-spacing: .04em; } }
+
+/* ---------- the window: panels pulled up on screen read like a real app window ---------- */
+#shelf.win { --w-bg: #1B1C1F; --w-bar: #0C0C0E; --w-line: rgba(255, 255, 255, .07); --w-text: #F4F5F7; --w-sub: #D9DBE0; --w-dim: #8E929B; --w-blue: #4C8DF6;
+  inset: auto; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(780px, calc(100vw - 48px)); height: auto; min-height: min(380px, 70vh); max-height: min(82vh, 840px); display: flex; flex-direction: column;
+  border-radius: 16px; background: var(--w-bg); border: 1px solid rgba(255, 255, 255, .09); overflow: visible;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .06) inset, 0 50px 120px -30px rgba(0, 0, 0, .95), 0 0 0 200vmax rgba(0, 0, 0, .72); animation: winin .28s cubic-bezier(.2, .9, .25, 1); }
+@keyframes winin { from { opacity: 0; transform: translate(-50%, -48%) scale(.97); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+#shelf.win .whandle { position: absolute; top: -22px; left: 50%; width: 64px; height: 10px; margin-left: -32px; border-radius: 99px; background: rgba(255, 255, 255, .16); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06); }
+#shelf.win .sheethead { height: 46px; padding: 0 10px 0 16px; gap: 10px; justify-content: flex-start; background: var(--w-bar); border-bottom: 1px solid var(--w-line); border-radius: 16px 16px 0 0; }
+#shelf.win .sheethead h2 { font: 600 15px/1 var(--f-ui); letter-spacing: 0; color: var(--w-text); text-shadow: none; flex: 1; }
+#shelf.win .wicon { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; background: #4C8DF6; flex: none; }
+#shelf.win .wicon[data-tab="cal"] { background: #F2685C; } #shelf.win .wicon[data-tab="outbox"] { background: #3CC46E; } #shelf.win .wicon[data-tab="made"] { background: #A47CF0; } #shelf.win .wicon[data-tab="log"] { background: #F5B43C; }
+#shelf.win .wicon svg { width: 14px; height: 14px; fill: none; stroke: #fff; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+#shelf.win .wchip { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 12px 0 9px; border-radius: 99px; background: #F4F5F7; color: #111; font: 600 13px/1 var(--f-ui); }
+#shelf.win .wchip i { width: 12px; height: 12px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #9fe8ff, #2c7cf0 70%); box-shadow: 0 0 8px rgba(76, 141, 246, .6); }
+#shelf.win #shelfx { position: absolute; top: -13px; right: -13px; width: 30px; height: 30px; min-height: 0; border-radius: 50%; background: #2A2B2F; border: 1px solid rgba(255, 255, 255, .14); z-index: 2; box-shadow: 0 6px 18px rgba(0, 0, 0, .5); }
+#shelf.win #shelfx svg { width: 14px; height: 14px; stroke: #fff; stroke-width: 2.4; }
+#shelf.win #shelfx:hover { background: #3a3b40; }
+#shelf.win .sheetbody { padding: 0 0 18px; border-radius: 0 0 16px 16px; overflow-y: auto; flex: 1 1 auto; min-height: 0; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .18) transparent; }
+#shelf.win #shelftabs { position: sticky; top: 0; z-index: 1; margin: 0; padding: 0 12px; gap: 2px; border: 0; border-bottom: 1px solid var(--w-line); border-radius: 0; background: rgba(27, 28, 31, .94); backdrop-filter: blur(10px); }
+#shelf.win #shelftabs button { min-height: 40px; padding: 0 12px; border-radius: 0; background: transparent; color: var(--w-dim); font: 500 13px/1 var(--f-ui); letter-spacing: 0; text-transform: none; box-shadow: inset 0 -2px 0 transparent; }
+#shelf.win #shelftabs button:hover { color: var(--w-text); }
+#shelf.win #shelftabs button[aria-pressed="true"] { color: var(--w-text); background: transparent; box-shadow: inset 0 -2px 0 var(--w-blue); }
+#shelf.win #shelfbody { padding: 4px 18px 0; color: var(--w-sub); }
+#shelf.win .note, #shelf.win .empty { font: 400 13px/1.5 var(--f-ui); color: var(--w-dim); margin: 12px 0 4px; }
+/* buttons inside the window: quiet, sentence case */
+#shelf.win .btns.pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 6px; }
+#shelf.win .pill { min-height: 32px; padding: 0 14px; border-radius: 99px; flex-direction: row; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .1); color: var(--w-text); box-shadow: none; }
+#shelf.win .pill .pl { font: 500 13px/1 var(--f-ui); letter-spacing: 0; text-transform: none; }
+#shelf.win .pill.go { background: var(--w-blue); border-color: var(--w-blue); color: #fff; }
+#shelf.win .pill.go:hover { background: #3d7fe9; }
+#shelf.win .pill:not(.go):hover { background: rgba(255, 255, 255, .1); }
+#shelf.win .pill.stop { color: #FF8B8B; }
+#shelf.win .lnk { min-height: 30px; padding: 0 12px; border-radius: 99px; background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .1); color: var(--w-text); font: 500 12.5px/1 var(--f-ui); letter-spacing: 0; text-transform: none; }
+#shelf.win .lnk.dim { background: transparent; color: var(--w-dim); }
+#shelf.win .lnk:hover { background: rgba(255, 255, 255, .12); }
+/* list rows: avatar, who, subject, snippet, time on the right */
+#shelf.win .av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: #fff; font: 600 13px/1 var(--f-ui); flex: none; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .12); }
+#shelf.win .ibrow, #shelf.win .obhead { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; column-gap: 12px; align-items: start; margin: 0 -18px; padding: 12px 18px; border: 0; border-top: 1px solid var(--w-line); cursor: default; }
+#shelf.win .ibrow { cursor: pointer; transition: background .15s; }
+#shelf.win .ibrow:hover, #shelf.win .ibrow.open { background: rgba(255, 255, 255, .035); }
+#shelf.win .ibrow:focus-visible { outline: 2px solid var(--w-blue); outline-offset: -2px; }
+#shelf.win .ibmain { min-width: 0; }
+#shelf.win .ibwho { display: block; font: 600 13.5px/1.3 var(--f-ui); color: var(--w-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#shelf.win .ibsub { margin: 1px 0 0; font: 600 13px/1.35 var(--f-ui); color: var(--w-sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#shelf.win .ibsnip { margin: 1px 0 0; font: 400 12.5px/1.4 var(--f-ui); color: var(--w-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#shelf.win .ibrow.open .ibsnip { white-space: normal; }
+#shelf.win .ibrow:not(.unread) .ibwho, #shelf.win .ibrow:not(.unread) .ibsub { font-weight: 500; }
+#shelf.win .ibwhen, #shelf.win .obwhen { font: 500 11.5px/1.3 var(--f-ui); letter-spacing: 0; text-transform: none; color: var(--w-dim); white-space: nowrap; padding-top: 2px; text-align: right; }
+#shelf.win .ibrow.unread .ibwhen { color: var(--w-blue); }
+#shelf.win .ibrow.unread .ibwhen::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--w-blue); vertical-align: 1px; }
+#shelf.win .ibacts { grid-column: 2 / 4; display: none; gap: 8px; margin-top: 10px; }
+#shelf.win .ibrow.open .ibacts { display: flex; }
+/* outbox: a header per email, then the editable card */
+#shelf.win .obrow { margin: 0; padding: 0 0 14px; border: 0; }
+#shelf.win .obhead { border-top: 1px solid var(--w-line); }
+#shelf.win .obrow .mailcard { margin: 2px 0 8px 42px; border-radius: 12px; background: rgba(0, 0, 0, .25); border: 1px solid var(--w-line); box-shadow: none; }
+#shelf.win .obrow > .lnk.dim { margin-left: 42px; }
+/* calendar: day header, a coloured bar, title and details, time on the right */
+#shelf.win .calday { margin: 18px 0 0; padding-bottom: 8px; font: 600 11px/1.2 var(--f-ui); letter-spacing: .08em; text-transform: uppercase; color: var(--w-dim); }
+#shelf.win .calrow { display: grid; grid-template-columns: 4px minmax(0, 1fr) auto; column-gap: 12px; align-items: start; margin: 0 -18px; padding: 12px 18px; border-top: 1px solid var(--w-line); }
+#shelf.win .calbar { align-self: stretch; border-radius: 4px; min-height: 34px; }
+#shelf.win .calrow .caltime { font: 500 12px/1.3 var(--f-ui); color: var(--w-dim); text-align: right; white-space: nowrap; padding-top: 2px; }
+#shelf.win .calrow .calbody b { font: 600 13.5px/1.3 var(--f-ui); color: var(--w-text); }
+#shelf.win .calrow .calbody small { font: 400 12.5px/1.4 var(--f-ui); color: var(--w-dim); opacity: 1; }
+#shelf.win .calrow .calbody .btns { margin-top: 8px; gap: 8px; }
+/* made and logbook rows in the same voice */
+#shelf.win button.mrow, #shelf.win .logrow { display: block; width: calc(100% + 36px); margin: 0 -18px; padding: 12px 18px; text-align: left; border: 0; border-top: 1px solid var(--w-line); background: transparent; color: var(--w-text); font: 500 14px/1.35 var(--f-ui); }
+#shelf.win button.mrow:hover { background: rgba(255, 255, 255, .035); }
+#shelf.win button.mrow small, #shelf.win .logrow small { display: block; font: 500 11.5px/1.3 var(--f-ui); letter-spacing: 0; text-transform: none; color: var(--w-dim); margin-bottom: 2px; }
+#shelf.win .mtitle { font: 600 20px/1.25 var(--f-ui); color: var(--w-text); text-shadow: none; letter-spacing: 0; text-transform: none; border: 0; padding: 0; margin: 14px 0 4px; }
+@media (max-width: 600px) {
+  #shelf.win { top: auto; bottom: 0; left: 0; transform: none; width: 100%; height: calc(100% - 44px - var(--safe-t, 0px)); max-height: none; border-radius: 16px 16px 0 0; animation: winup .3s cubic-bezier(.2, .9, .25, 1); }
+  @keyframes winup { from { transform: translateY(30px); opacity: 0; } to { transform: none; opacity: 1; } }
+  #shelf.win #shelfx { top: 8px; right: 10px; }
+  #shelf.win .wchip { margin-right: 34px; }
+  #shelf.win .whandle { top: -16px; width: 48px; height: 6px; margin-left: -24px; }
+}
+@media (prefers-reduced-motion: reduce) { #shelf.win { animation: none; } }
+
+/* the window sits over a softened, dimmed app, like a sheet over a desktop */
+body:has(#shelf.win:not([hidden])) .wrap, body:has(#shelf.win:not([hidden])) .top { filter: blur(6px) saturate(.8); transition: filter .25s; }
+
+/* ---------- email card: a compose window, in the chat and in the Outbox ---------- */
+.mailcard { padding: 0; border-radius: 14px; background: #1B1C1F; border: 1px solid rgba(255, 255, 255, .09); overflow: hidden; box-shadow: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 24px 60px -24px rgba(0, 0, 0, .8); }
+.mailcard .mhead { display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 14px; background: #0C0C0E; border-bottom: 1px solid rgba(255, 255, 255, .07); }
+.mailcard .mhead .chip { height: 22px; padding: 0 9px; border-radius: 99px; display: inline-flex; align-items: center; font: 600 11.5px/1 var(--f-ui); letter-spacing: 0; text-transform: none; border: 0; }
+.mailcard .mhead .chip.warn { background: rgba(245, 180, 60, .16); color: #F5C25E; }
+.mailcard .mhead .chip.ghost { background: rgba(255, 255, 255, .07); color: #A9ADB5; }
+.mailcard .mhead .chip.on { background: rgba(60, 196, 110, .16); color: #5FD68C; }
+.mailcard label.mrow { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; margin: 0; padding: 0 14px; border: 0; border-bottom: 1px solid rgba(255, 255, 255, .07); background: transparent; border-radius: 0; }
+.mailcard label.mrow .mlbl { font: 500 13px/1 var(--f-ui); letter-spacing: 0; text-transform: none; color: #8E929B; margin: 0; }
+.mailcard .minput { width: 100%; min-height: 0; margin: 0; padding: 12px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: #F4F5F7; font: 400 14px/1.4 var(--f-ui); outline: none; }
+.mailcard .minput:focus { box-shadow: none; background: transparent; }
+.mailcard label.mrow:focus-within { box-shadow: inset 2px 0 0 #4C8DF6; }
+.mailcard label.mrow:has(textarea) { grid-template-columns: 1fr; border-bottom: 0; }
+.mailcard label.mrow:has(textarea) .mlbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.mailcard textarea.minput { padding: 14px 0; min-height: 150px; resize: vertical; line-height: 1.55; }
+.mailcard .mnote { margin: 0; padding: 0 14px; font: 400 12.5px/1.5 var(--f-ui); color: #8E929B; }
+.mailcard .mnote:empty { display: none; }
+.mailcard .mact { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 14px 14px; margin: 0; border-top: 1px solid rgba(255, 255, 255, .07); }
+.mailcard .mact .pill { min-height: 34px; padding: 0 14px; border-radius: 99px; flex-direction: row; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .1); color: #F4F5F7; box-shadow: none; width: auto; flex: none; }
+.mailcard .mact .pill .pl { font: 500 13px/1 var(--f-ui); letter-spacing: 0; text-transform: none; }
+.mailcard .mact .pill .pn { font: 400 11.5px/1 var(--f-ui); opacity: .75; margin-left: 6px; }
+.mailcard .mact .pill.warn { color: #F5C25E; border-color: rgba(245, 180, 60, .35); background: rgba(245, 180, 60, .08); }
+.mailcard .mact .pill.go { background: #4C8DF6; border-color: #4C8DF6; color: #fff; }
+.mailcard .mact .pill:disabled { opacity: .45; }
+/* made things inside the window: one type voice, posters on a dark mat */
+#shelf.win h3, #shelf.win .sech { margin: 20px 0 8px; padding: 14px 0 0; border-top: 1px solid var(--w-line); font: 600 12px/1.3 var(--f-ui); letter-spacing: 0; text-transform: none; color: var(--w-dim); text-shadow: none; }
+#shelf.win h3.mtitle { border: 0; padding: 0; font: 600 20px/1.25 var(--f-ui); color: var(--w-text); }
+#shelf.win .design img, #shelf.win .others img { background: #0E0F11; border: 1px solid var(--w-line); border-radius: 10px; }
+#shelf.win .others figcaption { font: 600 13px/1.4 var(--f-ui); color: var(--w-text); margin-top: 8px; }
+#shelf.win .others figcaption span { font-weight: 400; color: var(--w-dim); }
+#shelf.win .sheetbody p:not(.note):not(.empty):not(.ibsub):not(.ibsnip):not(.mnote) { font-family: var(--f-ui); }
