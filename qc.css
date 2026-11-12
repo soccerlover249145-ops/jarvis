@@ -177,22 +177,33 @@ code, pre, kbd, .md code, .md pre { font-family: var(--f-code) !important; }
 .dock { position: relative; min-height: 0; display: flex; flex-direction: column; border-radius: 28px; background: linear-gradient(180deg, rgba(20, 24, 32, .92), rgba(12, 14, 19, .97)); border: 1px solid var(--line); box-shadow: var(--hi), 0 30px 80px -30px rgba(0, 0, 0, .8); overflow: hidden; z-index: 4; }
 .dock-h { flex: none; display: flex; flex-direction: column; align-items: center; padding: 22px 22px 14px; border-bottom: 1px solid var(--line); }
 
-/* the orb: Jarvis's one living object */
+/* the orb: Jarvis's one living object -- a glassy sphere with a slow inner energy swirl, a
+   soft breathing bloom behind it, and a sonar ping that ripples outward while it listens */
 .orb { position: relative; left: auto; top: auto; transform: none; display: block; width: 92px; height: 92px; border-radius: 50%; flex: none;
-  background: radial-gradient(circle at 36% 30%, #f1fbff 0%, #9fe1ff 14%, #47b4f0 38%, #165e93 64%, #08243a 86%);
-  box-shadow: 0 0 0 1px rgba(116, 212, 255, .25), 0 0 calc(40px + 30px * var(--beat, 0)) rgba(116, 212, 255, calc(.28 + .3 * var(--beat, 0))), inset -10px -14px 30px rgba(0, 0, 0, .45);
+  background: radial-gradient(circle at 32% 26%, #ffffff 0%, #bdeeff 9%, #6cc8ff 26%, #2f8fe0 50%, #124a86 75%, #061a35 94%);
+  box-shadow: 0 0 0 1px rgba(142, 221, 255, .32), 0 0 calc(46px + 34px * var(--beat, 0)) rgba(116, 212, 255, calc(.3 + .34 * var(--beat, 0))), inset -10px -14px 30px rgba(0, 0, 0, .5), inset 6px 8px 18px rgba(255, 255, 255, .22);
   transition: filter var(--dur-3) var(--ease), box-shadow 120ms linear, transform var(--dur-2) var(--ease); }
-.orb i { position: absolute; border-radius: 50%; border: 1px solid rgba(116, 212, 255, .18); animation: none; opacity: 1; }
-.orb i:nth-child(1) { inset: -12px; }
-.orb i:nth-child(2) { inset: -24px; border-color: rgba(116, 212, 255, .08); }
-.orb i:nth-child(3) { inset: -2px; border: 2px solid transparent; border-top-color: rgba(220, 245, 255, .9); opacity: 0; }
+.orb::before { content: ""; position: absolute; inset: -3%; border-radius: 50%; mix-blend-mode: screen; opacity: .5; pointer-events: none;
+  background: conic-gradient(from 0deg, transparent 0 18%, rgba(196, 241, 255, .7) 30%, transparent 44% 100%);
+  animation: qswirl 7s linear infinite; }
+.orb::after { content: ""; position: absolute; inset: -38%; border-radius: 50%; z-index: -1; pointer-events: none;
+  background: radial-gradient(circle, rgba(116, 212, 255, .38), transparent 68%);
+  animation: qbloom 4.2s ease-in-out infinite; }
+.orb i { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; opacity: 0; }
+.orb i:nth-child(3) { border: 2px solid transparent; border-top-color: rgba(220, 245, 255, .9); }
 .app[data-orb="off"] .orb, .app[data-orb="asleep"] .orb { filter: saturate(.35) brightness(.62); }
+.app[data-orb="off"] .orb::before, .app[data-orb="asleep"] .orb::before { animation-play-state: paused; opacity: .18; }
 .app[data-orb="listening"] .orb { animation: qbreathe 4s ease-in-out infinite; }
+.app[data-orb="listening"] .orb i:nth-child(1) { animation: qsonar 2.6s ease-out infinite; }
+.app[data-orb="listening"] .orb i:nth-child(2) { animation: qsonar 2.6s ease-out infinite 1.3s; }
 .app[data-orb="thinking"] .orb i:nth-child(3) { opacity: 1; animation: qturn 1.1s linear infinite; }
 .app[data-orb="speaking"] .orb { transform: scale(calc(1 + .05 * var(--beat, 0))); }
 .orb.wake, .mini-orb.wake { animation: qwake 1.2s var(--ease); }
 @keyframes qbreathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.045); } }
 @keyframes qturn { to { transform: rotate(360deg); } }
+@keyframes qswirl { to { transform: rotate(360deg); } }
+@keyframes qbloom { 0%, 100% { opacity: .5; transform: scale(1); } 50% { opacity: .85; transform: scale(1.1); } }
+@keyframes qsonar { 0% { box-shadow: 0 0 0 0 rgba(150, 224, 255, .5); opacity: .9; } 100% { box-shadow: 0 0 0 28px rgba(150, 224, 255, 0); opacity: 0; } }
 @keyframes qwake { 0% { filter: brightness(1.8) saturate(1.2); transform: scale(.94); } 100% { filter: none; transform: scale(1); } }
 
 /* what Jarvis is saying right now: the line under the orb */
@@ -423,10 +434,7 @@ code, pre, kbd, .md code, .md pre { font-family: var(--f-code) !important; }
 /* when a panel comes up (Settings, Made, the conversation), Jarvis shrinks to a small presence
    at the bottom middle of the screen instead of competing with it for space */
 .app[data-stage="compact"][data-fig="on"] .dock-h #gl.figure { position: fixed; left: 50%; bottom: 18px; width: 128px; max-width: 128px; height: 96px; margin: 0; transform: translateX(-50%); z-index: 40; opacity: .92; }
-@media (max-width: 1099px) {
-  .dock-h #gl.figure { position: fixed; left: 50%; top: calc(50% - 40px); transform: translateX(-50%); width: 240px; max-width: 240px; height: 280px; margin: 0; }
-  .app[data-stage="compact"][data-fig="on"] .dock-h #gl.figure { top: auto; bottom: 18px; width: 128px; max-width: 128px; height: 96px; transform: translateX(-50%); }
-}
+@media (max-width: 1099px) { .dock-h #gl.figure { display: none !important; } }
 
 /* ================================================================= the holographic skin
    Every surface is lit glass: a blue gradient fill, a cool rim, a sheen along the top edge and a soft glow below.

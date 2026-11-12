@@ -1137,7 +1137,7 @@
   $('wxDrop').addEventListener('click', function () { Kin.chart.dropPlace(); wxSettings(); });
   [].forEach.call($('wxUnits').children, function (b) { b.addEventListener('click', function () { Kin.chart.setUnits(b.dataset.u); wxSettings(); }); });
   /* how Jarvis looks: the figure (default on a computer) or the orb; kept on this device (bust.js) */
-  var LOOK_WHY = { reduced: 'Your device asks for reduced motion, so Jarvis is the orb.', lowpower: 'This device is set to save power or data, so Jarvis is the orb.', nogl: 'This browser cannot draw the figure (no WebGL), so Jarvis is the orb.' };
+  var LOOK_WHY = { phone: 'On a phone or a touch screen Jarvis is always the orb.', reduced: 'Your device asks for reduced motion, so Jarvis is the orb.', lowpower: 'This device is set to save power or data, so Jarvis is the orb.', nogl: 'This browser cannot draw the figure (no WebGL), so Jarvis is the orb.' };
   function lookSettings() {
     if (!$('lookSeg') || !Kin.bust || !Kin.bust.pref) return;
     var p = Kin.bust.pref(), why = Kin.bust.blocked();

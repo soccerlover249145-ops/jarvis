@@ -1,8 +1,9 @@
 /* bust.js: Jarvis's living object, in two looks.
-   The figure (the default everywhere, phone included): a head and shoulders made of points of light (three.js,
-   figure.json), drawn in the dock's header. It dims when asleep, flares when woken, ripples while speaking and
-   pulses with each word. The orb (CSS, see .orb in qc.css): one sphere that breathes, turns its rim and pulses.
-   It is what reduced motion, a low-power device, no WebGL, or the founder's own choice ("Orb" in Settings, Voice) get.
+   The figure (the default on a computer): a head and shoulders made of points of light (three.js, figure.json),
+   drawn in the dock's header. It dims when asleep, flares when woken, ripples while speaking and pulses with each word.
+   The orb (CSS, see .orb in qc.css): one sphere that breathes, turns its rim and pulses. It is what a phone, a touch
+   screen, reduced motion, a low-power device, no WebGL, or the founder's own choice ("Orb" in Settings, Voice) get.
+   The hologram particle render is too noisy at small phone sizes, so phone always gets the orb.
    three.js and the figure file are loaded only when the figure is actually shown. The interface is unchanged:
    ready, setMood, wake, beat; plus look() / setLook() for the Settings choice (kept per device as kin.figure). */
 (function () {
@@ -18,6 +19,7 @@
   /* why the figure cannot be shown here, or '' when it can */
   function blocked() {
     if (reduced) return 'reduced';
+    if (!mq('(min-width: 1100px)') || mq('(pointer: coarse)')) return 'phone';
     var n = navigator, c = n.connection;
     if ((c && c.saveData) || (n.deviceMemory && n.deviceMemory <= 2) || (n.hardwareConcurrency && n.hardwareConcurrency <= 2)) return 'lowpower';
     try { var t = document.createElement('canvas'); if (!(t.getContext('webgl2') || t.getContext('webgl'))) return 'nogl'; } catch (e) { return 'nogl'; }
