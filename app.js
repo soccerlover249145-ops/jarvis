@@ -1986,8 +1986,16 @@
   function clearTalk() { brain.forget(); var t = $('thread'); t.textContent = ''; }
   $('keySave').addEventListener('click', function () {
     var kv = $('apiKey').value, r = brain.setKey(kv); $('apiKey').value = ''; refreshSettings();
-    if (r.ok && Kin.mac) Kin.mac.saveKey('claude', r.key || kv, function () { refreshSettings(); }); kv = '';
-    if (!r.ok) $('keyNote').textContent = r.why === 'shared' ? Kin.SHARED_TEXT : r.why === 'storage' ? 'This browser would not save the key. Its storage is blocked or full (private browsing does this).' : 'That does not look like an Anthropic API key: it should start with sk-ant-. Copy it again from console.anthropic.com, API keys (a key is shown in full only once, when it is made).';
+    /* checked with Anthropic before it is kept anywhere else: a key Anthropic refuses never goes to the Mac's Keychain */
+    if (r.ok && brain.checkKey) { var ck = r.key || kv; $('keyNote').textContent = 'Checking the key with Anthropic…';
+      brain.checkKey(ck).then(function (c) {
+        if (c.ok || c.why === 'net') { if (Kin.mac) Kin.mac.saveKey('claude', ck, function () { refreshSettings(); }); refreshSettings();
+          $('keyNote').textContent = c.ok ? 'Anthropic accepted the key, sir. ' + $('keyNote').textContent : 'Saved. I could not reach Anthropic to check it just now; the first question will.'; }
+        else { brain.dropKey(); refreshSettings(); $('keyNote').textContent = 'Anthropic refused that key' + (c.reason ? ': “' + c.reason + '”' : '') + '. ' + (/oauth/i.test(c.reason) ? 'That is a Claude subscription sign-in, not an API key. ' : '') + 'Make a new key at console.anthropic.com, under API keys, and paste it here. Nothing was saved.'; }
+        ck = '';
+      }); }
+    else if (r.ok && Kin.mac) Kin.mac.saveKey('claude', r.key || kv, function () { refreshSettings(); }); kv = '';
+    if (!r.ok) $('keyNote').textContent = r.why === 'shared' ? Kin.SHARED_TEXT : r.why === 'oauth' ? 'That is a Claude subscription sign-in (it starts sk-ant-oat), not an API key. Make an API key at console.anthropic.com, under API keys, and paste that.' : r.why === 'admin' ? 'That is an Admin key: it manages an organization but cannot answer questions. Make an ordinary API key at console.anthropic.com, under API keys.' : r.why === 'storage' ? 'This browser would not save the key. Its storage is blocked or full (private browsing does this).' : 'That does not look like an Anthropic API key: it should start with sk-ant-. Copy it again from console.anthropic.com, API keys (a key is shown in full only once, when it is made).';
   });
   /* the conversation holds pieces of the pack and is sent again as history, so it goes when the key or the pack goes */
   $('keyDrop').addEventListener('click', function () { brain.dropKey(); clearTalk(); refreshSettings(); });

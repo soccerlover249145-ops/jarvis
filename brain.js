@@ -713,7 +713,9 @@
     if (err instanceof Anthropic.APIConnectionTimeoutError) return { code: 'timeout', text: 'Claude is taking longer than usual, sir.', todo: 'Tap Retry, or ask again in a minute.' };
     if (err instanceof Anthropic.APIConnectionError) return { code: 'network', text: 'I cannot reach Anthropic from here, sir. Check the connection.', todo: 'Tap Retry when you are back online.' };
     if (st === 402 || /credit balance|billing|purchase credits|out of credit/i.test(msg)) return { code: 'credit', text: 'Your Anthropic account is out of credit, sir.', todo: 'Add credit at console.anthropic.com, under Billing, then ask again.' };
-    if (err instanceof Anthropic.AuthenticationError) return { code: 'key', text: 'Anthropic did not accept the key on this device, sir.', todo: 'Check or replace the key in settings.' };
+    if (err instanceof Anthropic.AuthenticationError) { var onMac = !!(Kin.mac && Kin.mac.keptOnMac && Kin.mac.keptOnMac('claude'));
+      return { code: 'key', text: onMac ? 'Anthropic did not accept the Claude key saved in your Mac’s Keychain, sir.' : 'Anthropic did not accept the Claude key on this device, sir.', detail: msg ? 'Anthropic said: ' + msg.slice(0, 200) : '',
+        todo: /oauth/i.test(msg) ? 'That is a Claude subscription sign-in, not an API key. Make an API key at console.anthropic.com, API keys, and paste it in Settings, Brain.' : 'Paste a key from console.anthropic.com, API keys, in Settings, Brain. ' + (onMac ? 'It replaces the Mac’s copy, and I check it with Anthropic as you save it.' : 'I check it with Anthropic as you save it.') }; }
     if (err instanceof Anthropic.PermissionDeniedError) return { code: 'denied', text: 'That key is not allowed to do this, sir.', todo: 'Check the key\'s workspace and spend limit in the Anthropic Console.' };
     if (err instanceof Anthropic.NotFoundError || (st === 400 && /model/i.test(msg) && /not (found|available|supported)|does not exist|access/i.test(msg))) return { code: 'model', text: 'Your key cannot use ' + (model ? model.replace('claude-', '').replace(/-(\d+)-(\d+)$/, ' $1.$2').replace(/^\w/, function (c) { return c.toUpperCase(); }) : 'this model') + ', sir.', todo: 'Check the key\'s workspace in the Anthropic Console, or use a key that has it.', detail: msg.slice(0, 300) };
     if (err instanceof Anthropic.RateLimitError) return { code: 'busy', text: 'Claude is busy for this key right now, sir. I retried and it still is.', todo: 'Try again in a minute, or raise the key\'s rate limit in the Console.' };
@@ -746,8 +748,19 @@
     hasKey: function () { return !!ls.get(KEY); },
     keyHint: function () { var k = ls.get(KEY) || ''; return k ? k.slice(0, 10) + '…' + k.slice(-4) : ''; },
     /** { ok } or { ok: false, why: "shared" | "shape" | "storage" } */
-    setKey: function (k) { k = Kin.cleanKey ? Kin.cleanKey(k, /sk-ant-[A-Za-z0-9_\-]{20,200}/) : String(k || '').trim(); if (Kin.shared) return { ok: false, why: 'shared' }; if (!/^sk-ant-[A-Za-z0-9_\-]{20,}$/.test(k)) return { ok: false, why: 'shape' }; client = null; return ls.set(KEY, k) ? { ok: true, key: k } : { ok: false, why: 'storage' }; },
+    setKey: function (k) { k = Kin.cleanKey ? Kin.cleanKey(k, /sk-ant-[A-Za-z0-9_\-]{20,200}/) : String(k || '').trim(); if (Kin.shared) return { ok: false, why: 'shared' }; if (!/^sk-ant-[A-Za-z0-9_\-]{20,}$/.test(k)) return { ok: false, why: 'shape' }; if (/^sk-ant-oat/.test(k)) return { ok: false, why: 'oauth' }; if (/^sk-ant-admin/.test(k)) return { ok: false, why: 'admin' }; client = null; return ls.set(KEY, k) ? { ok: true, key: k } : { ok: false, why: 'storage' }; },
     dropKey: function () { ls.del(KEY); client = null; },
+    /** asks Anthropic whether a key works, using the free models list. { ok } | { ok: false, why: 'key'|'net', status, reason } */
+    checkKey: function (k) {
+      k = String(k || ls.get(KEY) || '');
+      if (!k || typeof fetch !== 'function') return Promise.resolve({ ok: false, why: 'net', reason: '' });
+      var ac = typeof AbortController === 'function' ? new AbortController() : null, t = setTimeout(function () { try { if (ac) ac.abort(); } catch (e) {} }, 12000);
+      return fetch('https://api.anthropic.com/v1/models?limit=1', { headers: { 'x-api-key': k, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' }, signal: ac ? ac.signal : undefined })
+        .then(function (r) { clearTimeout(t); if (r.ok) return { ok: true };
+          return r.json().catch(function () { return null; }).then(function (b) { var m = String((b && b.error && b.error.message) || '').slice(0, 200);
+            return { ok: false, why: r.status === 401 || r.status === 403 ? 'key' : 'net', status: r.status, reason: m }; }); },
+          function () { clearTimeout(t); return { ok: false, why: 'net', reason: '' }; });
+    },
     turns: function () { return turns.slice(); },
     /** an answer cut short (the founder talked over it): keep the question and what was given, so a follow-up has its context */
     keepTurn: function (q, a, priv) { q = String(q || '').trim(); a = String(a || '').trim(); if (q && a) keep(q, a.slice(0, 4000), !!priv || recentPriv() || !!(lastCtx && lastCtx.privRead)); },
