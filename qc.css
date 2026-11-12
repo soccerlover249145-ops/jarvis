@@ -996,3 +996,20 @@ body:has(.sheet.win:not([hidden])) .app::after { content: ""; position: fixed; i
 .sheet.win .ibrow.open .ibmain:has(.ibbody[data-done]) .ibsnip { display: none; }
 /* the brief's calendar card: what has already finished today steps back */
 .bb .bb-row.bb-past { opacity: .5; }
+
+/* ---------- reminders: the card when one is due, the line under one just set, and their rows in the Calendar panel ---------- */
+.thread .msg.card.remind { border-color: rgba(245, 180, 60, .34); background: linear-gradient(170deg, rgba(245, 180, 60, .13), rgba(245, 180, 60, .02) 55%), #1B1C1F; }
+.thread .msg.card.remind > small { display: inline-flex; align-items: center; gap: 10px; font: 600 11px/1.2 var(--f-ui); letter-spacing: .08em; text-transform: uppercase; color: #F5B43C; }
+.thread .msg.card.remind > small::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #F5B43C; box-shadow: 0 0 0 4px rgba(245, 180, 60, .18); }
+.thread .msg.card.remind .asktitle { margin: 10px 0 4px; }
+.thread .msg.card.remind .note { margin: 0 0 14px; font: 400 13px/1.45 var(--f-ui); color: rgba(255, 255, 255, .62); }
+.thread .msg.card.remind.done { opacity: .6; }
+.thread .msg.card.remind.done .note { margin-bottom: 0; }
+.thread .msg .remset { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; margin-top: 8px; }
+.thread .msg .remnote { display: grid; gap: 3px; margin-top: 12px; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(245, 180, 60, .3); background: rgba(245, 180, 60, .07); }
+.thread .msg .remnote small { font: 600 11px/1.2 var(--f-ui); letter-spacing: .08em; text-transform: uppercase; color: #F5B43C; }
+.thread .msg .remnote b { font: 600 15px/1.35 var(--f-ui); color: #fff; }
+.thread .msg .remnote span { font: 400 13px/1.4 var(--f-ui); color: rgba(255, 255, 255, .62); }
+.sheet.win .calrow.rem .calbar { background: #F5B43C; }
+.sheet.win .calrow.rem.rep .calbar { background: linear-gradient(180deg, #F5B43C, #F27BB5); }
+@media (pointer: coarse) { .thread .msg .remset .lnk { min-height: 44px; } }

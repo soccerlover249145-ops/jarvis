@@ -224,8 +224,9 @@
   function command(text) {
     if (ears.wakeIn(text, S.wake, true)) { if (S.talk !== 'awake') cue(); else { flare(); voice.chime('wake'); touch(); } greetNow(''); return true; }
     if (S.talk !== 'awake') return false;
-    if (ears.sleepIn(text)) { sleep(); return true; }
-    if (ears.stopIn(text)) { stopAll(); return true; }
+    /* "stop" or "never mind" also drops a waiting "When should I remind you?" */
+    if (ears.sleepIn(text)) { if (Kin.remind) Kin.remind.dropAsk(); sleep(); return true; }
+    if (ears.stopIn(text)) { if (Kin.remind) Kin.remind.dropAsk(); stopAll(); return true; }
     return false;
   }
 
@@ -450,6 +451,9 @@
       addMsg('kin', pl); if (S.unlocked && voice.canSpeak() && !S.busy && !S.talking) say(pl, true); return;
     }
     if (S.busy) return;
+    /* a reminder ("remind me at 8 to watch the new episode") before the panels that look for words inside a sentence */
+    var rem0 = Kin.remind ? Kin.remind.instant(text) : null;
+    if (rem0) { instantly(text, rem0); return; }
     if (Kin.briefBoard && Kin.briefBoard.isBriefRequest(text)) { inp.value = ''; lastLen = 0; touch(); brief(text); return; }
     /* a video or a recording, and Bluetooth or USB devices: their own panels; nothing is sent until the founder picks */
     if (Kin.watch && Kin.watch.isRequest(text)) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); watch(text); return; }
@@ -518,6 +522,8 @@
         /* an email Kin wrote: a card under the answer; only the founder's tap sends it */
         onEmail: function (d) { lastSign = Date.now(); if (!Kin.email) return; var id = Kin.email.saveDraft(d), box = p && p.parentNode; if (box) box.appendChild(Kin.email.card(d, { id: id, onChange: outboxCount, onSay: function (t) { if (S.unlocked && voice.canSpeak()) say(t, true); } })); outboxCount(); showThread(); },
         /* an event Jarvis prepared: a card under the answer; it goes on a calendar only when the founder taps */
+        onRemind: function (r) { lastSign = Date.now(); var box = p && p.parentNode; if (!box) return; var c = el('div', 'remnote'); c.appendChild(el('small', '', 'Reminder set')); c.appendChild(el('b', '', r.text)); c.appendChild(el('span', '', Kin.remind.describe(r))); box.appendChild(c); remindSet(r, box); refreshCal(); showThread(); },
+        onRemindCancel: function (r) { lastSign = Date.now(); var box = p && p.parentNode; if (!box || !r) return; var c = el('div', 'remnote'); c.appendChild(el('small', '', 'Reminder cancelled')); c.appendChild(el('b', '', r.text)); c.appendChild(el('span', '', Kin.remind.describe(r))); box.appendChild(c); remindUndo([r], box); refreshCal(); showThread(); },
         onEvent: function (e) { lastSign = Date.now(); if (!Kin.email || !Kin.email.eventCard) return; var box = p && p.parentNode; if (box) box.appendChild(Kin.email.eventCard(e, { onSay: function (t) { if (S.unlocked && voice.canSpeak()) say(t, true); } })); showThread(); },
         /* a computer action inside the Mac app: a small card under the answer saying what was asked and what the Mac answered */
         onMac: function (node) { lastSign = Date.now(); var box = p && p.parentNode; if (box) box.appendChild(node); showThread(); },
@@ -645,6 +651,9 @@
     if (k === 'email') { settingsAt('email'); return; }
     if (k === 'smart') { settingsAt('brain'); return; }
     if (k === 'settings') { settingsAt('start'); return; }
+    if (k === 'remind') { $('sheet').hidden = true; openShelf('cal'); return; }
+    if (k === 'inbox') { $('sheet').hidden = true; openShelf('inbox'); return; }
+    if (k === 'ptt') { $('sheet').hidden = true; localReply(window.matchMedia && matchMedia('(pointer: coarse)').matches ? 'Tap the microphone and talk, sir. On a computer you can hold the space bar instead.' : 'Hold the space bar, speak, and let go, sir. Or just start typing.', 'Hold Space to talk'); showThread(); return; }
     if (k === 'mac') { $('sheet').hidden = true; var mp = localReply(Kin.mac && Kin.mac.available() ? 'You are in the Mac app, sir. Ask me to open an app, a file or a site, or to do something on your computer. Your Mac asks you before each one.' : Kin.mac.NEED_TEXT, 'Mac app'); if (Kin.mac && !Kin.mac.available()) mp.parentNode.appendChild(Kin.mac.need()); showThread(); return; }
   }
   /* the home board and the dock's quick chips only open things: every panel waits for its own tap before anything is sent or spent */
@@ -703,7 +712,8 @@
     var canCal = !!(Kin.email && Kin.email.canRead() && !Kin.shared);
     if (canCal) Kin.email.loadGis();
     B.gather({ pack: Kin.pack.get(), timeoutMs: 7000, market: brain.hasKey() && !Kin.shared ? marketWatch : null,
-      calendar: canCal ? { ready: Kin.email.hasToken('cal'), read: function () { return Kin.email.calendar({ days: 1 }); } } : null }).then(function (data) {
+      calendar: canCal ? { ready: Kin.email.hasToken('cal'), read: function () { return Kin.email.calendar({ days: 1 }); } } : null,
+      reminders: Kin.remind ? function () { return Kin.remind.today(); } : null }).then(function (data) {
       B.show(data, {
         brand: 'Jarvis',
         onRefresh: function () { B.hide(true); brief(); },
@@ -804,8 +814,54 @@
     caption(r.say, r.protocol || 'Done here, no call needed');
     if (speakIt) say(r.say, true).then(function () { if (r.sleep && S.talk === 'awake') sleep(true); }); else { captionFade(7000); if (r.sleep && S.talk === 'awake') sleep(true); }
     if (r.open) openShelf(r.open);
+    if (r.remind) remindSet(r.remind, p.parentNode, r.remindMore);
+    if (r.undoRemind && r.undoRemind.length && Kin.remind) remindUndo(r.undoRemind, p.parentNode);
     refreshMade();
   }
+  /** under reminders just cancelled: Undo puts them back */
+  function remindUndo(rs, box) {
+    var row = el('div', 'btns remset'), un = el('button', 'lnk dim', 'Undo'); un.type = 'button';
+    un.addEventListener('click', function () { gesture(); var ok = Kin.remind.restore(rs); un.disabled = true; un.textContent = ok ? (rs.length === 1 ? 'Put back' : 'All put back') : 'Could not put it back'; refreshCal(); });
+    row.appendChild(un); box.appendChild(row);
+  }
+  /* the Calendar panel shows reminders: redrawn only when it is the one open, so nothing else loses what is typed in it */
+  function refreshCal() { if (!$('shelf').hidden && shelfTab === 'cal') refreshMade(); }
+  /** under a reminder just set (by a phrase or by Claude): Undo, and once, an offer to notify when Jarvis is in the background
+     (the browser asks only on that tap) */
+  function remindSet(rem, box, more) {
+    if (!box || !Kin.remind) return;
+    var row = el('div', 'btns remset'), un = el('button', 'lnk dim', 'Undo'); un.type = 'button';
+    un.addEventListener('click', function () { gesture(); Kin.remind.cancel(rem.id); (more || []).forEach(function (m) { Kin.remind.cancel(m.id); }); un.disabled = true; un.textContent = 'Cancelled'; if (nb) nb.remove(); refreshCal(); });
+    row.appendChild(un);
+    var D = Kin.desk, nb = null;
+    if (D && D.notify && D.notify.permission() === 'default') {
+      nb = el('button', 'lnk', 'Also notify me when Jarvis is in the background'); nb.type = 'button';
+      nb.addEventListener('click', function () { gesture(); nb.disabled = true; D.notify.ask().then(function (v) { nb.textContent = v === 'granted' ? 'Notifications on.' : 'Notifications stay off. You can turn them on in Settings, Start.'; }); });
+      row.appendChild(nb);
+    }
+    box.appendChild(row);
+  }
+  /* a reminder that is due: a card with Done and Snooze (and Stop for a repeating one), the chime, the words, and a
+     notification when the page is in the background */
+  if (Kin.remind) Kin.remind.onDue(function (r) {
+    flare(); voice.chime('wake');
+    var line = 'Reminder, sir: ' + r.text + '.', t = $('thread'), e0 = t.querySelector('.empty'); if (e0) e0.remove();
+    var d = document.createElement('div'); d.className = 'msg kin card remind'; d.dataset.remind = r.id;
+    var lab = document.createElement('small'); lab.textContent = r.late ? 'Reminder, missed while Jarvis was closed' : 'Reminder'; d.appendChild(lab);
+    var tx = document.createElement('p'); tx.className = 'asktitle'; tx.textContent = r.text; d.appendChild(tx);
+    var hm = function (x) { return new Date(x).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); };
+    var wh = document.createElement('p'); wh.className = 'note'; wh.textContent = (r.late ? 'It was set for ' + Kin.remind.when(r.at) : 'Set for ' + hm(r.at)) + (r.next ? '. Next: ' + Kin.remind.when(r.next) : '') + '.'; d.appendChild(wh);
+    var bt = el('div', 'btns pills');
+    function pb(label, cls, fn) { var b = el('button', 'pill sm ' + cls); b.type = 'button'; b.appendChild(el('span', 'pl', label)); b.addEventListener('click', function () { gesture(); fn(); refreshCal(); }); bt.appendChild(b); }
+    pb('Done', 'go', function () { Kin.remind.done(r.id); d.classList.add('done'); bt.remove(); wh.textContent = r.next ? 'Done. Next: ' + Kin.remind.when(r.next) + '.' : 'Done.'; });
+    pb('Snooze 10 minutes', 'alt', function () { var s2 = Kin.remind.snooze(r.id, 10, r.text); d.classList.add('done'); bt.remove(); wh.textContent = s2 ? 'Snoozed until ' + hm(s2.at) + '.' : 'Could not snooze it.'; });
+    if (r.repeat) pb('Stop repeating', 'stop', function () { Kin.remind.cancel(r.id); d.classList.add('done'); bt.remove(); wh.textContent = 'Stopped. It will not come back.'; });
+    d.appendChild(bt); t.appendChild(d); showThread();
+    caption(line, r.late ? 'Missed while Jarvis was closed' : 'Reminder');
+    if (S.unlocked && voice.canSpeak() && !S.talking && !S.busy) say(line, true); else captionFade(12000);
+    if (Kin.desk && Kin.desk.notify) { try { Kin.desk.notify.done('Reminder', r.text); } catch (x) {} }
+    refreshCal();
+  });
 
   /* ------------------------------------------------------------ controls */
   $('bar').addEventListener('submit', function (e) {
@@ -1153,14 +1209,35 @@
   }
   /** the calendar: the next few days from Google Calendar, read on a tap, held in memory for this visit only */
   var calCache = null, calBusy = false, calErr = '';
+  /** reminders on this device, at the top of the Calendar panel: what, when, and Cancel (Stop for a repeating one) */
+  function remindRows(host) {
+    var p = Kin.remind ? Kin.remind.pending() : []; if (!p.length) return 0;
+    var h = document.createElement('h4'); h.className = 'calday'; h.textContent = 'Reminders on this device'; host.appendChild(h);
+    p.slice(0, 40).forEach(function (r) {
+      var rep = !!(r.repeat || r.every), row = document.createElement('div'); row.className = 'calrow rem' + (rep ? ' rep' : ''); row.dataset.remind = r.id;
+      var bar = document.createElement('i'); bar.className = 'calbar'; row.appendChild(bar);
+      var body = document.createElement('div'); body.className = 'calbody';
+      var ti = document.createElement('b'); ti.textContent = r.text; body.appendChild(ti);
+      var m = document.createElement('small'); m.textContent = Kin.remind.describe(r).replace(/^./, function (c) { return c.toUpperCase(); }); body.appendChild(m);
+      var acts = document.createElement('div'), cx = document.createElement('button'); acts.className = 'btns'; cx.type = 'button'; cx.className = 'lnk dim'; cx.textContent = rep ? 'Stop' : 'Cancel';
+      cx.setAttribute('aria-label', (rep ? 'Stop the reminder: ' : 'Cancel the reminder: ') + r.text);
+      cx.addEventListener('click', function () { gesture(); Kin.remind.cancel(r.id); refreshMade(); });
+      acts.appendChild(cx); body.appendChild(acts); row.appendChild(body); host.appendChild(row);
+    });
+    if (p.length > 40) { var more = document.createElement('p'); more.className = 'note'; more.textContent = (p.length - 40) + ' more. Say "what are my reminders" to hear them.'; host.appendChild(more); }
+    return p.length;
+  }
   function calShelf(host) {
+    var rems = remindRows(host);
     if (!Kin.email) return;
     function note(t) { var p = document.createElement('p'); p.className = 'note'; p.textContent = t; host.appendChild(p); return p; }
     if (!Kin.email.canRead()) {
       var e0 = document.createElement('p'); e0.className = 'empty'; e0.textContent = Kin.shared ? Kin.SHARED_TEXT : 'To see your calendar here, add your Google Client ID in Settings, Email. Google asks once for read-only calendar access.'; host.appendChild(e0);
       if (!Kin.shared) { var go = el('button', 'pill sm go'); go.type = 'button'; go.appendChild(el('span', 'pl', 'Open Email settings')); go.addEventListener('click', function () { $('shelf').hidden = true; settingsAt('email'); }); host.appendChild(go); }
+      if (!rems && Kin.remind) note('Reminders work without Google: say "remind me at 3pm to call Sam" or "remind me every weekday at 8 to stretch".');
       return;
     }
+    if (rems) { var gh = document.createElement('h4'); gh.className = 'calday'; gh.textContent = 'Google Calendar'; host.appendChild(gh); }
     Kin.email.loadGis();
     var bt = el('div', 'btns pills'); host.appendChild(bt);
     function pb(label, cls, fn) { var b = el('button', 'pill sm ' + cls); b.type = 'button'; b.appendChild(el('span', 'pl', label)); b.addEventListener('click', function () { gesture(); fn(b); }); bt.appendChild(b); return b; }

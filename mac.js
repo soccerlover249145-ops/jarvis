@@ -129,7 +129,12 @@
     /\bin finder\b/i,
     /^(?:(?:hey|ok|okay)\s+)?(?:jarvis[,!.]?\s+)?(?:please\s+|can you\s+|could you\s+|go\s+)?(?:do|fill|click|type|use|set|change|organi[sz]e|move|rename|clean|sort|close|quit|turn|run|take control)\b.*\bon my (?:computer|mac|laptop|desktop)\b/i
   ];
-  function needsMac(text) { var t = String(text || '').replace(/\s+/g, ' ').trim(); return !!t && t.length <= 300 && NEED.some(function (r) { return r.test(t); }); }
+  function needsMac(text) {
+    var t = String(text || '').replace(/\s+/g, ' ').trim();
+    /* "open my reminders" means Jarvis's own reminders (the Calendar panel), not the Reminders app */
+    if (/^(?:(?:hey|ok|okay)\s+)?(?:jarvis[,!.]?\s+)?(?:(?:please|can you|could you|would you)\s+)*(?:open|show)\s+(?:me\s+)?my\s+reminders\s*[.!?]*$/i.test(t)) return false;
+    return !!t && t.length <= 300 && NEED.some(function (r) { return r.test(t); });
+  }
   var NEED_TEXT = 'That needs the Jarvis Mac app on your computer, sir. In a browser I can open websites, but not apps, files or your screen.';
   var STEPS = ['Install Apple\'s command line tools (xcode-select --install) and Node.js 20 or newer.',
     'Clone the desktop-app branch of your jarvis repository and run: bash install-mac.sh (the guide is LOCAL-SETUP.md in that branch).',

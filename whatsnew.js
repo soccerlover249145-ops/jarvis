@@ -11,10 +11,12 @@
   var Kin = window.Kin = window.Kin || {};
 
   var ITEMS = [
+    { key: 'remind', title: 'Reminders', say: 'Remind me at 3pm to call Sam', note: 'I understand it here, with no call to Claude, and keep it on this device. When it is due I chime, say it and show Done and Snooze. Say “every weekday at 8”, “every other Friday” or “on the 1st of every month” to repeat one; the Calendar panel lists them.' },
+    { key: 'inbox', title: 'Inbox and calendar', say: 'Check my inbox', note: 'With your Google Client ID in Settings, Email, I read your unread mail and your next few days, read-only. Open an email to read all of it; Draft reply writes from the whole thing, and nothing sends without your tap.' },
+    { key: 'ptt', title: 'Hold Space to talk', say: 'Hold the space bar, speak, let go', note: 'On a computer, hold Space while you talk and let go to send, or just start typing anywhere. On a phone, tap the microphone.' },
     { key: 'mac', title: 'Open things on your Mac', say: 'Open my Notes app', note: 'Inside the Jarvis Mac app I can open sites, apps on your list and files in folders you share, start Mail drafts, and do jobs on your screen with a Stop bar. Your Mac asks you before each one. In a browser I can only open sites.' },
     { key: 'email', title: 'Email', say: 'Email Sam asking for the latest quote', note: 'I write it as a card you can edit. Open in Gmail sends it from Gmail; with your Google Client ID in Settings, Email, Send now sends it from here, only on your tap.' },
     { key: 'smart', title: 'Answers beyond the pack', say: 'Make me a business model for a coffee cart', note: 'Facts about your own company still come only from the pack. Everything else uses everything I know and the web, with assumptions labelled. I never go silent: if I run out of room you get Continue.' },
-    { key: 'hftest', title: 'Test Higgsfield', say: 'Settings, then Pictures', note: 'One check that makes nothing and shows Higgsfield’s exact reply, so a poster that will not come back says why.' },
     { key: 'watch', title: 'Watch & listen', say: 'Watch this video', note: 'Drop in a video or a recording, or share a tab. I show the cost first, and nothing is sent until you tap Go.' },
     { key: 'devices', title: 'Bluetooth & USB lab', say: 'Connect my heart rate strap', note: 'In Chrome or Edge on a computer. Live readings from straps, scales and boards. Nothing is sent to a device unless you type it.' },
     { key: 'away', title: 'Away mode', say: 'I’m heading out', note: 'I log routine things, keep the rest for a summary, and only notify you about what cannot wait. I ask before turning it on.' },
@@ -24,8 +26,7 @@
     { key: 'grok', title: 'Ask Grok Bot', say: 'Ask Grok Bot what is due tomorrow', note: 'Off until you turn it on in Settings and paste your device token. Only a sentence that starts with “ask Grok Bot” goes to your relay; its reply shows here and is never passed to Claude.' },
     { key: 'pictures', title: 'Connect Higgsfield for pictures', say: 'Settings, then Pictures', note: 'Connect your Higgsfield account so design jobs can use real pictures. I price them first and ask before any credits are spent.' },
     { key: 'sync', title: 'Same Jarvis on every computer', say: 'Settings, then Sync', note: 'Turn on Sync and what I remember, make and am set to stays the same on each of your computers, through a hidden folder in your Google Drive. Encrypted with a passphrase only you know. Keys never sync; off until you turn it on.' },
-    { key: 'move', title: 'Move to another computer', say: 'Settings, then Privacy', note: 'Export one file with what I remember, the Made shelf and your settings, then import it on the other computer. Keys and tokens are never in it; nothing changes until you tap Bring it in.' },
-    { key: 'settings', title: 'Settings in sections', say: 'Tap the gear', note: 'Start, Voice, Brain, Pictures, Email, Brief, Away, Grok Bot, Sync and Privacy, with a row of pills at the top to jump between them.' }
+    { key: 'move', title: 'Move to another computer', say: 'Settings, then Privacy', note: 'Export one file with what I remember, the Made shelf and your settings, then import it on the other computer. Keys and tokens are never in it; nothing changes until you tap Bring it in.' }
   ];
 
   function h(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }

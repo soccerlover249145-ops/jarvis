@@ -434,12 +434,14 @@
   }
   function instantHelp(raw) {
     if (!/^(help|what can (you|i) (do|say)|what do you do|commands)[?.! ]*$/i.test(String(raw || '').trim())) return null;
-    var show = 'Things you can say:\n- "hey Jarvis", "go to sleep", "stop"\n- "What is due this week?", "brief me", "what is the latest on ..."\n- "Design a poster for ...", "Write a plan for ...", "Make a table of ..."\n- "bench, 135 for 8", "log that I changed the brake pads", "rest 90 seconds"\n- "run the morning protocol", "shutdown", "focus"\n- "ask Grok Bot ..." (when the Grok Bot bridge is on in settings)\n- "remember that ...", and the thumbs under each answer teach me what works.';
+    var show = 'Things you can say:\n- "hey Jarvis", "go to sleep", "stop"\n- "What is due this week?", "brief me", "what is the latest on ..."\n- "Design a poster for ...", "Write a plan for ...", "Make a table of ..."\n- "bench, 135 for 8", "log that I changed the brake pads", "rest 90 seconds"\n- "run the morning protocol", "shutdown", "focus"\n- "remind me at 3pm to call Sam", "remind me every weekday at 8 to stretch", "remind me on the 1st of every month to pay rent", "what are my reminders"\n- "ask Grok Bot ..." (when the Grok Bot bridge is on in settings)\n- "remember that ...", and the thumbs under each answer teach me what works.';
     return { say: 'It is on screen now, sir.', show: show };
   }
   /** Phrases Kin handles on this device at once, without Claude. Returns { say, show, clip?, sleep?, open? } or null. */
   function instant(text) {
-    return instantTimer(text) || instantLog(text) || instantProtocol(text) || instantHelp(text);
+    /* the answer to "When should I remind you?" comes first: "10 minutes" then is the reminder's time, not a timer */
+    if (Kin.remind && Kin.remind.waiting()) { var rw = Kin.remind.instant(text); if (rw) return rw; }
+    return instantTimer(text) || instantLog(text) || instantProtocol(text) || instantHelp(text) || (Kin.remind ? Kin.remind.instant(text) : null);
   }
 
   /* ---------------------------------------------------------------- spend: an estimate from the token counts */

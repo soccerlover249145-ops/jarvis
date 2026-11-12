@@ -281,3 +281,7 @@
 .bb-task.bb-gone { opacity: 0; transform: translateX(12px); transition: opacity .24s, transform .24s; }
 .bb-card.bb-slim .bb-body { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; }
 .bb-card.bb-slim .bb-empty { margin: 0; flex: 1 1 260px; }
+/* reminders due today, under the day's events */
+.bb-rems .bb-l { margin: 2px 0 8px; font: 500 11px/1 var(--bb-mono); letter-spacing: .16em; text-transform: uppercase; color: var(--bb-ink2); }
+.bb-rems + .bb-rems, .bb-body + .bb-rems { margin-top: 14px; }
+.bb-rem .bb-when2 b { color: var(--bb-sun); }

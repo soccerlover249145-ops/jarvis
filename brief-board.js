@@ -47,7 +47,7 @@
 
   /* ------------------------------------------------------------ settings */
   var CARDS = [
-    { id: 'weather', name: 'Weather' }, { id: 'calendar', name: 'Your calendar' }, { id: 'nok', name: 'Your company' }, { id: 'start', name: 'Jarvis can start' }, { id: 'today', name: 'Coming up' },
+    { id: 'weather', name: 'Weather' }, { id: 'calendar', name: 'Your calendar and reminders' }, { id: 'nok', name: 'Your company' }, { id: 'start', name: 'Jarvis can start' }, { id: 'today', name: 'Coming up' },
     { id: 'priorities', name: 'Top priorities' }, { id: 'market', name: 'Market watch' }, { id: 'footer', name: 'On this day' }
   ];
   var DEF = { order: ['weather', 'calendar', 'nok', 'start', 'today', 'priorities', 'market', 'footer'], on: { weather: true, calendar: true, nok: true, start: true, today: true, priorities: true, market: true, footer: false }, units: 'F', owner: '', autoSmall: true, autoCap: 0.25, autoDay: 1 };
@@ -221,6 +221,10 @@
       if (opts.calendar.ready && typeof opts.calendar.read === 'function') jobs.push(withTimeout(Promise.resolve().then(opts.calendar.read), ms, 'Your calendar').then(function (list) { data.calendar = { items: Array.isArray(list) ? list : [] }; }, function (e) { data.calendar = { error: String(e && e.message || e) }; }));
       else data.calendar = { waiting: true };
     }
+    /* reminders due today, kept on this device (remind.js): read at once, no permission needed */
+    if (set.on.calendar && typeof opts.reminders === 'function') {
+      try { var rs = opts.reminders(); data.reminders = (Array.isArray(rs) ? rs : []).slice(0, 12).map(function (r) { return { text: String(r.text || '').slice(0, 200), at: +r.at, rep: !!(r.repeat || r.every) }; }).filter(function (r) { return isFinite(r.at); }); } catch (e) { data.reminders = []; }
+    }
     if (set.on.market && typeof opts.market === 'function') {
       jobs.push(withTimeout(Promise.resolve().then(opts.market), Math.max(ms, 25000), 'The market search').then(function (list) {
         data.market = { items: (Array.isArray(list) ? list : []).filter(function (x) { return x && x.title; }).slice(0, 4).map(function (x) { return { title: String(x.title).slice(0, 160), source: String(x.source || '').slice(0, 40), url: /^https:\/\//.test(x.url || '') ? x.url : '', date: String(x.date || '').slice(0, 24) }; }) };
@@ -236,6 +240,7 @@
     var n = d.nok; if (n) { var pick = n.stats.filter(function (x) { return /pick/i.test(x.k); })[0]; if (pick && pick.v >= 0) out.push(pick.v + (pick.v === 1 ? ' day' : ' days') + ' to the pick.'); if (n.first) out.push('First up: ' + n.first.t + '.'); }
     var cal = d.calendar; if (cal && cal.items) { var nowMs = (d.now || new Date()).getTime(), nx = cal.items.filter(function (e) { return !e.allDay && e.start > nowMs; })[0];
       out.push(cal.items.length ? cal.items.length + (cal.items.length === 1 ? ' thing is' : ' things are') + ' on your calendar today' + (nx ? ', the next at ' + clock(new Date(nx.start)) : '') + '.' : 'Your calendar is clear today.'); }
+    var rm = d.reminders; if (rm && rm.length) out.push(rm.length === 1 ? 'One reminder today, at ' + clock(new Date(rm[0].at)) + '.' : rm.length + ' reminders today, the first at ' + clock(new Date(rm[0].at)) + '.');
     if (!(w && !w.error) && !n) out.push('Set your town and import your pack in settings, and I\'ll have a full brief for you.');
     var o = d.offers || [], started = o.filter(function (x) { return x.state === 'running' || x.state === 'done'; }), next = o.filter(function (x) { return !x.state; })[0];
     if (started.length) out.push('I have started on ' + started.map(function (x) { return x.say; }).join(started.length > 2 ? ', ' : ' and ').replace(/, ([^,]*)$/, ', and $1') + '.');
@@ -377,7 +382,17 @@
         f.appendChild(h('div', 'bb-m', [due.top + (due.top === 'Overdue' || due.top === 'Today' || due.top === 'Tomorrow' ? ' · ' + due.sub : ' ' + due.sub), n.first.st && n.first.st !== 'open' ? n.first.st : '', n.first.who].filter(Boolean).join('  ·  '))); b.appendChild(f); }
     },
     calendar: function (c, d, ctx) {
-      var k = d.calendar || {}; head(c, 'Your calendar', 'Today, from Google Calendar'); var b = h('div', 'bb-body'); c.appendChild(b);
+      var rm = d.reminders || [];
+      head(c, d.calendar ? 'Your calendar' : 'Your reminders', d.calendar ? 'Today, from Google Calendar' + (rm.length ? ', and your reminders' : '') : 'Today, kept on this device');
+      /* reminders due today: what and when, in their own list under the events */
+      if (rm.length) {
+        var rb = h('div', 'bb-body bb-rems'), rl = h('ul', 'bb-list');
+        if (d.calendar) rb.appendChild(h('div', 'bb-l', 'Reminders'));
+        rm.slice(0, 6).forEach(function (r) { var li = h('li', 'bb-row bb-rem'), wd = h('div', 'bb-when2'); wd.appendChild(h('b', '', clock(new Date(r.at)))); wd.appendChild(h('span', '', r.rep ? 'Repeats' : 'Reminder')); li.appendChild(wd); var x = h('div'); x.appendChild(h('div', 'bb-rt', r.text)); li.appendChild(x); rl.appendChild(li); });
+        rb.appendChild(rl); if (rm.length > 6) rb.appendChild(h('p', 'bb-empty', (rm.length - 6) + ' more today.'));
+      }
+      if (!d.calendar) { if (rb) c.appendChild(rb); return; }
+      var k = d.calendar; var b = h('div', 'bb-body'); c.appendChild(b); if (rb) c.appendChild(rb);
       function draw(items) {
         b.textContent = '';
         if (!items.length) { empty(b, 'Nothing on your calendar today.'); return; }
@@ -465,7 +480,7 @@
   /** which cards have something honest to show */
   function shows(id, d) {
     if (!d.settings.on[id]) return false;
-    if (id === 'calendar') return !!d.calendar;
+    if (id === 'calendar') return !!d.calendar || !!(d.reminders && d.reminders.length);
     if (id === 'market') return !!d.market && !!(d.market.error || (d.market.items && d.market.items.length) || lastMarket()); if (id === 'footer') return !!(d.nok && d.nok.onThisDay); if (id === 'start') return !!(d.offers && d.offers.length); return true;
   }
 
