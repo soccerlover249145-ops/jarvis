@@ -81,7 +81,11 @@ function installInjector() {
   const ses = session.defaultSession;
   ses.webRequest.onBeforeSendHeaders({ urls: watchUrls(cfg.get().relayUrl) }, function (details, cb) {
     const r = injectHeaders(details.url, details.requestHeaders, secretCache, cfg.get().relayUrl);
-    if (DEBUG) console.log('[secrets] ' + new URL(details.url).host + ' injected=' + (r.injected || 'none'));
+    if (DEBUG) console.log('[secrets] ' + new URL(details.url).host + ' injected=' + (r.injected || 'none') + (r.blocked ? ' blocked=' + r.blocked : ''));
+    /* no real key cached yet (Keychain write still in flight, or it failed): cancel rather than
+       send the literal placeholder on to the real host, which would come back as a confusing
+       "key rejected" error from the server instead of the true, local, fixable cause */
+    if (r.blocked) { cb({ cancel: true }); return; }
     cb({ requestHeaders: r.headers });
   });
 }

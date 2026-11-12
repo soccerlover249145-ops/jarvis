@@ -719,6 +719,15 @@
   $('keySave').addEventListener('click', function () {
     var r = brain.setKey($('apiKey').value); $('apiKey').value = ''; refreshSettings();
     if (!r.ok) $('keyNote').textContent = r.why === 'shared' ? Kin.SHARED_TEXT : r.why === 'storage' ? 'This browser would not save the key. Its storage is blocked or full (private browsing does this).' : 'That does not look like an Anthropic API key. It should start with sk-ant-.';
+    else if (Kin.desktop) $('keyNote').textContent = 'Saving to the Keychain…';
+  });
+  /* the Mac app's shim confirms the Keychain write asynchronously; without this, a failed
+     write left the panel saying "a key is saved" forever, which is exactly backwards */
+  if (Kin.desktop) window.addEventListener('kin:secretsaved', function (e) {
+    if (e.detail && e.detail.key === 'kin.key') {
+      if (e.detail.ok) refreshSettings();
+      else $('keyNote').textContent = 'macOS Keychain would not store that key, sir — it was not saved. Try again, or open Keychain Access and remove any stuck "Claude API key" item under com.jarvis.desktop.';
+    }
   });
   /* the conversation holds pieces of the pack and is sent again as history, so it goes when the key or the pack goes */
   $('keyDrop').addEventListener('click', function () { brain.dropKey(); clearTalk(); refreshSettings(); });

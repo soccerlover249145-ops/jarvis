@@ -21,6 +21,9 @@
   var P = Storage.prototype, get = P.getItem, set = P.setItem, del = P.removeItem, clear = P.clear;
   function local(o) { try { return o === window.localStorage; } catch (e) { return false; } }
   function warn(t) { try { D.ui.toast('Keychain', t); } catch (e) {} }
+  /* the toast alone is easy to miss; tell the Settings panel the real, confirmed outcome so it
+     never keeps showing "a key is saved" after the Keychain write actually failed */
+  function fire(k, ok) { try { window.dispatchEvent(new CustomEvent('kin:secretsaved', { detail: { key: k, ok: ok } })); } catch (e) {} }
 
   P.getItem = function (k) {
     if (local(this) && SECRET[k]) return have[k] || null;
@@ -34,8 +37,12 @@
       var before = have[k];
       have[k] = PH[k];
       D.setSecret(k, v).then(function (r) {
-        if (!r || !r.ok) { have[k] = before; warn('macOS would not save that key in the Keychain. Try again, or check Keychain Access.'); }
-      }, function () { have[k] = before; warn('The key could not be saved.'); });
+        if (!r || !r.ok) {
+          have[k] = before;
+          warn('macOS would not save that key in the Keychain. Try again, or check Keychain Access.');
+          fire(k, false);
+        } else fire(k, true);
+      }, function () { have[k] = before; warn('The key could not be saved.'); fire(k, false); });
       return;
     }
     if (local(this) && k === 'kin.gb.url') D.relayUrl(String(v || '') || DEFAULT_RELAY);

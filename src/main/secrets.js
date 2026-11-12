@@ -46,8 +46,8 @@ function relayHost(relayUrl) {
 function injectHeaders(url, headers, secrets, relayUrl) {
   const out = Object.assign({}, headers || {});
   let u;
-  try { u = new URL(url); } catch (e) { return { headers: out, injected: null }; }
-  if (u.protocol !== 'https:') return { headers: out, injected: null };
+  try { u = new URL(url); } catch (e) { return { headers: out, injected: null, blocked: null }; }
+  if (u.protocol !== 'https:') return { headers: out, injected: null, blocked: null };
   const host = u.hostname.toLowerCase();
   const rh = relayHost(relayUrl);
   for (const r of ROUTES) {
@@ -58,11 +58,14 @@ function injectHeaders(url, headers, secrets, relayUrl) {
     const ph = r.prefix + PLACEHOLDER[r.name];
     if (out[key] !== ph) continue;                 /* a real key the owner just typed: leave it */
     const real = secrets && secrets[r.name];
-    if (!real) continue;
+    /* the Keychain write can still be in flight, or may have failed, when a request fires;
+       either way the literal placeholder must never reach the real host, it only confuses
+       the owner with a server-side "key rejected" error instead of the true local cause */
+    if (!real) return { headers: out, injected: null, blocked: r.name };
     out[key] = r.prefix + real;
-    return { headers: out, injected: r.name };
+    return { headers: out, injected: r.name, blocked: null };
   }
-  return { headers: out, injected: null };
+  return { headers: out, injected: null, blocked: null };
 }
 
 /** the url patterns the main process watches, given the relay address */
