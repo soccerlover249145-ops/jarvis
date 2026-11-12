@@ -41,8 +41,7 @@ code, pre, kbd, .md code, .md pre { font-family: var(--f-code) !important; }
 .flare, .flare.down { display: none; }
 
 .top { position: relative; flex: none; height: calc(68px + var(--safe-t)); padding: var(--safe-t) 28px 0; gap: 12px; z-index: 5; }
-.mark { display: inline-flex; align-items: center; gap: 10px; font: 600 16px/1 var(--f-ui); letter-spacing: -.01em; color: var(--text); }
-.mark-orb { width: 22px; height: 22px; border-radius: 50%; flex: none; background: radial-gradient(circle at 35% 30%, #d9f3ff, #74d4ff 40%, #1f6fa8 75%, #0b2133); box-shadow: 0 0 18px rgba(116, 212, 255, .45); }
+.mark { display: inline-flex; align-items: center; font: 600 17px/1 var(--f-ui); letter-spacing: -.01em; color: #fff; }
 .packname { flex: 0 1 auto; max-width: 22ch; font: 400 13px/1 var(--f-ui); color: var(--text-3); }
 .packname:empty { display: none; }
 .when { margin-left: auto; font: 400 13px/18px var(--f-ui); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -333,7 +332,7 @@ code, pre, kbd, .md code, .md pre { font-family: var(--f-code) !important; }
   .qhero, .qwx, .qtoday, .qjobs, .qok, .qdev, .qaway { grid-column: span 2; }
   /* the dock's parts are placed on the screen one by one: a frosted bar at the bottom, the conversation as a sheet */
   .dock, .dock-h { display: contents; }
-  .orb { display: none; }
+  .orb { position: fixed; left: 50%; top: calc(50% - 40px); transform: translate(-50%, -50%); width: 140px; height: 140px; z-index: 1; }
   .mini-orb { display: block; }
   .sugg { display: none; }
   .dock .bar { position: fixed; left: 12px; right: 12px; bottom: calc(10px + var(--safe-b)); max-width: 680px; margin: 0 auto; height: 64px; padding: 0 8px; border-radius: 32px; background: rgba(20, 23, 30, .86); -webkit-backdrop-filter: blur(20px) saturate(140%); backdrop-filter: blur(20px) saturate(140%); border: 1px solid var(--line2); box-shadow: var(--hi), 0 20px 60px -20px rgba(0, 0, 0, .9); z-index: 9; }
@@ -433,8 +432,7 @@ body, .app { background: #000000; }
 .app::before { display: none; }
 
 /* the header */
-.mark { font: 400 18px/1 var(--f-ui); letter-spacing: .34em; text-transform: uppercase; color: var(--text); }
-.mark-orb { box-shadow: 0 0 22px rgba(111, 227, 255, .55); }
+.mark { font: 600 17px/1 var(--f-ui); letter-spacing: -.01em; color: #fff; }
 .packname { font: 500 11px/1 var(--f-lab); letter-spacing: .16em; text-transform: uppercase; color: var(--text-3); }
 .when { font: 400 12px/18px var(--f-lab); letter-spacing: .06em; color: var(--text-2); }
 .when b { font-weight: 500; color: var(--text); }
