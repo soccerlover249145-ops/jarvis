@@ -16,7 +16,8 @@
      busy() / stop()        -> a take-control task is running / stop it at once
      onDone(fn)             -> fn({ title, body }) when a task ends
      needsMac(text)         -> true for "open the Notes app", "show my Downloads folder", "do X on my computer"
-     card(info) / need()    -> the small result card, and the "needs the Mac app" reply's install steps */
+     card(info) / need()    -> the small result card, and the "needs the Mac app" reply's install steps
+     hears()                -> true when Kin.ears is the Mac app's own listener (see "hearing inside the Mac app") */
 (function () {
   'use strict';
   var Kin = window.Kin = window.Kin || {};
@@ -364,5 +365,219 @@
   }
   function dropStandIn(kind) { setNoMac(kind, true); fromMac[kind] = false; }
 
-  Kin.mac = { asked: asked, available: available, available2: available2, wants: wants, readsWanted: readsWanted, localIso: localIso, tools: tools, draft: draft, busy: busy, stop: stop, onDone: onDone, needsMac: needsMac, NEED_TEXT: NEED_TEXT, need: need, card: card, note: note, STEPS: STEPS, prefill: prefill, saveKey: saveKey, keptOnMac: keptOnMac, isStandIn: isStandIn, checkStandIn: checkStandIn, dropStandIn: dropStandIn, openOwn: openOwn };
+  /* ------------------------------------------------------------ hearing inside the Mac app
+     A browser's own speech service does not exist inside an app: every listening session there dies at once, and the
+     page used to say "Listening keeps cutting out here." The Mac app has its own listener (Apple's speech recognizer,
+     run by the app on the Mac) and hands this page what it hears: each finished phrase through jarvisDesk.onHeard
+     (version 2), and from version 3 its state and the words as they come through jarvisDesk.ears. So inside the app
+     Kin.ears is replaced here, before app.js takes hold of it. It has the same shape as ears.js; the wake, sleep and
+     stop phrases are still decided by ears.js's own wakeIn, sleepIn and stopIn, and everything heard still passes the
+     page's own wake and echo checks. Nothing here opens the browser's speech service or a microphone of its own. */
+  var MACWHY = {
+    'mic-denied': ['The Mac is not letting Jarvis use the microphone.', 'System Settings, Privacy & Security, Microphone: switch Jarvis on', 'macOS is not letting the Jarvis app use the microphone. Open System Settings, Privacy & Security, Microphone and switch Jarvis on, then quit Jarvis and open it again.'],
+    'speech-denied': ['Speech recognition is off for the Jarvis app.', 'System Settings, Privacy & Security, Speech Recognition: switch Jarvis on', 'macOS has speech recognition switched off for the Jarvis app. Open System Settings, Privacy & Security, Speech Recognition and switch Jarvis on, then quit Jarvis and open it again.'],
+    'speech-restricted': ['Speech recognition is restricted on this Mac.', 'Screen Time or a profile is blocking it. You can still type', 'Speech recognition is restricted on this Mac (by Screen Time or a management profile), so the Jarvis app cannot listen. You can still type.'],
+    'speech-not-allowed': ['Speech recognition is not allowed for the Jarvis app yet.', 'System Settings, Privacy & Security, Speech Recognition: switch Jarvis on', 'macOS has not allowed speech recognition for the Jarvis app yet. Open System Settings, Privacy & Security, Speech Recognition and switch Jarvis on, then quit Jarvis and open it again.'],
+    'no-on-device': ['This Mac cannot turn speech into text by itself.', 'In the Mac app’s settings you can let Apple’s servers do it. Or type', 'This Mac cannot turn speech into text on the Mac itself for this language, and the Jarvis app is set to keep your speech on the Mac. In the Mac app’s own settings (the Jarvis icon in the menu bar, then Settings) you can let Apple’s servers do it instead. Until then you can type.'],
+    'no-microphone': ['The Mac found no microphone.', 'Plug one in, or pick an input in System Settings, Sound', 'The Jarvis app found no microphone. Plug one in, or pick an input device in System Settings, Sound, then click the mic here.'],
+    'helper-missing': ['The Mac app’s listener is missing.', 'Run the installer again, then reopen Jarvis', 'The listening part of the Jarvis app is missing from this install. Run the installer again (it builds that part), then open Jarvis again.'],
+    'no-recognizer': ['This Mac has no speech recognizer for this language.', 'You can still type', 'This Mac has no speech recognizer for this language, so the Jarvis app cannot listen. You can still type.'],
+    'stalled': ['The Mac’s listener keeps stopping.', 'It tries again by itself in a moment. Or click the mic', 'The Jarvis app’s listener kept stopping, so it is resting. It tries again by itself in a moment; clicking the mic tries at once.']
+  };
+  var MACBLOCK = ['The Mac app’s listener is blocked.', 'The Jarvis icon in the menu bar says more. You can still type', 'The Jarvis app’s listener is blocked on this Mac. Check that Jarvis is allowed under System Settings, Privacy & Security, in both Microphone and Speech Recognition, then quit Jarvis and open it again. You can still type.'];
+  /** the Mac's reason in plain words; any is true when a refusal has to be explained even if the reason is new */
+  function macWhy(reason, any) { var w = Object.prototype.hasOwnProperty.call(MACWHY, String(reason)) ? MACWHY[reason] : any ? MACBLOCK : null; return w ? { short: w[0], small: w[1], full: w[2] } : null; }
+  function deskEars() {
+    var d = D(), base = Kin.ears;
+    if (!d || Kin.shared || !base || typeof base.wakeIn !== 'function' || typeof d.onHeard !== 'function') return false;
+    /* version 3 of the Mac app says whether its listener is running and why not; version 2 only sends finished phrases */
+    var E = d.ears && typeof d.ears === 'object' && typeof d.ears.onEvent === 'function' && typeof d.ears.start === 'function' && typeof d.ears.stop === 'function' ? d.ears : null;
+    var subs = [], want = false, live = false, lastErr = '', onDevice = null, proof = false, expT = 0, notedAt = 0, auto = true, now = null;
+    function emit(ev) { if (ev.type === 'state') now = ev; subs.forEach(function (f) { try { f(ev); } catch (e) {} }); }
+    function txt(x) { return String(x && typeof x === 'object' ? (x.text == null ? '' : x.text) : (x == null ? '' : x)).replace(/\s+/g, ' ').trim().slice(0, 2000); }
+    /* The Mac's listener has no echo cancelling and ends a phrase only after a pause, so Jarvis's own voice and the
+       founder's reply ("Shall I list them, sir? ... yes please") arrive as one phrase. What Jarvis said in the last
+       moments is kept, and a phrase that opens with a run of those words, in order, loses that run: the rest is the
+       founder's. A phrase that is all Jarvis is passed on whole, for the page's own echo check to drop. */
+    /* Only while Jarvis is speaking, or in the moment after (the Mac ends a phrase about a second after the room goes
+       quiet): later, the founder repeating Jarvis's words ("move the meeting to Thursday") is the founder talking. */
+    var spoke = [], spokeAt = 0, speaking = false, idleAt = 0, forced = null;
+    try { if (Kin.voice && typeof Kin.voice.on === 'function') Kin.voice.on(function (e) {
+      if (!e) return;
+      if (e.type === 'line') { var w = base.norm(e.text).split(' ').filter(Boolean); spoke = (Date.now() - spokeAt > 20000 ? [] : spoke).concat(w).slice(-160); spokeAt = Date.now(); }
+      if (e.type === 'state') { speaking = e.state === 'speaking'; if (!speaking) idleAt = Date.now(); spokeAt = Date.now(); }
+    }); } catch (e) {}
+    /* a phrase arrives about a second after it ends, and takes roughly 0.4 s a word to say: it began while Jarvis was
+       speaking (or just after) only if it arrives within that much time of him stopping */
+    function echoWindow(n) { return speaking || (idleAt && Date.now() - idleAt < 2600 + 400 * n); }
+    function ownLead(words) {
+      if (!spoke.length || !echoWindow(words.length)) return 0;
+      var best = 0;
+      for (var s0 = 0; s0 < spoke.length; s0++) {
+        if (spoke[s0] !== words[0]) continue;
+        var i = 1, j = s0 + 1, miss = 0;
+        while (i < words.length && j < spoke.length) {
+          if (words[i] === spoke[j]) { i++; j++; miss = 0; continue; }
+          /* a word the recognizer dropped or misheard: look a little ahead in both */
+          if (j + 1 < spoke.length && words[i] === spoke[j + 1]) { j += 2; i++; continue; }
+          if (i + 1 < words.length && words[i + 1] === spoke[j] && ++miss < 2) { i += 2; j++; continue; }
+          break;
+        }
+        /* once Jarvis has stopped, his echo in a phrase runs up to his last words; a run from the middle of what he
+           said ("move the meeting to ...") is the founder using his words */
+        if (i > best && (speaking || j >= spoke.length - 2)) best = i;
+      }
+      /* after Jarvis has stopped, a run of three is needed (two words can be the founder's own) */
+      return best >= (speaking ? 2 : 3) ? best : 0;
+    }
+    function phrase(type, x) {
+      var t = txt(x); if (!t) return;
+      /* anything at all from the Mac's listener proves it is alive, even words this page then ignores */
+      proof = true; clearTimeout(expT); expT = 0;
+      var raw = t.split(' '), words = raw.map(base.norm), cut = ownLead(words);
+      if (cut && cut < raw.length) t = raw.slice(cut).join(' ');
+      /* "stop" (or "wait") after Jarvis's own words, while he is still speaking: the Mac would only settle the phrase
+         once the room is quiet, which it never is while he talks, so the stop word is passed on as settled now */
+      if (type === 'partial' && speaking && cut && base.stopIn(t)) { forced = { n: base.norm(t), at: Date.now() }; type = 'final'; }
+      else if (type === 'final' && forced) {
+        /* the Mac's own settled copy of that phrase (Jarvis's words, then the stop word) is dropped once; anything else is new */
+        var fn = base.norm(t), was = forced; forced = null;
+        if (Date.now() - was.at < 8000 && (fn === was.n || (' ' + fn).slice(-(was.n.length + 1)) === ' ' + was.n)) return;
+      }
+      if (want) emit({ type: type, text: t });
+    }
+    function state(ev) {
+      var st = String(ev.state || ''), why = String(ev.reason || '').slice(0, 80);
+      if (typeof ev.onDevice === 'boolean') onDevice = ev.onDevice;
+      if (st === 'paused') return;
+      if (st === 'listening') { var was = live; live = true; want = true; lastErr = ''; if (!was) emit({ type: 'state', state: 'listening' }); return; }
+      live = false;
+      if (st === 'blocked') { want = false; lastErr = why || 'blocked'; emit({ type: 'state', state: 'blocked', reason: lastErr }); return; }
+      /* the Mac follows a refusal with "off, stopped": the refusal is what the founder needs to see, so it stays */
+      if (st === 'off' && (!why || why === 'stopped') && now && now.state === 'blocked') return;
+      if (st === 'off') { if (why && why !== 'stopped') lastErr = why; want = false; emit({ type: 'state', state: 'off', reason: why || 'stopped' }); return; }
+      if (st === 'starting') emit({ type: 'state', state: 'starting', reason: why });
+    }
+    var boot = Promise.resolve();
+    if (E) {
+      try { E.onEvent(function (ev) { if (!ev || typeof ev !== 'object') return; if (ev.type === 'state') state(ev); else if (ev.type === 'partial' || ev.type === 'final') phrase(ev.type, ev); }); } catch (e) { E = null; }
+    }
+    if (E) {
+      /* the listener starts with the app, so it may already be running (or already refused) when this page opens */
+      boot = Promise.resolve().then(function () { return typeof E.state === 'function' ? E.state() : null; }).then(function (s) {
+        if (!s || typeof s !== 'object') return;
+        if (s.auto === false) auto = false;
+        if (typeof s.onDevice === 'boolean') onDevice = s.onDevice;
+        if (s.state === 'listening' || s.state === 'blocked' || (s.state === 'off' && s.reason && s.reason !== 'stopped')) state(s);
+        else if (s.wanted) want = true;
+      }, function () {});
+    } else {
+      try { d.onHeard(function (x) { phrase('final', x); }); } catch (e) { return false; }
+    }
+    Kin.ears = {
+      supported: true, isIOS: false, isSafari: false, standalone: false, desktop: true, exact: !!E,
+      /* the Mac may have said how its listener is before the page was ready to hear it: a newcomer is told at once */
+      on: function (f) { if (typeof f !== 'function') return; subs.push(f); if (now) { var ev = now; Promise.resolve().then(function () { if (now === ev) { try { f(ev); } catch (e) {} } }); } },
+      listening: function () { return live; },
+      wanted: function () { return want; },
+      lastError: function () { return lastErr; },
+      start: function () {
+        want = true; lastErr = '';
+        if (E) {
+          if (!live) emit({ type: 'state', state: 'starting' });
+          /* the Mac answers with how its listener is now, in case it was already running and has nothing new to report */
+          try { Promise.resolve(E.start()).then(function (r) { if (want && !live && r && typeof r === 'object' && (r.state === 'listening' || r.state === 'blocked')) state(r); }, function () {}); } catch (e) {}
+          return true;
+        }
+        /* version 2: the Mac's listener runs by itself and cannot be asked how it is, so this page takes it as on */
+        if (!live) { emit({ type: 'state', state: 'starting' }); live = true; emit({ type: 'state', state: 'listening' }); }
+        return true;
+      },
+      stop: function () {
+        want = false; live = false; lastErr = ''; clearTimeout(expT); expT = 0;
+        if (E) { try { Promise.resolve(E.stop()).catch(function () {}); } catch (e) {} }
+        emit({ type: 'state', state: 'off', reason: 'stopped' });
+      },
+      paused: function () { return ''; },
+      /* no level meter here: the Mac's listener hears the room without echo cancelling, so only the words decide */
+      level: function () { return null; },
+      meter: function () {},
+      wakeMeter: function () {},
+      hold: function (on) { if (E && typeof E.hold === 'function') { try { Promise.resolve(E.hold(!!on)).catch(function () {}); } catch (e) {} } },
+      /* 'granted' means "listen from the moment the page opens": yes, unless the Mac refused or the app is set not to */
+      permission: function () { return boot.then(function () { return lastErr && !live ? 'denied' : auto ? 'granted' : 'prompt'; }); },
+      /** true once anything at all has come through the Mac's listener (version 2 cannot report its state otherwise) */
+      heard: function () { return proof; },
+      /** the reason in plain words, for the caption and for Settings; null for a reason that is not the Mac's */
+      why: macWhy,
+      /** false when the Mac app is set not to listen until asked */
+      auto: function () { return auto; },
+      /** the founder is about to speak (a tap on the mic, Space held): on version 2, if the Mac's listener has never
+          been heard from and still says nothing, say so once instead of sitting there looking like it is listening */
+      expect: function () {
+        if (E || proof || !want || expT) return;
+        var wait = (Kin.T && Kin.T.deskNote) || 14000, tries = 0;
+        expT = setTimeout(function tell() {
+          expT = 0; if (proof || !want || Date.now() - notedAt < 120000) return;
+          /* not over Jarvis's own words or an answer on its way: a moment later instead */
+          var s = Kin.state || {}; if ((s.talking || s.busy) && ++tries < 40) { expT = setTimeout(tell, Math.min(3000, wait)); return; }
+          notedAt = Date.now();
+          emit({ type: 'note', text: 'I have not heard anything through the Mac’s listener yet, sir.', small: 'Menu bar, Jarvis icon: it should say Listening. More in Settings' });
+        }, wait);
+      },
+      /** how Jarvis hears here, for Settings */
+      note: function (st, why) {
+        var who = 'Inside the Mac app Jarvis hears through the app’s own listener (Apple’s speech recognizer), not through a browser. ';
+        var where = onDevice === true ? 'Your speech is turned into text on this Mac.' : onDevice === false ? 'Your speech is turned into text by Apple’s servers, as allowed in the Mac app’s settings.' : 'Your speech is turned into text on this Mac, unless you allowed Apple’s servers in the Mac app’s settings.';
+        var always = ' It listens whenever the Jarvis icon in the menu bar says Listening, including while Jarvis is asleep and waiting for the wake phrase.';
+        if (st === 'blocked' || (st === 'off' && macWhy(why))) return macWhy(why, true).full;
+        if (!E) {
+          if (st === 'off') return who + 'This page has stopped taking in what the Mac hears. The Mac app’s own listener keeps running until you choose Stop listening from the Jarvis icon in the menu bar. Click the mic here to take it in again.';
+          return who + where + always + (proof ? '' : ' This copy of the Mac app cannot tell the page whether its listener is running. If Jarvis does not hear you: click the Jarvis icon in the menu bar and choose Start listening, and allow Jarvis under System Settings, Privacy & Security, in both Microphone and Speech Recognition. Installing the newest Mac app shows the exact reason here.');
+        }
+        if (st === 'listening') return who + where + always;
+        if (st === 'starting') return who + 'The listener is starting.';
+        return who + 'The listener is off. Click the mic to listen again.' + (auto ? '' : ' The Mac app is set not to listen until you ask.');
+      },
+      norm: base.norm, wakeIn: base.wakeIn, sleepIn: base.sleepIn, stopIn: base.stopIn
+    };
+    return true;
+  }
+  var deskHears = false; try { deskHears = deskEars(); } catch (e) {}
+
+  /* ------------------------------------------------------------ the Mac app's pill, shortcut and menu (version 3)
+     The floating pill and the menu bar belong to the Mac app. What the founder types in the pill (or picks from the
+     menu) arrives here and is asked exactly as if typed in this page; the pill's mic button and the shortcut press
+     this page's own controls; and this page tells the pill its state and caption, so the pill can show them.
+     Nothing here runs unless the Mac app sends it, and the Mac app only sends it for something the founder did. */
+  function deskPill() {
+    var d = D(); if (!d || Kin.shared) return;
+    var $ = function (id) { return document.getElementById(id); };
+    function sub(name, fn) { if (typeof d[name] === 'function') { try { d[name](fn); } catch (e) {} } }
+    sub('onAsk', function (x) {
+      var t = String((x && x.text) || '').replace(/\s+/g, ' ').trim().slice(0, 4000), inp = $('ask'), bar = $('bar'); if (!t || !inp || !bar) return;
+      inp.value = t; if (bar.requestSubmit) bar.requestSubmit(); else bar.dispatchEvent(new Event('submit', { cancelable: true }));
+    });
+    sub('onMic', function () { var m = $('mic'); if (m) m.click(); });
+    sub('onSummon', function () { var a = $('app'), st = a ? a.getAttribute('data-state') : ''; if (st === 'asleep') { var c = $('caption'); if (c) c.click(); } else if (st === 'off') { var a2 = $('ask'); if (a2 && typeof a2.focus === 'function') a2.focus(); } });
+    var ui = d.ui && typeof d.ui === 'object' && typeof d.ui.state === 'function' ? d.ui : null, app = $('app');
+    if (!ui || !app || !window.MutationObserver) return;
+    var last = '', wasThinking = false, mt = 0;
+    function mirror() {
+      var st = app.getAttribute('data-mood') || 'off', capOn = $('caption') && $('caption').classList.contains('on');
+      var cap = capOn ? ($('capT').textContent || '') : '', small = capOn ? ($('capS').textContent || '') : '';
+      var answered = wasThinking && st !== 'thinking' && !!cap; wasThinking = st === 'thinking';
+      var key = st + '|' + cap + '|' + small; if (key === last && !answered) return; last = key;
+      try { Promise.resolve(ui.state({ state: st, caption: cap.slice(0, 400), small: small.slice(0, 160), answered: answered })).catch(function () {}); } catch (e) {}
+    }
+    /* only the two things the pill shows are watched: the mood on #app and the caption's own words */
+    try {
+      var mo = new MutationObserver(function () { clearTimeout(mt); mt = setTimeout(mirror, 80); });
+      mo.observe(app, { attributes: true, attributeFilter: ['data-mood'] });
+      if ($('caption')) mo.observe($('caption'), { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class'] });
+    } catch (e) {}
+  }
+  try { if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', deskPill); else deskPill(); } catch (e) {}
+
+  Kin.mac = { hears: function () { return deskHears; }, asked: asked, available: available, available2: available2, wants: wants, readsWanted: readsWanted, localIso: localIso, tools: tools, draft: draft, busy: busy, stop: stop, onDone: onDone, needsMac: needsMac, NEED_TEXT: NEED_TEXT, need: need, card: card, note: note, STEPS: STEPS, prefill: prefill, saveKey: saveKey, keptOnMac: keptOnMac, isStandIn: isStandIn, checkStandIn: checkStandIn, dropStandIn: dropStandIn, openOwn: openOwn };
 })();

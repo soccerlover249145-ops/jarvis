@@ -28,7 +28,7 @@
   function captionFade(ms) { clearTimeout(capT); capT = setTimeout(function () { if (!S.talking && !S.busy) caption(S.talk === 'asleep' ? sayPhrase() : null, S.talk === 'asleep' ? sleepHint() : ''); }, ms); }
   function sayPhrase() { return (ears.supported ? 'Say “hey Jarvis”' : 'Type “hey Jarvis”'); }
   function sleepHint() { return S.hearing ? 'Listening for it. Or tap here' : ears.supported ? 'Tap here so I can hear you' : 'Or tap here to wake Kin'; }
-  function awakeHint() { if (S.talking) return ears.isSafari || !ears.supported ? 'Tap here to interrupt' : 'Just talk to interrupt'; return S.hearing ? 'Listening' : ears.supported ? 'Tap the mic so I can hear you' : coarse ? 'Tap the keyboard mic and talk' : 'Type to Jarvis'; }
+  function awakeHint() { if (S.talking) return ears.isSafari || !ears.supported ? 'Tap here to interrupt' : ears.desktop ? 'Say “stop” to interrupt' : 'Just talk to interrupt'; return S.hearing ? 'Listening' : ears.supported ? 'Tap the mic so I can hear you' : coarse ? 'Tap the keyboard mic and talk' : 'Type to Jarvis'; }
   function flare(down) { var f = $('flare'); f.classList.remove('on'); f.classList.toggle('down', !!down); void f.offsetWidth; f.classList.add('on'); clearTimeout(flareT); flareT = setTimeout(function () { f.classList.remove('on'); }, 1700); if (!down) bust.wake(); }
   function paint() {
     var m = S.talking ? 'speaking' : S.busy ? 'thinking' : S.talk === 'asleep' ? 'asleep' : S.talk === 'awake' ? (S.hearing || !ears.supported ? 'listening' : 'idle') : 'off';
@@ -40,11 +40,11 @@
     /* no visible text bar while voice is actually working: it just listens. The bar comes back
        the moment it genuinely needs you -- no voice support, the mic blocked, or you turned it
        off yourself (Space does both: stop listening and bring the bar back to type instead) */
-    app.dataset.composer = (!ears.supported || S.micState === 'blocked' || S.micState === 'off' || S.typeOpen) ? 'show' : 'hide';
+    app.dataset.composer = (!ears.supported || S.micState === 'blocked' || S.micState === 'off' || S.typeOpen || (ears.desktop && !ears.exact && ears.heard && !ears.heard())) ? 'show' : 'hide';
     /* the one-word state at the top: what Jarvis is doing right now */
     var ps = S.micState === 'paused' ? 'paused' : m === 'speaking' ? 'speaking' : m === 'thinking' ? 'thinking' : m === 'listening' ? 'listening' : m === 'asleep' ? 'sleeping' : m === 'idle' ? 'awake' : 'off',
       pl = { paused: 'Paused', speaking: 'Speaking', thinking: 'Thinking', listening: 'Listening', sleeping: 'Sleeping', awake: 'Awake', off: 'Off' }[ps],
-      pt = { paused: 'Listening is paused while this tab is in the background. Come back to it and Kin listens again', speaking: S.talking && (ears.isSafari || !ears.supported) ? 'Jarvis is speaking. Tap to interrupt' : 'Jarvis is speaking. Just talk to interrupt', thinking: 'Jarvis is working on it', listening: 'Jarvis is listening. No wake phrase needed', sleeping: 'Asleep. Say hey Jarvis to wake Kin', awake: 'Awake. Tap the mic so Jarvis can hear you', off: 'Not listening. Tap to start' }[ps];
+      pt = { paused: 'Listening is paused while this tab is in the background. Come back to it and Kin listens again', speaking: S.talking && (ears.isSafari || !ears.supported) ? 'Jarvis is speaking. Tap to interrupt' : ears.desktop ? 'Jarvis is speaking. Say stop to interrupt' : 'Jarvis is speaking. Just talk to interrupt', thinking: 'Jarvis is working on it', listening: 'Jarvis is listening. No wake phrase needed', sleeping: 'Asleep. Say hey Jarvis to wake Kin', awake: 'Awake. Tap the mic so Jarvis can hear you', off: 'Not listening. Tap to start' }[ps];
     var vp = $('vpill'); if (vp) { vp.dataset.s = ps; $('vpillT').textContent = pl; vp.setAttribute('aria-label', 'Kin: ' + pl + '. ' + pt); vp.title = pt; }
     inp.placeholder = S.talk === 'awake' ? (S.hearing ? 'Listening. Just talk.' : 'Ask Jarvis anything…') : ears.supported ? 'Say “hey Jarvis”, or type' : 'Ask Jarvis anything…';
   }
@@ -113,6 +113,7 @@
   });
   /** why the browser will not let Kin listen, in a few words for the caption and in full for settings */
   function blockedWhy(reason) {
+    if (ears.why) { var mw = ears.why(reason, true); if (mw) return mw; }
     if (reason === 'no-microphone') return { short: 'This device has no microphone I can use.', small: 'Plug one in or allow it, then reload', full: 'This device has no microphone I can use, or another app is holding it. Plug one in or close the other app, then reload.' };
     if (reason === 'service-not-allowed') return ears.isSafari
       ? { short: 'Safari’s speech service is off.', small: 'Turn on Dictation, then reload. Details in settings', full: 'Safari’s speech service is off. Turn on Dictation in System Settings > Keyboard, and allow Safari under Privacy & Security > Speech Recognition, then reload.' }
@@ -204,7 +205,7 @@
     if ((buf || tail) && !S.snooze) { S.snooze = 1; idleT = setTimeout(drowse, 6000); return; }
     sleep(true);
   }
-  function cue() { S.talk = 'awake'; S.wakes++; caption(null); flare(); voice.chime('wake'); touch(); paint(); }
+  function cue() { S.talk = 'awake'; S.wakes++; caption(null); flare(); voice.chime('wake'); touch(); paint(); if (ears.expect) ears.expect(); }
   function greetNow(rest) {
     rest = String(rest || '').trim();
     if (rest.split(/\s+/).length >= 2 && !ears.sleepIn(rest)) { ask(rest); return; }
@@ -225,7 +226,7 @@
     if (ears.wakeIn(text, S.wake, true)) { if (S.talk !== 'awake') cue(); else { flare(); voice.chime('wake'); touch(); } greetNow(''); return true; }
     if (S.talk !== 'awake') return false;
     /* "stop" or "never mind" also drops a waiting "When should I remind you?" */
-    if (ears.sleepIn(text)) { if (Kin.remind) Kin.remind.dropAsk(); sleep(); return true; }
+    if (ears.sleepIn(text)) { if (Kin.remind) Kin.remind.dropAsk(); if (Kin.cues && Kin.cues.walking()) Kin.cues.stop(); sleep(); return true; }
     if (ears.stopIn(text)) { if (Kin.remind) Kin.remind.dropAsk(); stopAll(); return true; }
     return false;
   }
@@ -276,13 +277,16 @@
   ears.on(function (e) {
     if (e.type === 'partial') return heard(e.text, false);
     if (e.type === 'final') return heard(e.text, true);
+    /* a plain remark from the ears (inside the Mac app: nothing has been heard from the Mac's listener yet) */
+    if (e.type === 'note') { if (!S.talking && !S.busy && e.text) { caption(String(e.text), String(e.small || '')); captionFade(16000); } return; }
+    if (e.type !== 'state') return;
     S.micState = e.state; S.micWhy = e.reason || ''; S.hearing = e.state === 'listening';
     if (e.state === 'paused') { buf = tail = ''; clearTimeout(hearT); if (!S.talking && !S.busy) caption('Listening is paused while this tab is in the background.', 'Come back to this tab and I listen again'); }
     if (e.state === 'starting' && e.reason === 'resume' && !S.talking && !S.busy) caption(S.talk === 'awake' ? 'Listening again, sir.' : sayPhrase(), S.talk === 'awake' ? '' : sleepHint());
     if (e.state === 'listening' && !coarse) ears.meter(true);
     if (e.state === 'listening') { ls.set('kin.micok', '1'); if (S.talk === 'off') { S.talk = 'asleep'; caption(sayPhrase(), sleepHint()); } else if (S.talk === 'asleep' && !S.talking) caption(sayPhrase(), sleepHint()); }
     if (e.state === 'blocked') { S.talk = S.talk === 'awake' ? 'awake' : 'off'; var bw = blockedWhy(e.reason); caption(bw.short, bw.small); }
-    if (e.state === 'off' && e.reason !== 'stopped') { buf = tail = ''; clearTimeout(hearT); if (S.talk === 'asleep') S.talk = 'off'; if (!S.talking && !S.busy) caption(e.reason === 'stalled' ? 'Listening keeps cutting out here.' : 'The microphone closed.', e.reason === 'stalled' ? 'It should come back on its own in a moment. Or tap the mic' : 'Tap the mic to listen again'); }
+    if (e.state === 'off' && e.reason !== 'stopped') { buf = tail = ''; clearTimeout(hearT); if (S.talk === 'asleep') S.talk = 'off'; var ow = ears.why ? ears.why(e.reason) : null; if (!S.talking && !S.busy) caption(ow ? ow.short : e.reason === 'stalled' ? 'Listening keeps cutting out here.' : 'The microphone closed.', ow ? ow.small : e.reason === 'stalled' ? 'It should come back on its own in a moment. Or tap the mic' : 'Tap the mic to listen again'); }
     if (e.state === 'off' && e.reason === 'stopped' && S.talk === 'asleep') { S.talk = 'off'; caption(null); }
     paint(); refreshSettings();
   });
@@ -672,8 +676,9 @@
     if (k === 'mac') { $('sheet').hidden = true; var mp = localReply(Kin.mac && Kin.mac.available() ? 'You are in the Mac app, sir. Ask me to open an app, a file or a site, or to do something on your computer. Your Mac asks you before each one.' : Kin.mac.NEED_TEXT, 'Mac app'); if (Kin.mac && !Kin.mac.available()) mp.parentNode.appendChild(Kin.mac.need()); showThread(); return; }
   }
   /* the home board and the dock's quick chips only open things: every panel waits for its own tap before anything is sent or spent */
-  Kin.go = function (k) {
-    gesture();
+  /* quiet: opened by a spoken cue, not a tap, so it must not count as the tap that lets the page play sound */
+  Kin.go = function (k, quiet) {
+    if (!quiet) gesture();
     if (k === 'brief') { if (Kin.briefBoard && Kin.briefBoard.isOpen()) return; brief(); return; }
     if (k === 'whatsnew') { whatsNew(false); return; }
     if (k === 'weather') { settingsAt('brief'); return; }
@@ -1324,7 +1329,8 @@
       else if (S.micState !== 'blocked') caption(null);
       if (ptt.started) { ptt.started = false; ears.stop(); }
       paint();
-    }, 600);
+    /* the Mac's listener sends a phrase only after a pause, so its last words need longer to arrive */
+    }, ears.desktop && !ears.exact ? 2200 : 600);
   }
   document.addEventListener('keyup', function (e) {
     if (e.key !== ' ' || !ptt.down) return;
@@ -1801,7 +1807,7 @@
   }
   function steps() {
     var micOk = S.micState === 'listening' || ls.get('kin.micok', '') === '1', p = Kin.pack.get(), rows = [
-      [micOk, 'Allow the microphone', ears.supported ? 'Tap the mic once and choose Allow. The browser remembers it for this site. The browser, not this page, turns your speech into text, on its maker’s servers.' : 'This browser cannot listen by itself. Use the keyboard’s mic or type.', 'mic'],
+      [micOk, ears.desktop ? 'Let the Mac app listen' : 'Allow the microphone', ears.desktop ? 'Inside the Mac app Jarvis hears through the app’s own listener (Apple’s speech recognizer). If it does not hear you, allow Jarvis under System Settings, Privacy & Security, in both Microphone and Speech Recognition.' : ears.supported ? 'Tap the mic once and choose Allow. The browser remembers it for this site. The browser, not this page, turns your speech into text, on its maker’s servers.' : 'This browser cannot listen by itself. Use the keyboard’s mic or type.', 'mic'],
       [brain.hasKey(), 'Paste a Claude API key', 'From console.anthropic.com. With one, your questions and the parts of the pack Jarvis looks up go to Anthropic for an answer. Without one Jarvis answers only from the pack on this device.', { sg: 'brain', focus: 'apiKey' }],
       [voice.tts.hasKey(), 'Optional: paste a voice key', 'From elevenlabs.io. With one, every sentence Jarvis speaks is sent there and spoken in the voice you pick. Without one, the browser’s own voice reads the answers.', { sg: 'voice', focus: 'ttsKey' }],
       [!!p, 'Import your Kin pack', 'In the Atlas: Kin’s settings > Your data > Export everything. Then here: Settings > Import Kin pack (below). The file is stored on this device only.', { sg: 'brain', focus: 'packFile' }],
@@ -1908,12 +1914,13 @@
     syncCard();
     steps();
     var en = $('earsNote');
-    if (!ears.supported) en.textContent = 'This browser has no built-in speech recognition, so Jarvis cannot hear a wake phrase here. Use Chrome or Edge on a computer, Chrome on Android, or Safari on an iPhone. You can still talk through the keyboard’s mic.';
+    if (ears.desktop && ears.note) en.textContent = ears.note(S.micState, S.micWhy);
+    else if (!ears.supported) en.textContent = 'This browser has no built-in speech recognition, so Jarvis cannot hear a wake phrase here. Use Chrome or Edge on a computer, Chrome on Android, or Safari on an iPhone. You can still talk through the keyboard’s mic.';
     else if (ears.standalone && ears.isIOS) en.textContent = 'Opened from the iPhone home screen. Apple does not offer speech recognition to home-screen web apps, so if the mic does nothing here, open this address in Safari itself.';
     else if (S.micState === 'listening') en.textContent = S.startedByLoad ? 'Listening since the page opened. The browser already had your Allow for this site.' : 'Listening. It started after your tap.';
     else if (S.micState === 'blocked') en.textContent = blockedWhy(S.micWhy).full;
     else en.textContent = S.perm === 'granted' && !ears.isSafari ? 'The microphone is allowed. Jarvis starts listening when the page opens.' : 'The browser wants one tap before it will listen. Tap the mic, or anywhere on the page.' + (ears.isSafari ? ' Safari may ask for the microphone again on later visits, and it cannot listen while Jarvis is speaking.' : '');
-    if (ears.supported) en.textContent += ' Your speech is turned into text by the browser maker’s servers (Google in Chrome, Microsoft in Edge, Apple in Safari) whenever the mic is on, including while Jarvis is asleep and waiting for the wake phrase.';
+    if (ears.supported && !ears.desktop) en.textContent += ' Your speech is turned into text by the browser maker’s servers (Google in Chrome, Microsoft in Edge, Apple in Safari) whenever the mic is on, including while Jarvis is asleep and waiting for the wake phrase.';
     $('wakeP').value = S.wake; voiceSettings();
     var seg = $('voiceSeg'), cur = voice.get(); seg.textContent = '';
     voice.VOICES.concat(['device']).forEach(function (v) { var b = document.createElement('button'); b.type = 'button'; b.textContent = v; b.setAttribute('aria-pressed', (v === 'device' ? cur.mode === 'device' : cur.mode === 'jarvis' && cur.who === v)); b.dataset.v = v; seg.appendChild(b); });
@@ -2146,9 +2153,15 @@
     return ears.permission();
   }).then(function (perm) {
     S.perm = perm; S.autoListen = ears.supported && ls.get('kin.micok', '') === '1';
+    if (ears.desktop) {
+      if (ears.auto && !ears.auto()) S.autoListen = false;
+      /* the Mac app lets a page play sound without a tap first: once that is certain, Jarvis may answer aloud at once */
+      voice.unlock(); var su = 0, sui = setInterval(function () { if (S.unlocked || ++su > 12) { clearInterval(sui); return; } if (voice.soundOk()) { clearInterval(sui); gesture(); } }, 250);
+    }
     /* Where the browser already holds an Allow for this site, listen from the moment the page opens.
        Safari wants a tap first, so does any browser that has not been asked yet. */
     if (ears.supported && perm === 'granted' && !ears.isSafari) { S.startedByLoad = true; ears.start(); }
+    else if (ears.desktop) { if (S.micState !== 'blocked' && !S.micWhy) caption('Click the mic and I’ll listen, sir.', 'Or hold the space bar and talk'); }
     else if (ears.supported) caption(S.autoListen ? 'Tap anywhere and I’ll listen, sir.' : 'Tap the mic and choose Allow.', S.autoListen ? 'This browser wants one tap first' : 'Then say “hey Jarvis”');
     else caption('This browser cannot listen by itself.', 'Type, or use the keyboard’s mic');
     paint(); Kin.ready = true; packCard(); if (Kin.home) Kin.home.init();

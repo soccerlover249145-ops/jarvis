@@ -233,6 +233,8 @@
     on: function (f) { subs.push(f); },
     active: function () { return on; },
     canSpeak: function () { return ttsOn() || !!syn || mode === 'jarvis'; },
+    /** true once sound can really play (after unlock() in a tap, or at once where no tap is needed, as inside the Mac app) */
+    soundOk: function () { return !!AC && AC.state === 'running'; },
     /** true when every sentence will be spoken by the keyed voice */
     live: ttsOn,
     hasSystemVoice: function () { return !!syn; },
