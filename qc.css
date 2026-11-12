@@ -719,7 +719,8 @@ body, .app { background: #000000; }
 /* the window sits over a softened, dimmed app, like a sheet over a desktop */
 /* the blur is its own fixed layer under the window: a filter on .wrap would make it the box its fixed children
    (the phone bar, the caption) are placed in, and they would jump */
-body:has(.sheet.win:not([hidden]))::after { content: ""; position: fixed; inset: 0; z-index: 29; pointer-events: none; -webkit-backdrop-filter: blur(6px) saturate(.8); backdrop-filter: blur(6px) saturate(.8); }
+/* it lives inside .app, the same layer as the windows (z 30), so it sits under them and over everything else */
+body:has(.sheet.win:not([hidden])) .app::after { content: ""; position: fixed; inset: 0; z-index: 29; pointer-events: none; -webkit-backdrop-filter: blur(6px) saturate(.8); backdrop-filter: blur(6px) saturate(.8); }
 
 /* ---------- email card: a compose window, in the chat and in the Outbox ---------- */
 .mailcard { padding: 0; border-radius: 14px; background: #1B1C1F; border: 1px solid rgba(255, 255, 255, .09); overflow: hidden; box-shadow: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 24px 60px -24px rgba(0, 0, 0, .8); }
@@ -780,7 +781,7 @@ body:has(.sheet.win:not([hidden]))::after { content: ""; position: fixed; inset:
 #sheet.win .row .seg button[aria-pressed="true"] { background: rgba(255, 255, 255, .16); color: #fff; }
 #sheet.win .note.warn { color: #D9B76A; }
 #sheet.win a { color: #7FB0FF; }
-@media (max-width: 600px) { #sheet.win { height: calc(100% - 44px - var(--safe-t, 0px)); } #sheet.win .row { grid-template-columns: 1fr; gap: 6px; } }
+@media (max-width: 600px) { #sheet.win { width: 100%; height: calc(100% - 44px - var(--safe-t, 0px)); } #sheet.win .row { grid-template-columns: 1fr; gap: 6px; } }
 
 /* ---------- every other pop-up (watch and listen, devices, the Gauntlet, away, what's new) in the window look ---------- */
 .wl, .dl {

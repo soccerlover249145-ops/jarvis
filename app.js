@@ -1388,15 +1388,18 @@
     /* on a wide window the sections sit in a sidebar, so the nav takes no height above the content */
     function navH() { return nav.offsetWidth > body.clientWidth * 0.6 ? nav.offsetHeight : 0; }
     function lit() {
+      /* measured only while Settings is showing: a hidden window has no height, and every section would look "passed" */
+      if (!body.clientHeight) return;
       var top = body.getBoundingClientRect().top + Math.max(navH() + 24, body.clientHeight * 0.35), cur = pills[0];
       pills.forEach(function (b) { var g = $('sg-' + b.dataset.sg); if (g && !g.hidden && g.getBoundingClientRect().top <= top) cur = b; });
-      if (body.scrollTop + body.clientHeight >= body.scrollHeight - 4) cur = pills[pills.length - 1];
+      if (body.scrollHeight > body.clientHeight + 4 && body.scrollTop + body.clientHeight >= body.scrollHeight - 4) cur = pills[pills.length - 1];
       pills.forEach(function (b) { if (b === cur) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current'); });
       if (cur && cur.scrollIntoView && nav.scrollWidth > nav.clientWidth) { var l = cur.offsetLeft - 16; if (l < nav.scrollLeft || cur.offsetLeft + cur.offsetWidth > nav.scrollLeft + nav.clientWidth) nav.scrollLeft = l; }
     }
     pills.forEach(function (b) { var g0 = $('sg-' + b.dataset.sg); if (g0) b.setAttribute('aria-label', g0.getAttribute('aria-label')); b.addEventListener('click', function () { var g = $('sg-' + b.dataset.sg); if (!g) return; body.scrollTop = b.dataset.sg === 'start' ? 0 : Math.max(0, g.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop - navH() - 8); lit(); }); });
     body.addEventListener('scroll', lit, { passive: true });
     $('gear').addEventListener('click', function () { setTimeout(lit, 0); });
+    if (window.MutationObserver) new MutationObserver(function () { if (!$('sheet').hidden) setTimeout(lit, 30); }).observe($('sheet'), { attributes: true, attributeFilter: ['hidden'] });
     lit();
   })();
   $('wakeP').addEventListener('change', function (e) { var v = e.target.value.replace(/\s+/g, ' ').trim().slice(0, 48); if (ears.norm(v).split(' ').filter(Boolean).length < 2) v = WAKE_DEF; S.wake = v; ls.set('kin.wake', v); e.target.value = v; });
