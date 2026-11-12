@@ -1126,3 +1126,21 @@ body:has(.sheet.win:not([hidden])) .app::after { content: ""; position: fixed; i
   .sheet.win .litem.done .lcheck::after { left: 9px; top: 5px; width: 7px; height: 12px; }
   .sheet.win .lrm { width: 44px; height: 44px; }
 }
+
+/* answers from Claude: a table as a quiet card with numbers in the reading face, lists set close with cyan markers,
+   a quote as a callout, code in a soft panel */
+.thread .msg .md .tbl { margin: 6px 0 14px; border: 1px solid rgba(255, 255, 255, .08); border-radius: 14px; background: rgba(255, 255, 255, .02); overflow-x: auto; }
+.thread .msg .md table { font: 400 14.5px/1.45 var(--f-ui); font-variant-numeric: tabular-nums; min-width: 100%; border-collapse: collapse; }
+.thread .msg .md th { background: rgba(255, 255, 255, .035); padding: 9px 14px; border-bottom: 1px solid rgba(255, 255, 255, .08); min-width: 4.5em; }
+.thread .msg .md .tbl.wide:not(.end) { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); }
+.thread .msg .md td { padding: 9px 14px; border-bottom: 1px solid rgba(255, 255, 255, .06); }
+.thread .msg .md tbody tr:last-child td { border-bottom: 0; }
+.thread .msg .md td.num { white-space: nowrap; }
+.thread .msg .md tr.tot td { font-weight: 600; color: #fff; border-top: 1px solid rgba(255, 255, 255, .2); }
+.thread .msg .md ul, .thread .msg .md ol { margin: 4px 0 12px; padding-left: 1.35em; }
+.thread .msg .md li { margin: 5px 0; padding-left: .2em; }
+.thread .msg .md li::marker { color: #6FE3FF; }
+.thread .msg .md ol > li::marker { font-weight: 600; }
+.thread .msg .md blockquote { margin: 6px 0 14px; padding: 10px 14px; border-left: 3px solid #6FE3FF; border-radius: 0 12px 12px 0; background: rgba(111, 227, 255, .06); color: var(--text, #F2F5F8); }
+.thread .msg .md pre { padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, .08); background: rgba(255, 255, 255, .03); }
+.thread .msg .md hr { border: 0; height: 1px; margin: 16px 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .18), transparent); }

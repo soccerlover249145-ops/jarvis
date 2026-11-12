@@ -297,10 +297,24 @@
       if (h) { para(buf); buf = []; var hn = document.createElement(h[1].length <= 2 ? 'h3' : 'h4'); inline(hn, h[2]); root.appendChild(hn); i++; continue; }
       if (/^\s*\|.*\|\s*$/.test(l) && i + 1 < lines.length && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1])) {
         para(buf); buf = []; var tbl = document.createElement('table'), cells = function (s) { return s.trim().replace(/^\||\|$/g, '').split('|').map(function (c) { return c.trim(); }); };
-        var tr = document.createElement('tr'); cells(l).forEach(function (c) { var th = document.createElement('th'); inline(th, c); tr.appendChild(th); }); var th0 = document.createElement('thead'); th0.appendChild(tr); tbl.appendChild(th0);
-        var tb = document.createElement('tbody'); i += 2;
-        while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { var r = document.createElement('tr'); cells(lines[i]).forEach(function (c) { var td = document.createElement('td'); inline(td, c); r.appendChild(td); }); tb.appendChild(r); i++; }
-        tbl.appendChild(tb); var wrap = document.createElement('div'); wrap.className = 'tbl'; wrap.appendChild(tbl); root.appendChild(wrap); continue;
+        /* the alignment the table asks for (":--", "--:", ":-:"); otherwise a column of numbers, amounts or percentages
+           is right-aligned; a "Total" row is set apart */
+        var hd = cells(l), al = cells(lines[i + 1]).map(function (c) { return /^:-+:$/.test(c) ? 'center' : /-:$/.test(c) ? 'right' : /^:-/.test(c) ? 'left' : ''; });
+        var tb = document.createElement('tbody'), body = []; i += 2;
+        while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { body.push(cells(lines[i])); i++; }
+        var plain = function (s) { return String(s == null ? '' : s).replace(/[*_`]/g, '').trim(); };
+        /* a number, an amount ("$1,200", "CHF 120", "₹90", "(1,200)"), a percentage, or a number with a short unit ("12 min", "3.2 GB", "$5/mo", "4.8/5") */
+        var NUMC = /^[-+−~≈]?(?:[A-Z]{3}\s?)?[$€£¥₹]?\s?[-+−]?(?:\d[\d,]*(?:\.\d+)?|\.\d+)\s?(?:%|[kKmMbB]|bn|x|×)?(?:\s?(?:[a-zA-Zµ°]{1,4}|\/[a-zA-Z]{1,3}|\/\d+(?:\.\d+)?))?$/, BLANK = /^(?:[-–—]|n\/?a|tbd|tba)$/i;
+        hd.forEach(function (x, j) { if (al[j]) return; var vals = body.map(function (row) { return plain(row[j]).replace(/^\((.+)\)$/, '$1'); }).filter(function (v) { return v && !BLANK.test(v); }); if (vals.length && vals.every(function (v) { return NUMC.test(v); })) al[j] = 'right'; });
+        var tr = document.createElement('tr'); hd.forEach(function (c, j) { var th = document.createElement('th'); inline(th, c); if (al[j]) th.style.textAlign = al[j]; tr.appendChild(th); }); var th0 = document.createElement('thead'); th0.appendChild(tr); tbl.appendChild(th0);
+        body.forEach(function (row, ri) {
+          var r = document.createElement('tr'); if (ri >= body.length - 2 && /^(?:(?:grand|net) )?(?:sub)?totals?\b|^sum\b/i.test(plain(row[0]))) r.className = 'tot';
+          row.forEach(function (c, j) { var td = document.createElement('td'); inline(td, c); if (al[j]) td.style.textAlign = al[j]; if (al[j] === 'right') td.className = 'num'; r.appendChild(td); }); tb.appendChild(r);
+        });
+        tbl.appendChild(tb); var wrap = document.createElement('div'); wrap.className = 'tbl'; wrap.appendChild(tbl); root.appendChild(wrap);
+        /* wider than its frame: the right edge fades until it is scrolled to the end */
+        (function (w) { setTimeout(function () { if (w.scrollWidth > w.clientWidth + 2) { w.classList.add('wide'); w.addEventListener('scroll', function () { w.classList.toggle('end', w.scrollLeft + w.clientWidth >= w.scrollWidth - 2); }, { passive: true }); } }, 0); })(wrap);
+        continue;
       }
       var li = /^\s*([-*]|\d+[.)])\s+(.*)$/.exec(l);
       if (li) {
