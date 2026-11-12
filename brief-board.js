@@ -583,5 +583,5 @@
     draw(); el.appendChild(wrap);
   }
 
-  Kin.briefBoard = { started: started, autoSpend: autoSpend, offers: offers, gather: gather, show: show, hide: hide, summary: summary, isBriefRequest: isBriefRequest, settings: settings, settingsUI: settingsUI, isOpen: function () { return !!root; }, _fromPack: fromPack, _wmo: WMO };
+  Kin.briefBoard = { started: started, autoSpend: autoSpend, offers: offers, gather: gather, show: show, hide: hide, summary: summary, isBriefRequest: isBriefRequest, settings: settings, settingsUI: settingsUI, isOpen: function () { return !!root; }, _fromPack: fromPack, _wmo: WMO, _icon: icon };
 })();

@@ -61,7 +61,10 @@
       say = 'It\'s ' + r0(t) + ' degrees and ' + wmo(cur.weather_code).toLowerCase() + name + ', sir' + (ask.kind === 'temp' && cur.apparent_temperature != null && Math.abs(cur.apparent_temperature - t) >= 3 ? ', feeling like ' + r0(cur.apparent_temperature) : '') + '. ' + (hi != null ? 'High of ' + r0(hi) + ', low of ' + r0(lo) + '. ' : '') + rainLine;
       show = say.replace(', sir', '');
     }
-    return { say: say.trim(), show: (show.trim() + ' (Open-Meteo, ' + unit + ')') };
+    /* the numbers for the card under the answer (app.js) */
+    var cw = Kin.briefBoard && Kin.briefBoard._wmo ? Kin.briefBoard._wmo(tomorrow ? mode(hrs.map(function (x) { return x.c; })) : cur.weather_code) : null;
+    var card = { temp: tomorrow ? hi : cur.temperature_2m, unit: unit, cond: tomorrow ? (sky || '') : wmo(cur.weather_code), icon: cw ? cw.k : '', day: tomorrow ? true : cur.is_day !== 0, hi: hi, lo: lo, rain: pmax, place: name ? name.replace(/^ in /, '') : '', when: tomorrow ? 'Tomorrow' + (pk ? ' ' + pk : '') : 'Now' };
+    return { say: say.trim(), show: (show.trim() + ' (Open-Meteo, ' + unit + ')'), card: isFinite(card.temp) ? card : null };
   }
   function mode(a) { var n = {}, best = null; a.forEach(function (x) { n[x] = (n[x] || 0) + 1; if (best == null || n[x] > n[best]) best = x; }); return best; }
   function instant(raw) { try { return answer(raw); } catch (e) { return null; } }

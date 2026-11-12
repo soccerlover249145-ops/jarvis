@@ -826,7 +826,7 @@
     if (r.pending && typeof r.pending.then === 'function') {
       caption(r.show, r.label || 'One moment', 'kin');
       r.pending.then(function (res) {
-        if (!res) return; p.textContent = ''; Kin.mind.md(res.show, p);
+        if (!res) return; p.textContent = ''; Kin.mind.md(res.show, p); if (res.card) wxCard(res.card, p.parentNode);
         caption(res.say, (r.label || 'Done here') + ', no call to Claude');
         if (speakIt && !S.busy) say(res.say, true); else captionFade(9000);
         showThread();
@@ -840,6 +840,17 @@
     if ((r.list || r.undoList) && Kin.lists) listUndo(r, p.parentNode);
     if (r.undoRemind && r.undoRemind.length && Kin.remind) remindUndo(r.undoRemind, p.parentNode);
     refreshMade();
+  }
+  /** the weather under its answer: the brief board's icon, the temperature, and high, low and rain */
+  function wxCard(c, box) {
+    var d = el('div', 'wxcard'), ic = Kin.briefBoard && Kin.briefBoard._icon && c.icon ? Kin.briefBoard._icon(c.icon, c.day, 56) : null;
+    if (ic) { ic.setAttribute('class', 'wxicon'); d.appendChild(ic); } else d.appendChild(el('span', 'wxicon'));
+    var t = el('div', 'wxt'); t.appendChild(document.createTextNode(Math.round(c.temp))); t.appendChild(el('sup', '', '°' + c.unit)); d.appendChild(t);
+    var w = el('div', 'wxc'); w.appendChild(el('b', '', c.cond || '')); w.appendChild(el('small', '', c.when + (c.place ? ' · ' + c.place : ''))); d.appendChild(w);
+    var ch = el('div', 'wxchips'), chip = function (k, v, hot) { var x = el('span', 'wxchip' + (hot ? ' hot' : '')); x.appendChild(document.createTextNode(k + ' ')); x.appendChild(el('b', '', v)); ch.appendChild(x); };
+    if (isFinite(c.hi)) chip('High', Math.round(c.hi) + '°'); if (isFinite(c.lo)) chip('Low', Math.round(c.lo) + '°'); if (c.rain != null && isFinite(c.rain)) chip('Rain', c.rain + '%', c.rain >= 50);
+    if (ch.childNodes.length) d.appendChild(ch);
+    box.appendChild(d);
   }
   /** under reminders just cancelled: Undo puts them back */
   function remindUndo(rs, box) {
