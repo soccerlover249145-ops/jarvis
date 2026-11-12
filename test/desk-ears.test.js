@@ -54,3 +54,20 @@ test('the preload exposes nothing new beyond the listener, the pill and ui.state
     'control:done', 'desk:heard', 'desk:ears:start', 'desk:ears:stop', 'desk:ears:hold', 'desk:ears:state', 'desk:ears', 'desktop:ask', 'desktop:mic', 'desktop:summon', 'desk:ui:state']);
   chans.forEach((c) => assert.ok(allowed.has(c), 'unexpected channel ' + c));
 });
+
+test('a refusal stays the last word: no "off, stopped" when the helper exits after it', async () => {
+  const { makeEars } = require('../src/main/ears');
+  const { EventEmitter } = require('events');
+  const { PassThrough } = require('stream');
+  let child;
+  const ears = makeEars('/bin/fake', { onDeviceOnly: () => true, spawn: () => { child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.stdin = new PassThrough(); child.kill = () => {}; return child; } });
+  const seen = []; ears.on(ev => seen.push(ev.state + ':' + (ev.reason || '')));
+  ears.start();
+  child.stdout.write(JSON.stringify({ type: 'state', state: 'blocked', reason: 'mic-denied' }) + '\n');
+  await new Promise(r => setTimeout(r, 20));
+  child.emit('exit', 1);
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(seen[seen.length - 1], 'blocked:mic-denied', seen.join(' '));
+  assert.ok(!seen.includes('off:stopped'), seen.join(' '));
+  ears.stop(); assert.equal(seen[seen.length - 1], 'off:stopped');
+});

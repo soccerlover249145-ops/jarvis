@@ -33,7 +33,7 @@ function parseLine(line) {
 function makeEars(binPath, opts) {
   opts = opts || {};
   const spawnFn = opts.spawn || spawn;
-  let proc = null, want = false, paused = false, fails = 0, timer = null, emit = function () {}, lastStart = 0;
+  let proc = null, want = false, refused = false, paused = false, fails = 0, timer = null, emit = function () {}, lastStart = 0;
 
   function begin() {
     clearTimeout(timer); timer = null;
@@ -48,7 +48,8 @@ function makeEars(binPath, opts) {
       const ev = parseLine(line);
       if (!ev) return;
       if (ev.type === 'state' && ev.state === 'listening') fails = 0;
-      if (ev.type === 'state' && ev.state === 'blocked') want = false;   /* the owner said no: do not nag */
+      if (ev.type === 'state' && ev.state === 'blocked') { want = false; refused = true; }   /* the owner said no: do not nag */
+      if (ev.type === 'state' && ev.state === 'listening') refused = false;
       emit(ev);
     });
     proc.stderr.on('data', function () {});
@@ -57,7 +58,8 @@ function makeEars(binPath, opts) {
     p.on('exit', function () {
       if (proc !== p) return;
       proc = null;
-      if (!want) { emit({ type: 'state', state: 'off', reason: 'stopped' }); return; }
+      /* after a refusal the helper exits: the refusal is the last word (the page and the tray keep showing why) */
+      if (!want) { if (!refused) emit({ type: 'state', state: 'off', reason: 'stopped' }); return; }
       /* it died: start again, waiting longer each time it dies quickly, and give up after a while */
       fails = Date.now() - lastStart < 5000 ? fails + 1 : 0;
       if (fails > 6) {
@@ -73,7 +75,7 @@ function makeEars(binPath, opts) {
   function tell(word) { if (proc) { try { proc.stdin.write(word + '\n'); } catch (e) {} } }
   return {
     on(f) { emit = f; },
-    start() { want = true; fails = 0; begin(); return true; },
+    start() { want = true; refused = false; fails = 0; begin(); return true; },
     stop() { want = false; clearTimeout(timer); if (proc) { tell('quit'); const p = proc; setTimeout(function () { try { p.kill(); } catch (e) {} }, 300); proc = null; } emit({ type: 'state', state: 'off', reason: 'stopped' }); },
     hold(on) { paused = !!on; tell(on ? 'pause' : 'resume'); },
     wanted() { return want; },
