@@ -28,7 +28,7 @@ const { makeConfig } = require('./config');
 const { makeEars, forLivePage, blockedHelp } = require('./ears');
 const { makeHands } = require('./control/hands');
 const { makeSession } = require('./control/session');
-const { makeDesk, makeDeskKeys, senderAllowed, keysSenderAllowed } = require('./desk');
+const { makeDesk, makeDeskKeys, senderAllowed, keysSenderAllowed, googleSignInPopup } = require('./desk');
 const { needsNote, applyLogin, NOTE: LOGIN_NOTE } = require('./login');
 
 const ORIGIN = 'app://jarvis';
@@ -96,7 +96,12 @@ function webPrefs(preload) {
     spellcheck: false, devTools: !app.isPackaged, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' };
 }
 function lockDown(win, live) {
-  win.webContents.setWindowOpenHandler(function (d) { actions.openUrl({ url: d.url }).catch(function () {}); return { action: 'deny' }; });
+  win.webContents.setWindowOpenHandler(function (d) {
+    /* Google's sign-in window opens here (the page waits for its answer); it gets no preload and no Node */
+    if (googleSignInPopup(d.url, live)) return { action: 'allow', overrideBrowserWindowOptions: { width: 520, height: 700, parent: win, title: 'Sign in with Google', autoHideMenuBar: true,
+      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, devTools: !app.isPackaged } } };
+    actions.openUrl({ url: d.url }).catch(function () {}); return { action: 'deny' };
+  });
   win.webContents.on('will-navigate', function (e, url) {
     if (url.startsWith(ORIGIN + '/') || (live && url.startsWith(LIVE + '/'))) return;
     e.preventDefault();

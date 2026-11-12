@@ -77,3 +77,14 @@ test('a state line without onDevice does not claim speech leaves the Mac', () =>
   assert.equal(parseLine(JSON.stringify({ type: 'state', state: 'paused' })).onDevice, undefined);
   assert.equal(parseLine(JSON.stringify({ type: 'state', state: 'listening', onDevice: true })).onDevice, true);
 });
+
+test('only Google sign-in may open a window inside the app, and only from the live page', () => {
+  const { googleSignInPopup } = require('../src/main/desk');
+  assert.equal(googleSignInPopup('https://accounts.google.com/o/oauth2/auth?client_id=x', true), true);
+  assert.equal(googleSignInPopup('https://accounts.google.com/o/oauth2/auth', false), false);
+  assert.equal(googleSignInPopup('http://accounts.google.com/x', true), false);
+  assert.equal(googleSignInPopup('https://accounts.google.com.evil.example/x', true), false);
+  assert.equal(googleSignInPopup('https://user:pw@accounts.google.com/x', true), false);
+  assert.equal(googleSignInPopup('https://mail.google.com/', true), false);
+  assert.equal(googleSignInPopup('not a url', true), false);
+});

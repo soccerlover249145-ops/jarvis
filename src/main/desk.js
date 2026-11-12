@@ -272,4 +272,12 @@ function makeDeskKeys(deps) {
   };
 }
 
-module.exports = { makeDesk, makeDeskKeys, draftUrl, senderAllowed, keysSenderAllowed, keyShapeOk, KEY_KINDS, KINDS, ALWAYABLE, EMAIL };
+/** Google's own sign-in window (Gmail, Calendar, Drive sync) may open inside the app, from the live page only:
+    https, exactly accounts.google.com, nothing else. Every other new window still opens in the browser. */
+function googleSignInPopup(url, live) {
+  if (!live) return false;
+  let u; try { u = new URL(String(url || '')); } catch (e) { return false; }
+  return u.protocol === 'https:' && u.hostname === 'accounts.google.com' && !u.username && !u.password;
+}
+
+module.exports = { googleSignInPopup, makeDesk, makeDeskKeys, draftUrl, senderAllowed, keysSenderAllowed, keyShapeOk, KEY_KINDS, KINDS, ALWAYABLE, EMAIL };
