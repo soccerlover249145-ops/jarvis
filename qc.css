@@ -423,7 +423,10 @@ code, pre, kbd, .md code, .md pre { font-family: var(--f-code) !important; }
 /* when a panel comes up (Settings, Made, the conversation), Jarvis shrinks to a small presence
    at the bottom middle of the screen instead of competing with it for space */
 .app[data-stage="compact"][data-fig="on"] .dock-h #gl.figure { position: fixed; left: 50%; bottom: 18px; width: 128px; max-width: 128px; height: 96px; margin: 0; transform: translateX(-50%); z-index: 40; opacity: .92; }
-@media (max-width: 1099px) { .dock-h #gl.figure { display: none !important; } }
+@media (max-width: 1099px) {
+  .dock-h #gl.figure { position: fixed; left: 50%; top: calc(50% - 40px); transform: translateX(-50%); width: 240px; max-width: 240px; height: 280px; margin: 0; }
+  .app[data-stage="compact"][data-fig="on"] .dock-h #gl.figure { top: auto; bottom: 18px; width: 128px; max-width: 128px; height: 96px; transform: translateX(-50%); }
+}
 
 /* ================================================================= the holographic skin
    Every surface is lit glass: a blue gradient fill, a cool rim, a sheen along the top edge and a soft glow below.
