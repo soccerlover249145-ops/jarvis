@@ -1,5 +1,5 @@
 /* app.js: ties ears, brain, voice and face together.
-   Kin is off (not listening), asleep (listening only for the wake phrase) or awake (a spoken conversation). */
+   Jarvis is off (not listening), asleep (listening only for the wake phrase) or awake (a spoken conversation). */
 (function () {
   'use strict';
   var Kin = window.Kin, ears = Kin.ears, voice = Kin.voice, brain = Kin.brain, bust = Kin.bust;
@@ -37,10 +37,10 @@
     convLabel();
     $('stM').textContent = S.micState === 'listening' ? 'Mic on' : S.micState === 'starting' ? 'Mic starting' : S.micState === 'blocked' ? 'Mic blocked' : S.micState === 'paused' ? 'Mic paused' : 'Mic off';
     $('mic').setAttribute('aria-pressed', ears.wanted());
-    /* the one-word state at the top: what Kin is doing right now */
+    /* the one-word state at the top: what Jarvis is doing right now */
     var ps = S.micState === 'paused' ? 'paused' : m === 'speaking' ? 'speaking' : m === 'thinking' ? 'thinking' : m === 'listening' ? 'listening' : m === 'asleep' ? 'sleeping' : m === 'idle' ? 'awake' : 'off',
       pl = { paused: 'Paused', speaking: 'Speaking', thinking: 'Thinking', listening: 'Listening', sleeping: 'Sleeping', awake: 'Awake', off: 'Off' }[ps],
-      pt = { paused: 'Listening is paused while this tab is in the background. Come back to it and Kin listens again', speaking: S.talking && (ears.isSafari || !ears.supported) ? 'Kin is speaking. Tap to interrupt' : 'Kin is speaking. Just talk to interrupt', thinking: 'Kin is working on it', listening: 'Kin is listening. No wake phrase needed', sleeping: 'Asleep. Say hey Jarvis to wake Kin', awake: 'Awake. Tap the mic so Kin can hear you', off: 'Not listening. Tap to start' }[ps];
+      pt = { paused: 'Listening is paused while this tab is in the background. Come back to it and Kin listens again', speaking: S.talking && (ears.isSafari || !ears.supported) ? 'Jarvis is speaking. Tap to interrupt' : 'Jarvis is speaking. Just talk to interrupt', thinking: 'Jarvis is working on it', listening: 'Jarvis is listening. No wake phrase needed', sleeping: 'Asleep. Say hey Jarvis to wake Kin', awake: 'Awake. Tap the mic so Jarvis can hear you', off: 'Not listening. Tap to start' }[ps];
     var vp = $('vpill'); if (vp) { vp.dataset.s = ps; $('vpillT').textContent = pl; vp.setAttribute('aria-label', 'Kin: ' + pl + '. ' + pt); vp.title = pt; }
     inp.placeholder = S.talk === 'awake' ? (S.hearing ? 'Listening. Just talk.' : 'Ask Jarvis anything…') : ears.supported ? 'Say “hey Jarvis”, or type' : 'Ask Jarvis anything…';
   }
@@ -96,9 +96,9 @@
     clearInterval(beatI);
     if (S.talking) {
       beatI = setInterval(function () { if (Math.random() < 0.8) bust.beat(0.55 + Math.random() * 0.45); duckCheck(); }, 170); if (ears.isSafari) ears.hold(true);
-      /* the clock for "Kin has been speaking a moment" starts with the first words actually heard (the first line), not before them */
+      /* the clock for "Jarvis has been speaking a moment" starts with the first words actually heard (the first line), not before them */
       if (!was) { S.spokeAt = Date.now() + 60000; S.line = ''; S.lines = []; }
-      /* anything half-heard as Kin starts to speak is its own voice or is now out of date: let it go */
+      /* anything half-heard as Jarvis starts to speak is its own voice or is now out of date: let it go */
       tail = ''; clearTimeout(hearT); if (buf) hearT = setTimeout(commit, 800);
     }
     if (was && !S.talking) { var cut = Date.now() - S.voiceBargeAt < 1500; voice.duck(false);
@@ -116,13 +116,13 @@
     return { short: 'The microphone is blocked for this site.', small: 'Allow it, then reload. Details in settings', full: 'The microphone is blocked for this site. In Safari: Settings > Websites > Microphone > Allow (in Chrome: the icon left of the address), then reload.' };
   }
   function deaf() { return S.talking || Date.now() < S.deafUntil; }
-  /** a tap on the pill or a spoken "stop" while Kin speaks: quiet now, and an answer still arriving is stopped too, so nothing more is spent on it */
+  /** a tap on the pill or a spoken "stop" while Jarvis speaks: quiet now, and an answer still arriving is stopped too, so nothing more is spent on it */
   function hushNow() { S.bargeAt = Date.now(); S.hushed = S.askN; voice.stop(); if (S.busy && S.ctl) { try { S.ctl.abort(); } catch (e) {} } paint(); }
 
   /* ------------------------------------------------------------ talking over Kin */
-  /** Talking while Kin speaks stops it. An open mic also hears Kin through the speakers (and a phone has no
+  /** Talking while Jarvis speaks stops it. An open mic also hears Kin through the speakers (and a phone has no
       meter to tell a voice in the room from Kin's own), so the rules are strict:
-      - The words must not be mostly what Kin has been saying: its last four spoken lines are checked, because
+      - The words must not be mostly what Jarvis has been saying: its last four spoken lines are checked, because
         recognizers deliver words late.
       - With no meter (phones, Safari, shared addresses): only a phrase that leads with an interrupting word
         ("stop", "wait", "hold on", "no Jarvis") counts, only once the recognizer has settled on it, and it only
@@ -160,7 +160,7 @@
     for (var j = 2; j <= w.length; j++) { var run = ears.norm(w.slice(0, j).join(' ')); if (run && ref.indexOf(' ' + run + ' ') >= 0) k = j; else break; }
     return k ? w.slice(k).join(' ') : q;
   }
-  /** Where there is a meter, someone loud while Kin speaks turns Kin's voice down at once, before the words
+  /** Where there is a meter, someone loud while Jarvis speaks turns Kin's voice down at once, before the words
       are even recognised; it comes back up if nothing is said within a moment. */
   var duckAt = 0;
   function duckCheck() {
@@ -180,7 +180,7 @@
     if (OPENER.test(a[0]) && said.indexOf(' ' + a[0] + ' ') < 0) return false;
     a.forEach(function (w) { if (said.indexOf(' ' + w + ' ') >= 0) hit++; });
     var r = hit / a.length;
-    /* in the two seconds after Kin stops, recognizers are still finishing its last sentence: be strict */
+    /* in the two seconds after Jarvis stops, recognizers are still finishing its last sentence: be strict */
     if (soft) return r >= 0.5;
     return (S.talking || age <= 6000) ? r >= 0.7 : (a.length >= 5 && r >= 0.85);
   }
@@ -242,7 +242,7 @@
   }
   function heard(text, fin) {
     text = String(text || '').trim(); if (!text || S.talk === 'off') return;
-    /* while Kin speaks, and for a moment after, nothing is taken in except "stop" */
+    /* while Jarvis speaks, and for a moment after, nothing is taken in except "stop" */
     if (S.talking && ears.stopIn(text) && (fin || loud()) && kinRef().indexOf(' ' + ears.norm(text).split(' ').pop() + ' ') < 0) { hushNow(); if (fin) { tail = buf = ''; clearTimeout(hearT); showHeard(''); caption(null); } return; }
     if (deaf()) { var b = bargeIn(text, fin); if (!b) return; text = b; }
     /* Kin's own words, half-heard or whole: drop them, and drop the half-heard copy that was waiting */
@@ -302,7 +302,7 @@
     return new Promise(function (res) {
       var t = $('thread'), d = el('div', 'msg kin ask card'), choices = card.choices || [];
       var stopK = (choices.filter(function (c) { return c.kind === 'stop'; })[0] || choices[choices.length - 1] || {}).k;
-      var head = el('div', 'chead'); head.appendChild(el('span', 'chip', card.label || 'Kin asks first')); if (card.kindName) head.appendChild(el('span', 'chip ghost', card.kindName)); d.appendChild(head);
+      var head = el('div', 'chead'); head.appendChild(el('span', 'chip', card.label || 'Jarvis asks first')); if (card.kindName) head.appendChild(el('span', 'chip ghost', card.kindName)); d.appendChild(head);
       d.appendChild(el('p', 'asktitle', card.title));
       if (card.price) { var pr = el('div', 'cprice'); pr.appendChild(el('b', '', card.price)); if (card.priceNote) pr.appendChild(el('span', '', card.priceNote)); d.appendChild(pr); }
       var body = el('div', 'cbody'); (card.lines || []).forEach(function (l) { body.appendChild(el('p', 'cline', l)); }); d.appendChild(body);
@@ -341,7 +341,7 @@
   }
   /** the yes-or-no card other parts of the page use: resolves true or false */
   function confirmCard(card) {
-    return choiceCard({ label: card.label || 'Kin asks before spending', title: card.title, lines: card.lines, say: card.say, quiet: card.quiet, noNote: card.noNote || 'Declined. Nothing was spent on this.', yesNote: card.yesNote || 'Approved.',
+    return choiceCard({ label: card.label || 'Jarvis asks before spending', title: card.title, lines: card.lines, say: card.say, quiet: card.quiet, noNote: card.noNote || 'Declined. Nothing was spent on this.', yesNote: card.yesNote || 'Approved.',
       choices: [{ k: 'yes', label: card.yes || 'Go ahead', kind: 'go' }, { k: 'no', label: card.no || 'Not now', kind: 'stop' }] }).then(function (r) { return r.k === 'yes'; });
   }
 
@@ -736,7 +736,7 @@
     }
     var ex = B.ctxOn() && Kin.pack.get() ? Kin.pack.search(q, 3).map(function (n) { return (n.t + (n.s ? ': ' + n.s : '')).slice(0, 1000); }).filter(Boolean) : [];
     if (!ex.length) { go([]); return; }
-    confirmCard({ label: 'Kin asks before sharing', title: 'Send these pack excerpts to Grok Bot with the question?', lines: ex.map(function (x) { return '· ' + x.slice(0, 160) + (x.length > 160 ? '…' : ''); }), yes: 'Send with them', no: 'Question only', yesNote: 'Sent with the excerpts.', noNote: 'Sent without the excerpts.', quiet: true })
+    confirmCard({ label: 'Jarvis asks before sharing', title: 'Send these pack excerpts to Grok Bot with the question?', lines: ex.map(function (x) { return '· ' + x.slice(0, 160) + (x.length > 160 ? '…' : ''); }), yes: 'Send with them', no: 'Question only', yesNote: 'Sent with the excerpts.', noNote: 'Sent without the excerpts.', quiet: true })
       .then(function (v) { go(v ? ex : []); });
   }
   Kin.bridge && Kin.bridge.on(function (e) {
@@ -899,8 +899,8 @@
   function steps() {
     var micOk = S.micState === 'listening' || ls.get('kin.micok', '') === '1', p = Kin.pack.get(), rows = [
       [micOk, 'Allow the microphone', ears.supported ? 'Tap the mic once and choose Allow. The browser remembers it for this site. The browser, not this page, turns your speech into text, on its maker’s servers.' : 'This browser cannot listen by itself. Use the keyboard’s mic or type.'],
-      [brain.hasKey(), 'Paste a Claude API key', 'From console.anthropic.com. With one, your questions and the parts of the pack Kin looks up go to Anthropic for an answer. Without one Kin answers only from the pack on this device.'],
-      [voice.tts.hasKey(), 'Optional: paste a voice key', 'From elevenlabs.io. With one, every sentence Kin speaks is sent there and spoken in the voice you pick. Without one, the browser’s own voice reads the answers.'],
+      [brain.hasKey(), 'Paste a Claude API key', 'From console.anthropic.com. With one, your questions and the parts of the pack Jarvis looks up go to Anthropic for an answer. Without one Jarvis answers only from the pack on this device.'],
+      [voice.tts.hasKey(), 'Optional: paste a voice key', 'From elevenlabs.io. With one, every sentence Jarvis speaks is sent there and spoken in the voice you pick. Without one, the browser’s own voice reads the answers.'],
       [!!p, 'Import your Kin pack', 'In the Atlas: Kin’s settings > Your data > Export everything. Then here: Settings > Import Kin pack (below). The file is stored on this device only.'],
       [S.wakes > 0, 'Say “hey Jarvis”', 'Or your own wake phrase. Then just talk.']
     ];
@@ -916,7 +916,7 @@
     var n = $('ttsNote');
     if (S.ttsBusy) n.textContent = S.ttsBusy;
     else if (!has) n.textContent = Kin.shared ? Kin.SHARED_TEXT : 'No voice key on this device. The recorded voice says the fixed lines and the browser’s own voice says the rest.';
-    else if (t.bad) n.textContent = t.bad + ' Until that is fixed Kin uses the backup voice.';
+    else if (t.bad) n.textContent = t.bad + ' Until that is fixed Jarvis uses the backup voice.';
     else if (t.why) n.textContent = 'Last problem: ' + t.why + ' Kin used the backup voice for that answer.';
     else if (!t.voices.length) n.textContent = 'A key is saved (' + voice.tts.keyHint() + '). Tap Reload voices to read the account’s voices.';
     else n.textContent = 'A key is saved (' + voice.tts.keyHint() + '). Every sentence is spoken as ' + (t.voiceName || 'the chosen voice') + '.' + (t.calls ? ' This visit: ' + t.calls + (t.calls === 1 ? ' sentence, ' : ' sentences, ') + t.chars + ' characters sent.' : '');
@@ -940,7 +940,7 @@
       : 'Look at my screen works on a Mac in Chrome or Safari; it is not offered on this device.';
     var perm = D.notify.permission(), b = $('notifyOn');
     b.hidden = perm === 'granted' || perm === 'unsupported' || perm === 'denied';
-    $('notifyNote').textContent = perm === 'unsupported' ? 'This browser cannot show notifications.' : perm === 'granted' ? 'On. When a design or a job from the brief finishes while this page is in the background, Kin tells you, and the app icon counts what is waiting.' : perm === 'denied' ? 'Blocked for this site. Allow notifications in the browser\'s site settings to turn them on.' : 'Off. Kin only asks when you tap the button; it then tells you when a long job finishes while the page is in the background.';
+    $('notifyNote').textContent = perm === 'unsupported' ? 'This browser cannot show notifications.' : perm === 'granted' ? 'On. When a design or a job from the brief finishes while this page is in the background, Kin tells you, and the app icon counts what is waiting.' : perm === 'denied' ? 'Blocked for this site. Allow notifications in the browser\'s site settings to turn them on.' : 'Off. Jarvis only asks when you tap the button; it then tells you when a long job finishes while the page is in the background.';
   }
   function wxFind() {
     var name = $('wxTown').value.trim(), box = $('wxPick'); box.textContent = ''; if (name.length < 2) return;
@@ -992,22 +992,22 @@
     syncCard();
     steps();
     var en = $('earsNote');
-    if (!ears.supported) en.textContent = 'This browser has no built-in speech recognition, so Kin cannot hear a wake phrase here. Use Chrome or Edge on a computer, Chrome on Android, or Safari on an iPhone. You can still talk through the keyboard’s mic.';
+    if (!ears.supported) en.textContent = 'This browser has no built-in speech recognition, so Jarvis cannot hear a wake phrase here. Use Chrome or Edge on a computer, Chrome on Android, or Safari on an iPhone. You can still talk through the keyboard’s mic.';
     else if (ears.standalone && ears.isIOS) en.textContent = 'Opened from the iPhone home screen. Apple does not offer speech recognition to home-screen web apps, so if the mic does nothing here, open this address in Safari itself.';
     else if (S.micState === 'listening') en.textContent = S.startedByLoad ? 'Listening since the page opened. The browser already had your Allow for this site.' : 'Listening. It started after your tap.';
     else if (S.micState === 'blocked') en.textContent = blockedWhy(S.micWhy).full;
-    else en.textContent = S.perm === 'granted' && !ears.isSafari ? 'The microphone is allowed. Kin starts listening when the page opens.' : 'The browser wants one tap before it will listen. Tap the mic, or anywhere on the page.' + (ears.isSafari ? ' Safari may ask for the microphone again on later visits, and it cannot listen while Kin is speaking.' : '');
-    if (ears.supported) en.textContent += ' Your speech is turned into text by the browser maker’s servers (Google in Chrome, Microsoft in Edge, Apple in Safari) whenever the mic is on, including while Kin is asleep and waiting for the wake phrase.';
+    else en.textContent = S.perm === 'granted' && !ears.isSafari ? 'The microphone is allowed. Jarvis starts listening when the page opens.' : 'The browser wants one tap before it will listen. Tap the mic, or anywhere on the page.' + (ears.isSafari ? ' Safari may ask for the microphone again on later visits, and it cannot listen while Jarvis is speaking.' : '');
+    if (ears.supported) en.textContent += ' Your speech is turned into text by the browser maker’s servers (Google in Chrome, Microsoft in Edge, Apple in Safari) whenever the mic is on, including while Jarvis is asleep and waiting for the wake phrase.';
     $('wakeP').value = S.wake; voiceSettings();
     var seg = $('voiceSeg'), cur = voice.get(); seg.textContent = '';
     voice.VOICES.concat(['device']).forEach(function (v) { var b = document.createElement('button'); b.type = 'button'; b.textContent = v; b.setAttribute('aria-pressed', (v === 'device' ? cur.mode === 'device' : cur.mode === 'jarvis' && cur.who === v)); b.dataset.v = v; seg.appendChild(b); });
     var sysName = voice.systemVoiceName(), remote = voice.systemVoiceRemote() ? ' That voice is spoken by the browser maker’s servers, so the sentences are sent there.' : '';
     $('voiceNote').textContent = voice.live() ? 'Used only if the voice key fails.' + remote : cur.mode === 'device' ? 'Everything is spoken by the browser’s own voice' + (sysName ? ' (' + sysName + ').' : '.') + remote : 'The recorded voice says the fixed lines (welcome, one moment, standing by). Answers use the browser’s own voice' + (sysName ? ' (' + sysName + ')' : '') + '. Tap a name to hear it.' + remote;
-    $('keyNote').textContent = Kin.shared ? Kin.SHARED_TEXT : brain.hasKey() ? 'A key is saved on this device: ' + brain.keyHint() + '. Small talk uses ' + brain.QUICK + ', real questions use ' + brain.MAIN + '.' + (Kin.mac && Kin.mac.keptOnMac('claude') ? ' Kept in your Mac\u2019s Keychain.' : '') : 'No key on this device. Kin answers from the pack only.';
+    $('keyNote').textContent = Kin.shared ? Kin.SHARED_TEXT : brain.hasKey() ? 'A key is saved on this device: ' + brain.keyHint() + '. Small talk uses ' + brain.QUICK + ', real questions use ' + brain.MAIN + '.' + (Kin.mac && Kin.mac.keptOnMac('claude') ? ' Kept in your Mac\u2019s Keychain.' : '') : 'No key on this device. Jarvis answers from the pack only.';
     $('webCap').value = Kin.mind.webCap();
     hfSettings(); gbSettings(); wxSettings(); lookSettings(); mailSettings();
     var sp = Kin.mind.spendToday();
-    $('webNote').textContent = 'Web searches today: ' + Kin.mind.webToday() + ' of ' + Kin.mind.webCap() + '. Each search costs about one US cent, on top of the words. Reading a page has no extra charge. At the limit Kin answers without the web and says so.';
+    $('webNote').textContent = 'Web searches today: ' + Kin.mind.webToday() + ' of ' + Kin.mind.webCap() + '. Each search costs about one US cent, on top of the words. Reading a page has no extra charge. At the limit Jarvis answers without the web and says so.';
     var le = brain.lastError && brain.lastError(), leEl = $('lastErr');
     if (leEl) { leEl.hidden = !le; if (le) leEl.textContent = 'Last error: ' + new Date(le.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' · ' + [le.status ? 'status ' + le.status : '', le.type, le.code, le.model, le.request ? 'request ' + le.request : ''].filter(Boolean).join(' · ') + (le.message ? '\n' + le.message : ''); }
     $('spendNote').textContent = sp.n ? 'Today on this device: ' + sp.n + (sp.n === 1 ? ' answer' : ' answers') + ', about $' + sp.usd.toFixed(2) + '. An estimate from the token counts Anthropic reports; your Console shows the real bill.' : 'Nothing spent today on this device.';
@@ -1015,7 +1015,7 @@
     if (!mem.length) { var e0 = document.createElement('p'); e0.className = 'note'; e0.textContent = 'Nothing yet. Say "remember that …", or use the thumbs under an answer.'; ml.appendChild(e0); }
     mem.slice().sort(function (a, b) { return b.at - a.at; }).forEach(function (m) { var r = document.createElement('div'); r.className = 'memrow'; var t = document.createElement('p'); var k = document.createElement('small'); k.textContent = { fact: 'Fact', preference: 'Preference', correction: 'Correction', good: 'Worked', bad: 'Not right', lesson: 'Lesson' }[m.kind] || m.kind; t.appendChild(k); t.appendChild(document.createTextNode(' ' + m.text)); var del = document.createElement('button'); del.type = 'button'; del.className = 'lnk dim'; del.textContent = 'Forget'; del.addEventListener('click', function () { Kin.mind.forget(m.id); refreshSettings(); }); r.appendChild(t); r.appendChild(del); ml.appendChild(r); });
     var u = brain.limits(); $('limH').value = u.perHour; $('limD').value = u.perDay;
-    $('limNote').textContent = 'Kin stops sending questions to Claude after this many in an hour or in a day, says so, and goes to sleep. Used this hour: ' + u.hour + ' of ' + u.perHour + '. Today: ' + u.day + ' of ' + u.perDay + '.';
+    $('limNote').textContent = 'Jarvis stops sending questions to Claude after this many in an hour or in a day, says so, and goes to sleep. Used this hour: ' + u.hour + ' of ' + u.perHour + '. Today: ' + u.day + ' of ' + u.perDay + '.';
     $('moveExport').disabled = $('moveFile').disabled = $('moveTurns').disabled = !!Kin.shared; if (Kin.shared) $('moveNote').textContent = Kin.SHARED_TEXT;
     $('sharedNote').hidden = !Kin.shared; $('sharedNote').textContent = Kin.shared ? Kin.SHARED_TEXT + ' You can still try it here without keys.' : '';
     $('apiKey').value = '';
@@ -1080,7 +1080,7 @@
       ? 'Connected on this device. Design jobs can use real pictures: Kin prices them first and asks you before any credits are spent. The sign-in token stays on this device and is handed to Anthropic with each picture job, which then talks to Higgsfield.'
       : 'Not connected. Without it, designs are drawn rather than photographed. Connecting opens Higgsfield\'s sign-in page and brings you back here. It needs a paid Higgsfield plan.');
     $('hfCap').value = Kin.hf.cap();
-    $('hfCapNote').textContent = 'Kin will not approve pictures past this many Higgsfield credits a day. Used today on this device: ' + Kin.hf.used() + ' of ' + Kin.hf.cap() + '. A full poster needs about 13.5 credits left. Credits are only counted for pictures Higgsfield actually started.';
+    $('hfCapNote').textContent = 'Jarvis will not approve pictures past this many Higgsfield credits a day. Used today on this device: ' + Kin.hf.used() + ' of ' + Kin.hf.cap() + '. A full poster needs about 13.5 credits left. Credits are only counted for pictures Higgsfield actually started.';
     if ($('hfCimd')) { $('hfCimd').textContent = Kin.hf.usingCimd() ? 'Use the usual sign-in' : 'Try the other sign-in'; $('hfCimd').disabled = !!Kin.shared; }
     if ($('hfTest')) $('hfTest').disabled = !!Kin.shared;
   }
@@ -1139,12 +1139,12 @@
     if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Tap again to turn it on'; $('gbNote').textContent = 'Turning it on means a sentence you start with “ask Grok Bot” is sent to your relay and private mailbox, as described above. Nothing else.'; setTimeout(function () { if (b.dataset.sure === '1') { b.dataset.sure = ''; b.textContent = 'Turn on'; } }, 6000); return; }
     B.setEnabled(true); refreshSettings();
   });
-  if (Kin.bridge) $('gbTest').addEventListener('click', function () { var n = $('gbNote'); n.textContent = 'Checking the relay…'; Kin.bridge.health().then(function (r) { n.textContent = r.ok ? 'The relay is up and answers this page. The token is checked when you ask; if it is refused, Kin says so then.' : 'The relay did not answer from here' + (r.status ? ' (HTTP ' + r.status + ')' : '') + '. It may be down, or not allowing this address.'; }); });
+  if (Kin.bridge) $('gbTest').addEventListener('click', function () { var n = $('gbNote'); n.textContent = 'Checking the relay…'; Kin.bridge.health().then(function (r) { n.textContent = r.ok ? 'The relay is up and answers this page. The token is checked when you ask; if it is refused, Jarvis says so then.' : 'The relay did not answer from here' + (r.status ? ' (HTTP ' + r.status + ')' : '') + '. It may be down, or not allowing this address.'; }); });
   if (Kin.bridge) $('gbDrop').addEventListener('click', function () { Kin.bridge.stopAll(); Kin.bridge.dropToken(); refreshSettings(); });
   if (Kin.bridge) $('gbUrl').addEventListener('change', function () { var r = Kin.bridge.setRelay($('gbUrl').value); refreshSettings(); if (!r.ok) $('gbNote').textContent = r.why; });
   if (Kin.bridge) $('gbCtx').addEventListener('change', function () { Kin.bridge.setCtx($('gbCtx').checked); refreshSettings(); });
   $('webCap').addEventListener('change', function () { Kin.mind.setWebCap(parseInt($('webCap').value, 10)); refreshSettings(); });
-  $('memAll').addEventListener('click', function () { var b = $('memAll'); if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Tap again to forget everything Kin remembers'; setTimeout(function () { b.dataset.sure = ''; b.textContent = 'Forget all'; }, 5000); return; } Kin.mind.forgetAll(); b.dataset.sure = ''; b.textContent = 'Forget all'; refreshSettings(); });
+  $('memAll').addEventListener('click', function () { var b = $('memAll'); if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Tap again to forget everything Jarvis remembers'; setTimeout(function () { b.dataset.sure = ''; b.textContent = 'Forget all'; }, 5000); return; } Kin.mind.forgetAll(); b.dataset.sure = ''; b.textContent = 'Forget all'; refreshSettings(); });
   /* with no pack, one button on the main screen opens the file picker; the two steps sit beside it */
   function packCard() { var c = $('loadCard'); if (c) c.hidden = !!Kin.pack.get() || Kin.shared || !$('sheet').hidden; if (Kin.home) Kin.home.refresh(); }
   Kin.packCard = packCard;

@@ -62,7 +62,7 @@
       <div class="sugg" id="sugg" aria-label="Quick actions"><button type="button" class="qchipbtn" data-go="brief">Brief me</button><button type="button" class="qchipbtn" data-go="whatsnew">What&rsquo;s new</button><button type="button" class="qchipbtn" data-go="gauntlet">Test yourself</button></div>
 
       <div class="prow">
-        <button type="button" class="sharepill" id="sharePill" hidden aria-label="Kin can see your screen. Stop sharing"><i class="rec" aria-hidden="true"></i><span>Sharing your screen</span><b>Stop</b></button>
+        <button type="button" class="sharepill" id="sharePill" hidden aria-label="Jarvis can see your screen. Stop sharing"><i class="rec" aria-hidden="true"></i><span>Sharing your screen</span><b>Stop</b></button>
         <button type="button" class="status" id="status" aria-label="Show or hide the conversation"><i class="led"></i><span id="stS">Conversation</span><i class="sep"></i><span id="stM">Mic off</span><span class="sep tsep"></span><span id="stT" hidden></span></button>
       </div>
 
@@ -113,7 +113,7 @@
       <label class="row" id="ttsModelRow" hidden><span>Model</span><select id="ttsModel" aria-label="Voice model"></select></label>
       <div class="row" id="ttsTestRow" hidden><span></span><div class="btns"><button type="button" class="lnk" id="ttsTest">Test voice</button><button type="button" class="lnk dim" id="ttsReload">Reload voices</button></div></div>
       <p class="note">Pick a calm British voice from your account&rsquo;s library.</p>
-      <p class="note warn">Optional. The voice key is kept in this browser on this device only. It is sent to ElevenLabs and nowhere else, together with each sentence Kin speaks. Kin says nothing, and sends nothing there, until you have tapped the page once. Anyone who can use this browser can use it, so in ElevenLabs make a key just for this, limit it to Text to Speech and Voices, give it a credit limit, and remove it here if the device is lost.</p>
+      <p class="note warn">Optional. The voice key is kept in this browser on this device only. It is sent to ElevenLabs and nowhere else, together with each sentence Jarvis speaks. Jarvis says nothing, and sends nothing there, until you have tapped the page once. Anyone who can use this browser can use it, so in ElevenLabs make a key just for this, limit it to Text to Speech and Voices, give it a credit limit, and remove it here if the device is lost.</p>
       <div class="row"><span>Backup voice</span><div class="seg" id="voiceSeg" role="group"></div></div>
       <p class="note" id="voiceNote"></p>
       </div>
@@ -123,7 +123,7 @@
       <label class="row"><span>Claude key</span><input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="new-password" autocapitalize="off" spellcheck="false"></label>
       <div class="row"><span></span><div class="btns"><button type="button" class="lnk" id="keySave">Save key</button><button type="button" class="lnk dim" id="keyDrop">Remove key</button></div></div>
       <p class="note" id="keyNote"></p>
-      <p class="note warn">The key is kept in this browser on this device only and is sent to Anthropic and nowhere else. With a key, what you say or type, the last few exchanges, your pack&rsquo;s rules and brief, and the entries Kin looks up are sent to Anthropic to get each answer. Anyone who can use this browser can use the key, so create one just for this, give it a monthly spend limit in the Anthropic Console, and remove it here if the device is lost.</p>
+      <p class="note warn">The key is kept in this browser on this device only and is sent to Anthropic and nowhere else. With a key, what you say or type, the last few exchanges, your pack&rsquo;s rules and brief, and the entries Jarvis looks up are sent to Anthropic to get each answer. Anyone who can use this browser can use the key, so create one just for this, give it a monthly spend limit in the Anthropic Console, and remove it here if the device is lost.</p>
       <div class="row"><span>Models</span><span class="val" id="modelLine">Opus 5.5 for questions and hard jobs</span></div>
       <p class="note">Documents, plans, designs and decisions go to Opus 5.5 and think harder; so do the design studio&rsquo;s brief, concepts, art director, refinements and the answer check. Small talk and the quick sorting look use Haiku 5.5. A full design job costs about $1.60 to $1.80 in Claude usage; what each answer cost is shown under it.</p>
       <p class="note lasterr" id="lastErr" hidden></p>
@@ -146,7 +146,7 @@
       <h3>Knowledge</h3>
       <p class="note" id="packNote"></p>
       <div class="row"><span>Kin pack</span><div class="btns"><label class="lnk filebtn">Import Kin pack<input type="file" id="packFile" accept="application/json,.json"></label><button type="button" class="lnk dim" id="packDrop">Remove pack</button></div></div>
-      <p class="note">The pack is a file you export from the Atlas. It is stored in this browser on this device and is never uploaded to this website. With a Claude key, its rules and brief and the entries Kin looks up are sent to Anthropic to answer you.</p>
+      <p class="note">The pack is a file you export from the Atlas. It is stored in this browser on this device and is never uploaded to this website. With a Claude key, its rules and brief and the entries Jarvis looks up are sent to Anthropic to answer you.</p>
       </div>
       <div class="sgroup" id="sg-pictures" aria-label="Pictures">
       <h2 class="sgtitle">Pictures</h2>
@@ -172,7 +172,7 @@
         <li>Credentials, Create credentials, OAuth client ID, <b>Web application</b>. Authorised JavaScript origin: <code>https://jarvis.unwebbed.app</code>. No redirect URI is needed.</li>
         <li>Copy the Client ID (it ends in .apps.googleusercontent.com) and paste it above. It is not a secret, but it only works from this site.</li>
         <li>For Sync across computers too: in the same project, APIs &amp; Services, Library: turn on the <b>Google Drive API</b>, and add the scope drive.appdata on the consent screen. Jarvis then sees only its own hidden folder, never your other files.</li>
-      </ol><p class="note">Kin can only send (not read) your mail with this, only when you tap, at most the daily number above. The Google permission is kept in memory and forgotten when you close the tab.</p></details>
+      </ol><p class="note">Jarvis can only send (not read) your mail with this, only when you tap, at most the daily number above. The Google permission is kept in memory and forgotten when you close the tab.</p></details>
       </div>
       <div class="sgroup" id="sg-brief" aria-label="Morning brief">
       <h2 class="sgtitle">Morning brief</h2>
@@ -182,12 +182,12 @@
       <div class="row"><span></span><div class="btns"><button type="button" class="lnk" id="wxFind">Find it</button><button type="button" class="lnk dim" id="wxDrop">Forget the place</button></div></div>
       <div class="wxpick" id="wxPick"></div>
       <div class="row"><span>Units</span><div class="seg" id="wxUnits" role="group" aria-label="Temperature units"><button type="button" data-u="C" aria-pressed="true">&deg;C</button><button type="button" data-u="F" aria-pressed="false">&deg;F</button></div></div>
-      <p class="note">One town and one choice of units for the whole page: the morning brief and weather charts both use them. For today&rsquo;s weather and weather charts, Kin asks Open-Meteo (free, no account). Finding your town sends its name to Open-Meteo once; after that only the place&rsquo;s coordinates are sent. The place is kept on this device.</p>
+      <p class="note">One town and one choice of units for the whole page: the morning brief and weather charts both use them. For today&rsquo;s weather and weather charts, Jarvis asks Open-Meteo (free, no account). Finding your town sends its name to Open-Meteo once; after that only the place&rsquo;s coordinates are sent. The place is kept on this device.</p>
 
       <h3>Morning brief</h3>
       <p class="note">Say or type &ldquo;give me my morning brief&rdquo;. Choose the cards and their order here. Ticks on priorities stay on this device.</p>
       <div id="briefSettings"></div>
-      <p class="note">With &ldquo;Start small jobs on my own&rdquo; on, Kin starts at most two small drafts or plans written here from your pack, each under the limit shown, when the brief opens. Research (the web), designs (pictures and credits) and anything that would send, post, buy, book or call always wait for your tap. Market watch uses one short web search at most every three hours, with your Claude key.</p>
+      <p class="note">With &ldquo;Start small jobs on my own&rdquo; on, Jarvis starts at most two small drafts or plans written here from your pack, each under the limit shown, when the brief opens. Research (the web), designs (pictures and credits) and anything that would send, post, buy, book or call always wait for your tap. Market watch uses one short web search at most every three hours, with your Claude key.</p>
       </div>
       <div class="sgroup" id="sg-away" aria-label="Away &amp; desk">
       <h2 class="sgtitle">Away &amp; desk</h2>
@@ -205,7 +205,7 @@
       <div class="sgroup" id="sg-grok" aria-label="Grok Bot bridge">
       <h2 class="sgtitle">Grok Bot bridge</h2>
       <div id="gbSection" hidden>
-      <p class="note warn" id="gbLeaves">Off until you turn it on. When it is on, only a sentence that starts by asking Grok Bot (&ldquo;ask Grok Bot what is due tomorrow&rdquo;, typed, or said while Kin is awake) is sent. What leaves this device is that question, and pack excerpts only if you pick them for that question. It goes to your relay below, which files it as an issue in your private GitHub mailbox and wakes Grok Bot; Grok Bot&rsquo;s reply is posted to that issue and read back here. GitHub keeps those issues until someone deletes them. Nothing else from Kin, your pack, your keys or the conversation is sent, and Grok Bot&rsquo;s replies are shown as its words and are never passed to Claude. Anything Grok Bot would send, post, buy or deploy comes back to you as &ldquo;needs your OK&rdquo;.</p>
+      <p class="note warn" id="gbLeaves">Off until you turn it on. When it is on, only a sentence that starts by asking Grok Bot (&ldquo;ask Grok Bot what is due tomorrow&rdquo;, typed, or said while Jarvis is awake) is sent. What leaves this device is that question, and pack excerpts only if you pick them for that question. It goes to your relay below, which files it as an issue in your private GitHub mailbox and wakes Grok Bot; Grok Bot&rsquo;s reply is posted to that issue and read back here. GitHub keeps those issues until someone deletes them. Nothing else from Kin, your pack, your keys or the conversation is sent, and Grok Bot&rsquo;s replies are shown as its words and are never passed to Claude. Anything Grok Bot would send, post, buy or deploy comes back to you as &ldquo;needs your OK&rdquo;.</p>
       <label class="row"><span>Relay</span><input type="text" id="gbUrl" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Relay address"></label>
       <label class="row"><span>Device token</span><input type="password" id="gbTok" placeholder="Paste the device token" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
       <div class="row"><span></span><label class="chkline"><input type="checkbox" id="gbKeep"> Keep the token on this device after this tab closes</label></div>
@@ -222,7 +222,7 @@
       </div>
       <div class="sgroup" id="sg-privacy" aria-label="Privacy &amp; data">
       <h2 class="sgtitle">Privacy &amp; data</h2>
-      <p class="note warn" id="leaves">What leaves this device. Your speech goes to the browser maker (Google in Chrome, Microsoft in Edge, Apple in Safari) to be turned into text, whenever the mic is on, asleep or awake. With a Claude key, what you say or type, the last few exchanges, what Kin remembers that bears on the question, and the parts of your pack Kin uses go to Anthropic; web searches and page reads are run by Anthropic too. With a voice key, every sentence Kin speaks goes to ElevenLabs. With Higgsfield connected, the picture prompts of a design job you approve go, through Anthropic, to Higgsfield, and the finished pictures are fetched from Higgsfield into this page.<span id="leavesGB" hidden> With the Grok Bot bridge turned on, a question you start with &ldquo;ask Grok Bot&rdquo; goes to your relay and your private GitHub mailbox, as described under Grok Bot bridge.</span> With Sync turned on, an encrypted copy of what Jarvis remembers, makes and is set to (never keys or the conversation) goes to a hidden folder in your Google Drive, locked with a passphrase only you know. Nothing is ever sent to this website.</p>
+      <p class="note warn" id="leaves">What leaves this device. Your speech goes to the browser maker (Google in Chrome, Microsoft in Edge, Apple in Safari) to be turned into text, whenever the mic is on, asleep or awake. With a Claude key, what you say or type, the last few exchanges, what Jarvis remembers that bears on the question, and the parts of your pack Jarvis uses go to Anthropic; web searches and page reads are run by Anthropic too. With a voice key, every sentence Jarvis speaks goes to ElevenLabs. With Higgsfield connected, the picture prompts of a design job you approve go, through Anthropic, to Higgsfield, and the finished pictures are fetched from Higgsfield into this page.<span id="leavesGB" hidden> With the Grok Bot bridge turned on, a question you start with &ldquo;ask Grok Bot&rdquo; goes to your relay and your private GitHub mailbox, as described under Grok Bot bridge.</span> With Sync turned on, an encrypted copy of what Jarvis remembers, makes and is set to (never keys or the conversation) goes to a hidden folder in your Google Drive, locked with a passphrase only you know. Nothing is ever sent to this website.</p>
 
       <h3>Move to another computer</h3>
       <p class="note">One file with what Jarvis has learned and made here: what it remembers, the Made shelf, the logbook, and your settings for voice, wake phrase, morning brief, away mode and both contact lists, calls and the booking name, weather and limits. Keys, tokens and sign-ins are never in it, so add those again on the other computer. The file is saved by your browser and never uploaded. Keep it private: anyone with it can read what Jarvis remembers.</p>
