@@ -1012,6 +1012,8 @@ body:has(.sheet.win:not([hidden])) .app::after { content: ""; position: fixed; i
 .thread .msg .remnote span { font: 400 13px/1.4 var(--f-ui); color: rgba(255, 255, 255, .62); }
 .sheet.win .calrow.rem .calbar { background: #F5B43C; }
 .sheet.win .calrow.rem.rep .calbar { background: linear-gradient(180deg, #F5B43C, #F27BB5); }
+.sheet.win .calrow.rem { align-items: center; }
+.sheet.win .calrow.rem > .btns { margin: 0; justify-content: flex-end; }
 @media (pointer: coarse) { .thread .msg .remset .lnk { min-height: 44px; } }
 
 /* ---------- lists: the Lists tab ---------- */

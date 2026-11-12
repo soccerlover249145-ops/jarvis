@@ -661,6 +661,7 @@
     if (k === 'remind') { $('sheet').hidden = true; openShelf('cal'); return; }
     if (k === 'lists') { $('sheet').hidden = true; openShelf('lists'); return; }
     if (k === 'inbox') { $('sheet').hidden = true; openShelf('inbox'); return; }
+    if (k === 'quick') { $('sheet').hidden = true; var qq = 'How many days until Christmas?', rq = Kin.quick ? Kin.quick.instant(qq) : null; if (rq) instantly(qq, rq); showThread(); return; }
     if (k === 'instant') { $('sheet').hidden = true; var qi = 'What time is it in Tokyo?', ri = Kin.clock ? Kin.clock.instant(qi) : null; if (ri) instantly(qi, ri); showThread(); return; }
     if (k === 'ptt') { $('sheet').hidden = true; localReply(window.matchMedia && matchMedia('(pointer: coarse)').matches ? 'Tap the microphone and talk, sir. On a computer you can hold the space bar instead.' : 'Hold the space bar, speak, and let go, sir. Or just start typing.', 'Hold Space to talk'); showThread(); return; }
     if (k === 'mac') { $('sheet').hidden = true; var mp = localReply(Kin.mac && Kin.mac.available() ? 'You are in the Mac app, sir. Ask me to open an app, a file or a site, or to do something on your computer. Your Mac asks you before each one.' : Kin.mac.NEED_TEXT, 'Mac app'); if (Kin.mac && !Kin.mac.available()) mp.parentNode.appendChild(Kin.mac.need()); showThread(); return; }
@@ -1322,7 +1323,7 @@
       var acts = document.createElement('div'), cx = document.createElement('button'); acts.className = 'btns'; cx.type = 'button'; cx.className = 'lnk dim'; cx.textContent = rep ? 'Stop' : 'Cancel';
       cx.setAttribute('aria-label', (rep ? 'Stop the reminder: ' : 'Cancel the reminder: ') + r.text);
       cx.addEventListener('click', function () { gesture(); Kin.remind.cancel(r.id); refreshMade(); });
-      acts.appendChild(cx); body.appendChild(acts); row.appendChild(body); host.appendChild(row);
+      acts.appendChild(cx); row.appendChild(body); row.appendChild(acts); host.appendChild(row);
     });
     if (p.length > 40) { var more = document.createElement('p'); more.className = 'note'; more.textContent = (p.length - 40) + ' more. Say "what are my reminders" to hear them.'; host.appendChild(more); }
     return p.length;
@@ -1443,6 +1444,15 @@
     if (!t) { el.hidden = true; return; }
     el.hidden = false; el.textContent = t.label + ' ' + Math.floor(t.left / 60) + ':' + ('0' + t.left % 60).slice(-2);
   });
+
+  /* a running stopwatch shows in the status line like a timer (a running timer comes first) */
+  setInterval(function () {
+    if (!Kin.quick || !Kin.quick.stopwatch || Kin.mind.timer()) return;
+    var w = Kin.quick.stopwatch(), stt = $('stT');
+    if (!w || !w.running) { if (stt.dataset.sw) { stt.hidden = true; delete stt.dataset.sw; } return; }
+    var s = Math.floor(w.ms / 1000), p2 = function (n) { return ('0' + n).slice(-2); };
+    stt.dataset.sw = '1'; stt.hidden = false; stt.textContent = 'Stopwatch ' + (s >= 3600 ? Math.floor(s / 3600) + ':' + p2(Math.floor(s % 3600 / 60)) : Math.floor(s / 60)) + ':' + p2(s % 60);
+  }, 1000);
 
   /* ------------------------------------------------------------ settings */
   function stepGo(go) {
