@@ -141,6 +141,8 @@
       throw new Error(what + ' (' + r.status + (why ? ': ' + why : '') + ').' + (r.status === 403 && /not been used|disabled|enable/i.test(why) ? ' Turn that API on in Google Cloud (Settings, Email has the steps).' : ''));
     });
   }
+  /** is this permission already in hand for this visit (so no Google window is needed)? */
+  function hasToken(kind) { var sc = { cal: CAL_SCOPE, read: READ_SCOPE, send: SCOPE, people: PEOPLE_SCOPE }[kind], t = sc && tokens[sc]; return !!(t && Date.now() < t.exp); }
   /* ---- reading the inbox: unread mail, newest first, From / Subject / Date / snippet only. Read on a tap,
      kept in memory for this visit, never stored on the device. ---- */
   var LIST_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages';
@@ -486,7 +488,7 @@
     return box;
   }
 
-  Kin.email = { message: message, eventCard: eventCard, eventUrl: eventUrl, ics: ics, evCheck: evCheck, contacts: contacts, findPeople: findPeople, bareNames: bareNames, composeUrl: composeUrl, raw: raw, check: check, send: send, card: card, clientId: clientId, setClientId: setClientId, cap: cap, setCap: setCap, sentToday: sentToday, loadGis: loadGis,
+  Kin.email = { hasToken: hasToken, message: message, eventCard: eventCard, eventUrl: eventUrl, ics: ics, evCheck: evCheck, contacts: contacts, findPeople: findPeople, bareNames: bareNames, composeUrl: composeUrl, raw: raw, check: check, send: send, card: card, clientId: clientId, setClientId: setClientId, cap: cap, setCap: setCap, sentToday: sentToday, loadGis: loadGis,
     outbox: outbox, saveDraft: saveDraft, updateDraft: updateDraft, dropDraft: dropDraft, clearSent: clearSent, waiting: waiting,
     inbox: inbox, threadUrl: threadUrl, calendar: calendar,
     canSend: function () { return !Kin.shared && !!clientId(); },

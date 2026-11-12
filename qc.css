@@ -994,3 +994,5 @@ body:has(.sheet.win:not([hidden])) .app::after { content: ""; position: fixed; i
 .sheet.win .ibbody { margin: 10px 0 2px; padding: 12px 14px; border-radius: 10px; background: rgba(0, 0, 0, .28); border: 1px solid rgba(255, 255, 255, .07); color: #DADDE2; font: 400 13.5px/1.55 var(--f-ui); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 340px; overflow-y: auto; cursor: text; user-select: text; }
 .sheet.win .ibbody[hidden] { display: none; }
 .sheet.win .ibrow.open .ibmain:has(.ibbody[data-done]) .ibsnip { display: none; }
+/* the brief's calendar card: what has already finished today steps back */
+.bb .bb-row.bb-past { opacity: .5; }

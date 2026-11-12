@@ -47,10 +47,10 @@
 
   /* ------------------------------------------------------------ settings */
   var CARDS = [
-    { id: 'weather', name: 'Weather' }, { id: 'nok', name: 'Your company' }, { id: 'start', name: 'Jarvis can start' }, { id: 'today', name: 'Coming up' },
+    { id: 'weather', name: 'Weather' }, { id: 'calendar', name: 'Your calendar' }, { id: 'nok', name: 'Your company' }, { id: 'start', name: 'Jarvis can start' }, { id: 'today', name: 'Coming up' },
     { id: 'priorities', name: 'Top priorities' }, { id: 'market', name: 'Market watch' }, { id: 'footer', name: 'On this day' }
   ];
-  var DEF = { order: ['weather', 'nok', 'start', 'today', 'priorities', 'market', 'footer'], on: { weather: true, nok: true, start: true, today: true, priorities: true, market: true, footer: false }, units: 'F', owner: '', autoSmall: true, autoCap: 0.25, autoDay: 1 };
+  var DEF = { order: ['weather', 'calendar', 'nok', 'start', 'today', 'priorities', 'market', 'footer'], on: { weather: true, calendar: true, nok: true, start: true, today: true, priorities: true, market: true, footer: false }, units: 'F', owner: '', autoSmall: true, autoCap: 0.25, autoDay: 1 };
   var settings = {
     get: function () { var v = ls.get('kin.bb.settings', null) || {}; var order = (v.order || []).filter(function (id) { return DEF.order.indexOf(id) >= 0; }); DEF.order.forEach(function (id) { if (order.indexOf(id) < 0) order.push(id); }); return { order: order, on: Object.assign({}, DEF.on, v.on || {}), units: v.units === 'C' ? 'C' : 'F', owner: typeof v.owner === 'string' ? v.owner.slice(0, 60) : '', autoSmall: v.autoSmall !== false, autoCap: isFinite(v.autoCap) && v.autoCap >= 0 && v.autoCap <= 2 ? +v.autoCap : DEF.autoCap, autoDay: v.autoDay != null && isFinite(v.autoDay) && v.autoDay >= 0 && v.autoDay <= 20 ? +v.autoDay : DEF.autoDay }; },
     set: function (patch) { var v = Object.assign(settings.get(), patch || {}); ls.set('kin.bb.settings', v); return v; },
@@ -215,6 +215,12 @@
       if (!place) data.weather = { error: 'noplace' };
       else jobs.push(withTimeout(weather(), ms, 'The weather').then(function (w) { data.weather = w; }, function (e) { data.weather = { error: 'fail', why: String(e && e.message || e) }; }));
     }
+    /* the founder's own calendar: read now only when this visit already has the read-only permission; otherwise the
+       card offers a tap (Google's window must open inside a tap) */
+    if (set.on.calendar && opts.calendar) {
+      if (opts.calendar.ready && typeof opts.calendar.read === 'function') jobs.push(withTimeout(Promise.resolve().then(opts.calendar.read), ms, 'Your calendar').then(function (list) { data.calendar = { items: Array.isArray(list) ? list : [] }; }, function (e) { data.calendar = { error: String(e && e.message || e) }; }));
+      else data.calendar = { waiting: true };
+    }
     if (set.on.market && typeof opts.market === 'function') {
       jobs.push(withTimeout(Promise.resolve().then(opts.market), Math.max(ms, 25000), 'The market search').then(function (list) {
         data.market = { items: (Array.isArray(list) ? list : []).filter(function (x) { return x && x.title; }).slice(0, 4).map(function (x) { return { title: String(x.title).slice(0, 160), source: String(x.source || '').slice(0, 40), url: /^https:\/\//.test(x.url || '') ? x.url : '', date: String(x.date || '').slice(0, 24) }; }) };
@@ -228,6 +234,8 @@
     if (!d) return ''; var hr = (d.now || new Date()).getHours(), out = [(hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening') + ', sir.'];
     var w = d.weather; if (w && !w.error && isFinite(w.now.temp)) out.push('It\'s ' + Math.round(w.now.temp) + ' degrees and ' + WMO(w.now.code).t.toLowerCase() + (isFinite(w.hi) ? ', with a high of ' + Math.round(w.hi) : '') + (w.rainMax >= 40 ? ' and a ' + w.rainMax + ' percent chance of rain' : '') + '.');
     var n = d.nok; if (n) { var pick = n.stats.filter(function (x) { return /pick/i.test(x.k); })[0]; if (pick && pick.v >= 0) out.push(pick.v + (pick.v === 1 ? ' day' : ' days') + ' to the pick.'); if (n.first) out.push('First up: ' + n.first.t + '.'); }
+    var cal = d.calendar; if (cal && cal.items) { var nowMs = (d.now || new Date()).getTime(), nx = cal.items.filter(function (e) { return !e.allDay && e.start > nowMs; })[0];
+      out.push(cal.items.length ? cal.items.length + (cal.items.length === 1 ? ' thing is' : ' things are') + ' on your calendar today' + (nx ? ', the next at ' + clock(new Date(nx.start)) : '') + '.' : 'Your calendar is clear today.'); }
     if (!(w && !w.error) && !n) out.push('Set your town and import your pack in settings, and I\'ll have a full brief for you.');
     var o = d.offers || [], started = o.filter(function (x) { return x.state === 'running' || x.state === 'done'; }), next = o.filter(function (x) { return !x.state; })[0];
     if (started.length) out.push('I have started on ' + started.map(function (x) { return x.say; }).join(started.length > 2 ? ', ' : ' and ').replace(/, ([^,]*)$/, ', and $1') + '.');
@@ -368,6 +376,33 @@
       if (n.first) { var f = h('div', 'bb-first'), due = dueLabel(n.first.d, d.now); f.appendChild(h('div', 'bb-l', 'First thing')); f.appendChild(h('div', 'bb-t', n.first.t));
         f.appendChild(h('div', 'bb-m', [due.top + (due.top === 'Overdue' || due.top === 'Today' || due.top === 'Tomorrow' ? ' · ' + due.sub : ' ' + due.sub), n.first.st && n.first.st !== 'open' ? n.first.st : '', n.first.who].filter(Boolean).join('  ·  '))); b.appendChild(f); }
     },
+    calendar: function (c, d, ctx) {
+      var k = d.calendar || {}; head(c, 'Your calendar', 'Today, from Google Calendar'); var b = h('div', 'bb-body'); c.appendChild(b);
+      function draw(items) {
+        b.textContent = '';
+        if (!items.length) { empty(b, 'Nothing on your calendar today.'); return; }
+        var ul = h('ul', 'bb-list'), nowMs = (d.now || new Date()).getTime();
+        items.slice(0, 6).forEach(function (e) {
+          var li = h('li', 'bb-row' + (!e.allDay && e.end && e.end < nowMs ? ' bb-past' : '')), wd = h('div', 'bb-when2');
+          wd.appendChild(h('b', '', e.allDay ? 'All day' : clock(new Date(e.start)))); if (!e.allDay && e.end) wd.appendChild(h('span', '', 'to ' + clock(new Date(e.end)))); li.appendChild(wd);
+          var r = h('div'); r.appendChild(h('div', 'bb-rt', e.title));
+          var meta = [e.where, e.who && e.who.length ? 'with ' + e.who.slice(0, 3).join(', ') : ''].filter(Boolean).join(' · ');
+          if (meta) { var m = h('div', 'bb-rm'); m.appendChild(h('span', '', meta)); r.appendChild(m); }
+          li.appendChild(r); ul.appendChild(li);
+        });
+        b.appendChild(ul);
+        if (items.length > 6) b.appendChild(h('p', 'bb-empty', (items.length - 6) + ' more today.'));
+      }
+      if (k.items) { draw(k.items); return; }
+      if (k.error) { empty(b, k.error); return; }
+      empty(b, 'Tap to add today. Google asks once for read-only access; nothing is stored on this device.');
+      var go = h('button', 'bb-pill bb-go', 'Show today'); go.type = 'button'; go.disabled = !(ctx && typeof ctx.readCalendar === 'function');
+      go.addEventListener('click', function (e) {
+        if (!e.isTrusted || go.disabled) return; go.disabled = true; go.textContent = 'Reading…';
+        ctx.readCalendar().then(function (items) { d.calendar = { items: items || [] }; draw(d.calendar.items); }, function (err) { go.disabled = false; go.textContent = 'Show today'; var p = b.querySelector('.bb-empty'); if (p) p.textContent = String(err && err.message || err); });
+      });
+      b.appendChild(go);
+    },
     today: function (c, d) {
       var n = d.nok; head(c, 'Coming up', 'The next seven days'); var b = h('div', 'bb-body'); c.appendChild(b);
       if (!n) { empty(b, 'Import your pack to see what is coming up.'); return; } if (!n.today.length) { empty(b, 'Nothing dated in the next seven days.'); return; }
@@ -430,6 +465,7 @@
   /** which cards have something honest to show */
   function shows(id, d) {
     if (!d.settings.on[id]) return false;
+    if (id === 'calendar') return !!d.calendar;
     if (id === 'market') return !!d.market && !!(d.market.error || (d.market.items && d.market.items.length) || lastMarket()); if (id === 'footer') return !!(d.nok && d.nok.onThisDay); if (id === 'start') return !!(d.offers && d.offers.length); return true;
   }
 
@@ -463,7 +499,7 @@
     var paired = ids.filter(function (id) { return id !== 'market'; });
     var spans = ids.map(function (id) { if (id === 'market') return 'span6'; var k = paired.indexOf(id); return k === paired.length - 1 && paired.length % 2 === 1 ? 'span6' : 'span3'; });
     /* jobs: a Start pill, a running chip with Stop, and the result. The page decides how a job runs (opts.onStart). */
-    var ctx = { refresh: typeof opts.onRefresh === 'function' ? opts.onRefresh : null, paintJob: function (o, li, act) {
+    var ctx = { refresh: typeof opts.onRefresh === 'function' ? opts.onRefresh : null, readCalendar: typeof opts.onCalendar === 'function' ? opts.onCalendar : null, paintJob: function (o, li, act) {
       act.textContent = '';
       if (o.state === 'running') { var ch = h('span', 'bb-chip bb-run', 'Running'); ch.insertBefore(h('i', 'bb-spin'), ch.firstChild); act.appendChild(ch);
         var st = h('button', 'bb-pill bb-stop', 'Stop'); st.type = 'button'; st.addEventListener('click', function () { if (o.ctl) try { o.ctl.abort(); } catch (e) {} o.state = 'stopped'; ctx.paintJob(o, li, act); }); act.appendChild(st); return; }

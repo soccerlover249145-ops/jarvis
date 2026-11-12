@@ -699,13 +699,18 @@
     var B = Kin.briefBoard;
     if (text) addMsg('you', text);
     caption('Pulling your brief together', 'One moment', 'kin');
-    B.gather({ pack: Kin.pack.get(), timeoutMs: 7000, market: brain.hasKey() && !Kin.shared ? marketWatch : null }).then(function (data) {
+    /* today's calendar: read straight away when this visit already has the permission, otherwise on the card's tap */
+    var canCal = !!(Kin.email && Kin.email.canRead() && !Kin.shared);
+    if (canCal) Kin.email.loadGis();
+    B.gather({ pack: Kin.pack.get(), timeoutMs: 7000, market: brain.hasKey() && !Kin.shared ? marketWatch : null,
+      calendar: canCal ? { ready: Kin.email.hasToken('cal'), read: function () { return Kin.email.calendar({ days: 1 }); } } : null }).then(function (data) {
       B.show(data, {
         brand: 'Jarvis',
         onRefresh: function () { B.hide(true); brief(); },
         onSettings: function () { B.hide(); $('sheet').hidden = false; refreshSettings(); var bs = $('briefSettings'); if (bs && bs.scrollIntoView) bs.scrollIntoView({ block: 'center' }); },
         onStart: brain.hasKey() ? boardJob : null,
-        onOpenMade: function () { B.hide(); openShelf('made'); }
+        onOpenMade: function () { B.hide(); openShelf('made'); },
+        onCalendar: canCal ? function () { return Kin.email.loadGis().then(function () { return Kin.email.calendar({ days: 1 }); }); } : null
       });
       var line = B.summary(data); addMsg('kin', line); caption(line.slice(0, 190), '');
       if (S.unlocked && (S.talk === 'awake' || S.speakTyped)) say(line); else captionFade(9000);
