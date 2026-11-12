@@ -926,3 +926,14 @@ body:has(.sheet.win:not([hidden])) .wrap, body:has(.sheet.win:not([hidden])) .to
 }
 .app[data-ptt="on"] .ptthint { color: #8FB8FF; }
 .app[data-ptt="on"] .dock .bar { border-color: rgba(76, 141, 246, .75); box-shadow: 0 0 0 4px rgba(76, 141, 246, .2), 0 24px 60px -24px rgba(0, 0, 0, .9); }
+
+/* ---------- email card: find a name in Google Contacts ---------- */
+.mailcard .mfind { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 14px; border-bottom: 1px solid rgba(255, 255, 255, .07); }
+.mailcard .mfind[hidden] { display: none; }
+.mailcard .mfind .lnk { min-height: 28px; padding: 0 12px; border-radius: 99px; font: 500 12.5px/1 var(--f-ui); letter-spacing: 0; text-transform: none; color: #CFE0FF; background: rgba(76, 141, 246, .12); border: 1px solid rgba(76, 141, 246, .35); }
+.mailcard .mfind .lnk:disabled { opacity: .6; }
+.mailcard .mfnote { margin-right: 4px; font: 500 12.5px/1.4 var(--f-ui); color: #A9ADB5; }
+.mailcard .mfpick { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, .1); background: rgba(255, 255, 255, .05); color: #F4F5F7; text-align: left; cursor: pointer; }
+.mailcard .mfpick b { font: 600 13px/1.2 var(--f-ui); }
+.mailcard .mfpick span { font: 400 12px/1.2 var(--f-ui); color: #A9ADB5; }
+.mailcard .mfpick:hover, .mailcard .mfpick:focus-visible { border-color: #4C8DF6; outline: none; }

@@ -13,6 +13,7 @@
   var SCOPE = 'https://www.googleapis.com/auth/gmail.send';
   var READ_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
   var CAL_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
+  var PEOPLE_SCOPE = 'https://www.googleapis.com/auth/contacts.readonly';
   var GIS = 'https://accounts.google.com/gsi/client';
   var SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
   var ls = {
@@ -91,7 +92,7 @@
   }
   /* must run inside the founder's tap: the Google window is a popup. Sending and reading are separate
      permissions with separate tokens, so allowing one never quietly grants the other; both live in memory only. */
-  var WHAT = {}; WHAT[SCOPE] = 'send email'; WHAT[READ_SCOPE] = 'read your inbox'; WHAT[CAL_SCOPE] = 'read your calendar';
+  var WHAT = {}; WHAT[SCOPE] = 'send email'; WHAT[READ_SCOPE] = 'read your inbox'; WHAT[CAL_SCOPE] = 'read your calendar'; WHAT[PEOPLE_SCOPE] = 'look up your contacts';
   function getToken(scope) {
     var cur = tokens[scope];
     if (cur && Date.now() < cur.exp) return Promise.resolve(cur.v);
@@ -161,6 +162,44 @@
       });
     });
   }
+  /* ---- contacts: names and email addresses only, read on a tap with their own read-only permission, held in
+     memory for ten minutes, never stored and never sent to Claude ---- */
+  var PEOPLE_URL = 'https://people.googleapis.com/v1/people/me/connections', people = null;
+  function contacts() {
+    if (Kin.shared) return Promise.reject(new Error(Kin.SHARED_TEXT));
+    if (!clientId()) return Promise.reject(new Error('Looking up contacts needs a Google Client ID in Settings, Email.'));
+    if (people && Date.now() - people.at < 600000) return Promise.resolve(people.list);
+    return getToken(PEOPLE_SCOPE).then(function (tok) {
+      var auth = { credentials: 'omit', referrerPolicy: 'no-referrer', headers: { Authorization: 'Bearer ' + tok } }, out = [];
+      function page(next, n) {
+        return fetch(PEOPLE_URL + '?personFields=names,emailAddresses&pageSize=1000' + (next ? '&pageToken=' + encodeURIComponent(next) : ''), auth).then(function (r) {
+          if (!r.ok) { if (r.status === 401) delete tokens[PEOPLE_SCOPE]; throw new Error('Google Contacts would not answer (' + r.status + ').'); }
+          return r.json();
+        }).then(function (j) {
+          (j.connections || []).forEach(function (pp) {
+            var nm = String((((pp.names || [])[0]) || {}).displayName || '');
+            (pp.emailAddresses || []).forEach(function (e) { var v = String((e && e.value) || '').trim(); if (ADDR.test(v)) out.push({ name: nm || v, email: v }); });
+          });
+          if (j.nextPageToken && n < 3) return page(j.nextPageToken, n + 1);
+        });
+      }
+      return page('', 1).then(function () { people = { at: Date.now(), list: out }; return out; });
+    });
+  }
+  function fold(x) { return String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+  /** everyone whose name (or the part of the address before the @) has every word asked for */
+  function findPeople(q, list) {
+    var words = fold(q).split(' ').filter(Boolean); if (!words.length) return [];
+    var seen = {};
+    return (list || []).filter(function (pp) {
+      var hay = ' ' + fold(pp.name) + ' ' + fold(pp.email.split('@')[0]) + ' ';
+      if (seen[pp.email.toLowerCase()] || !words.every(function (w) { return hay.indexOf(' ' + w) >= 0; })) return false;
+      return (seen[pp.email.toLowerCase()] = true);
+    }).slice(0, 6);
+  }
+  /** the parts of a To line that are names, not addresses: "Sam Lee, kai@x.com" gives ["Sam Lee"] */
+  function bareNames(s) { return String(s || '').split(/[,;]+/).map(function (x) { return x.trim(); }).filter(function (x) { return x && !/@/.test(x); }); }
+
   /** Send one email. Call only from the founder's tap on Send now. */
   function send(d, tapped) {
     if (!tapped) return Promise.reject(new Error('Not sent: an email goes only on a tap of Send now.'));
@@ -193,13 +232,37 @@
       var i = el(multi ? 'textarea' : 'input', 'minput'); if (!multi) { i.type = 'text'; i.autocomplete = 'off'; } else i.rows = Math.min(14, Math.max(5, String(val || '').split('\n').length + 1));
       i.value = val || ''; i.spellcheck = true; w.appendChild(i); box.appendChild(w); return i;
     }
-    var to = field('To', d.to), su = field('Subject', d.subject), bo = field('Body', d.body, true);
+    var to = field('To', d.to), fr = el('div', 'mfind'); fr.hidden = true; box.appendChild(fr);
+    var su = field('Subject', d.subject), bo = field('Body', d.body, true);
     var msg = el('p', 'note mnote'); box.appendChild(msg);
     var acts = el('div', 'mact'); box.appendChild(acts);
     function draft() { return { to: to.value, subject: su.value, body: bo.value }; }
     /* edits are kept in the outbox, so a fixed address or a reworded line survives a reload */
     if (opts.id) { var saveT = 0; [to, su, bo].forEach(function (i) { i.addEventListener('input', function () { clearTimeout(saveT); saveT = setTimeout(function () { updateDraft(opts.id, draft()); }, 400); }); }); }
     if (st.sent) [to, su, bo].forEach(function (i) { i.readOnly = true; });
+    /* a name in To instead of an address: one tap looks it up in Google Contacts (read-only, on this page only) */
+    function findRow() {
+      fr.textContent = ''; var names = bareNames(to.value);
+      fr.hidden = st.sent || Kin.shared || !clientId() || !names.length; if (fr.hidden) return;
+      var fb = el('button', 'lnk', 'Find ' + names[0] + ' in Contacts'); fb.type = 'button'; fr.appendChild(fb);
+      fb.addEventListener('click', function () {
+        fb.disabled = true; fb.textContent = 'Looking in your contacts…';
+        loadGis().then(function () { return contacts(); }).then(function (list) {
+          var hits = findPeople(names[0], list);
+          if (hits.length === 1) { use(names[0], hits[0]); return; }
+          fr.textContent = '';
+          if (!hits.length) { fr.appendChild(el('span', 'mfnote', 'No one called ' + names[0] + ' in your contacts. Type the address instead.')); return; }
+          fr.appendChild(el('span', 'mfnote', 'Which ' + names[0] + '?'));
+          hits.forEach(function (h) { var b = el('button', 'mfpick'); b.type = 'button'; b.appendChild(el('b', '', h.name)); b.appendChild(el('span', '', h.email)); b.addEventListener('click', function () { use(names[0], h); }); fr.appendChild(b); });
+        }, function (err) { fb.disabled = false; fb.textContent = 'Find ' + names[0] + ' in Contacts'; msg.textContent = String((err && err.message) || err); });
+      });
+    }
+    function use(name, h) {
+      to.value = to.value.split(/([,;]+)/).map(function (part) { return part.trim() === name ? (/^\s/.test(part) ? ' ' : '') + h.email : part; }).join('');
+      to.dispatchEvent(new Event('input', { bubbles: true })); msg.textContent = 'To: ' + h.name + ' (' + h.email + ').';
+    }
+    to.addEventListener('input', function () { var n = bareNames(to.value)[0] || ''; if (n !== fr.dataset.n) { fr.dataset.n = n; findRow(); } });
+    fr.dataset.n = bareNames(to.value)[0] || ''; findRow();
     var gm = pill('Open in Gmail', 'go'), cp = pill('Copy', 'alt');
     gm.addEventListener('click', function () { var w = check(draft()); if (w && !/subject|empty/i.test(w)) { msg.textContent = w; return; } window.open(composeUrl(draft()), '_blank', 'noopener,noreferrer'); msg.textContent = 'Opened in Gmail. Press Send there when it looks right.'; if (!st.sent) mark('opened'); });
     box.openInGmail = function () { gm.click(); };
@@ -232,7 +295,7 @@
     return box;
   }
 
-  Kin.email = { composeUrl: composeUrl, raw: raw, check: check, send: send, card: card, clientId: clientId, setClientId: setClientId, cap: cap, setCap: setCap, sentToday: sentToday, loadGis: loadGis,
+  Kin.email = { contacts: contacts, findPeople: findPeople, bareNames: bareNames, composeUrl: composeUrl, raw: raw, check: check, send: send, card: card, clientId: clientId, setClientId: setClientId, cap: cap, setCap: setCap, sentToday: sentToday, loadGis: loadGis,
     outbox: outbox, saveDraft: saveDraft, updateDraft: updateDraft, dropDraft: dropDraft, clearSent: clearSent, waiting: waiting,
     inbox: inbox, threadUrl: threadUrl, calendar: calendar,
     canSend: function () { return !Kin.shared && !!clientId(); },
