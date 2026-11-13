@@ -383,8 +383,9 @@
     var t = numify(String(raw || '').trim()).replace(/\s+/g, ' ');
     var s = SET_RE.exec(t);
     if (s) { var e = addLog('workout', s[1].toLowerCase() + ' ' + s[2] + ' for ' + s[3], { exercise: s[1].toLowerCase(), weight: +s[2], reps: +s[3] }); return { say: 'Done, sir.', show: 'Logged a set: ' + e.text + '.', clip: 'done' }; }
-    var m = /^(?:kin[, ]+|jarvis[, ]+)?(?:please )?(?:log(?: that)?|note(?: that)?|add to (?:the |my )?log(?:book)?)[:, ]+(.{3,})$/i.exec(t);
-    if (m && !/^(in|into|onto)\b/i.test(m[1])) { var txt = m[1].replace(/[.!]+$/, ''), k = kindOf(txt); addLog(k, txt); return { say: 'Done, sir.', show: 'Logged (' + k + '): ' + txt + '.', clip: 'done' }; }
+    var m = /^(?:kin[, ]+|jarvis[, ]+)?(?:please )?(?:log that|note that|note down|log(?:book)?:|add (?:this |that )?to (?:the |my )?log(?:book)?)[:, ]+(.{3,})$/i.exec(t);
+    /* a preference or a fact about the founder is for Claude to remember, not a logbook line */
+    if (m && !/^(in|into|onto|out|me|a bug|an? issue|a ticket)\b/i.test(m[1]) && !/^(?:i (?:prefer|like|love|hate|always|never|usually|want)|my )/i.test(m[1])) { var txt = m[1].replace(/[.!]+$/, ''), k = kindOf(txt); addLog(k, txt); return { say: 'Done, sir.', show: 'Logged (' + k + '): ' + txt + '.', clip: 'done' }; }
     if (/^(?:what(?:'s| is) in (?:the |my )?log(?:book)?|show (?:me )?(?:the |my )?log(?:book)?|read (?:me )?(?:the |my )?log(?:book)?)[?.!]*$/i.test(t)) {
       if (!data.log.length) return { say: 'The logbook is empty, sir.', show: 'The logbook is empty, sir.' };
       var last = data.log.slice(0, 5).map(function (e) { return e.text; });

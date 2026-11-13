@@ -390,7 +390,7 @@
     'make: a substantial document the founder will keep: a report, memo, proposal, plan document, cover letter, table or one-pager.',
     'design: a visual piece to look at: a poster, flyer, logo, label, invitation, social graphic, slide, banner, packaging or any layout.'
   ].join('\n');
-  var ACT = /^(?:(?:hey|ok|okay|hi)\s+)?(?:(?:jarvis|kin)[,!.]?\s+)?(?:(?:please|can you|could you|would you|will you|go ahead and|just)\s+)*(?:open|launch|start up|show me|pull up|bring up|go to|take me to|navigate to|load|close|quit|switch to|play|search for|look up|find me)\b(?!\s+(?:to\s+(?:ideas|suggestions|hell)|it\b|one\b|nice\b|of\b|cool\b|some\s+love))/i;
+  var ACT = /^(?:(?:hey|ok|okay|hi)\s+)?(?:(?:jarvis|kin)[,!.]?\s+)?(?:(?:please|can you|could you|would you|will you|go ahead and|just)\s+)*(?:open|launch|start up|show me|pull up|bring up|go to|take me to|navigate to|load|close|quit|switch to|play|search for|look up|find me)\b(?!\s+(?:to\s+(?:ideas|suggestions|hell)|it\s+cool\b|one\b|nice\b|of\b|cool\b|some\s+love))/i;
   /** a reply that writes out a tool call as text instead of using one */
   var FAKE_TOOL = /<\/?\s*(?:invoke|parameter|function_calls|tool_use|antml)\b|<invoke|action result\s*:/i;
   /** sort the message: { route, design, how: 'greeting' | 'model' | 'rules', cost } */
@@ -401,8 +401,11 @@
     if (/^(?:(?:hey|ok|okay)\s+)?(?:(?:jarvis|kin)[,!.]?\s+)?(?:(?:please|can you|could you|would you|will you)\s+)*(?:remind me|set (?:a |me a |up a )?reminder|don'?t let me forget|ping me|alert me|nudge me|wake me|(?:cancel|stop|delete|remove|change|move)(?: the| my| that)? [^.?!]{0,40}?reminder|stop reminding me|(?:add|put)\s.+\s(?:to|on|onto)\s(?:my|the)\s.+\slist)\b/i.test(String(text).trim())) return Promise.resolve({ route: 'question', how: 'rules', cost: 0 });
     /* a request to do something on the computer (open, show, go to, close ...) needs the tools, never the small-talk model */
     if (ACT.test(String(text).trim()) || /\b(?:on|in) my (?:screen|computer|mac|laptop|browser)\b/i.test(String(text))) return Promise.resolve({ route: 'question', how: 'rules', cost: 0 });
-    var prev = turns.length >= 2 ? turns[turns.length - 2] : null;
-    var body = (prev && prev.role === 'user' ? 'Their previous message: ' + String(prev.content).slice(0, 300) + '\n\n' : '') + 'The message: ' + String(text).slice(0, 1500);
+    var prev = turns.length >= 2 ? turns[turns.length - 2] : null, mine = turns.length ? turns[turns.length - 1] : null;
+    var offer = mine && mine.role === 'assistant' ? String(typeof mine.content === 'string' ? mine.content : '').slice(-400) : '';
+    /* a short yes to something Jarvis just offered or asked is a request to do it: the tools, never the small-talk model */
+    if (offer && /\?\s*$|shall i|should i|want me to|would you like|i can\b/i.test(offer) && /^(?:yes|yeah|yep|yup|sure|ok(?:ay)?|please|go ahead|do it|do that|send it|go for it|sounds good|that'?s fine|yes please|please do|absolutely|definitely)\b[\s\S]{0,60}$/i.test(String(text).trim())) return Promise.resolve({ route: 'question', how: 'rules', cost: 0 });
+    var body = (offer ? 'What the assistant said last: ' + offer.slice(-300) + '\n\n' : '') + (prev && prev.role === 'user' ? 'Their previous message: ' + String(prev.content).slice(0, 300) + '\n\n' : '') + 'The message: ' + String(text).slice(0, 1500);
     return c.messages.create({ model: QUICK, max_tokens: 16, system: CLASSIFY, messages: [{ role: 'user', content: body }] }, { signal: opts.signal, timeout: 8000, maxRetries: 0 })
       .then(function (m) {
         var w = (m.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join(' ').toLowerCase().match(/\b(chat|question|web|compute|make|design)\b/), cost = Kin.mind.costOf(m.model, m.usage);
@@ -437,9 +440,14 @@
 
   /** Split a reply into what the founder should read and where it came from. Short text written just before
       a search or a tool call ("I will look that up") is a preamble and is dropped; the rest is kept in order. */
+  /** text that writes out a tool call instead of using one: the pretend call never reaches the founder as if it ran */
+  function unfake(t) {
+    if (!FAKE_TOOL.test(t)) return t;
+    return 'I did not actually do that, sir: no action ran. Ask me again and I will use the right tool, or tell you if I cannot do it from here.';
+  }
   function digest(content, acc) {
     var seg = '', segCites = [];
-    function close(toolNext) { var t = seg.trim(); if (t && !(toolNext && t.length < 280)) acc.parts.push(t); seg = ''; segCites = []; }
+    function close(toolNext) { var t = unfake(seg.trim()).replace(/<br\s*\/?>/gi, '\n').replace(/<\/?(?:p|div|span|b|i|em|strong)\s*>/gi, '').trim(); if (t && !(toolNext && t.length < 280)) acc.parts.push(t); seg = ''; segCites = []; }
     content.forEach(function (b) {
       if (b.type === 'text') {
         seg += b.text;
@@ -542,7 +550,7 @@
         digest(m.content, acc);
         var qt = acc.parts.join('\n\n') || live;
         /* the small-talk model has no tools: if it pretends to use one, ask again where the tools are */
-        if (FAKE_TOOL.test(qt) && !opts.noRetry) { var spent = total.cost; if (opts.onText) opts.onText('');
+        if (FAKE_TOOL.test(live) && !opts.noRetry) { var spent = total.cost; if (opts.onText) opts.onText('');
           return answer(text, Object.assign({}, opts, { noRetry: true }), c, Object.assign({}, k, { route: 'question', cost: 0 })).then(function (a2) { a2.cost = (a2.cost || 0) + spent; return a2; }, function (e2) { if (e2 && typeof e2 === 'object') e2.spent = (e2.spent || 0) + spent; throw e2; }); }
         return { text: qt, model: m.model, route: r, cost: total.cost, sources: [], made: [] };
       }, function (e) { total.cost += qpm.start ? Kin.mind.partialCost(qpm.model, qpm.start, qpm.chars) : 0; if (e && typeof e === 'object') e.spent = spentSoFar(); throw e; });
@@ -772,7 +780,7 @@
       return fetch('https://api.anthropic.com/v1/models?limit=1', { headers: { 'x-api-key': k, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' }, signal: ac ? ac.signal : undefined })
         .then(function (r) { clearTimeout(t); if (r.ok) return { ok: true };
           return r.json().catch(function () { return null; }).then(function (b) { var m = String((b && b.error && b.error.message) || '').slice(0, 200);
-            return { ok: false, why: r.status === 401 || r.status === 403 ? 'key' : 'net', status: r.status, reason: m }; }); },
+            return { ok: false, why: r.status === 401 || r.status === 403 ? 'key' : 'other', status: r.status, reason: m }; }); },
           function () { clearTimeout(t); return { ok: false, why: 'net', reason: '' }; });
     },
     turns: function () { return turns.slice(); },

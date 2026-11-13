@@ -91,7 +91,11 @@
   }
   /** the part of a long answer that is read aloud. It only ever grows as the answer grows, so it can be spoken while streaming. */
   function head(t) { if (t.length <= 620) return t; var cut = t.slice(0, 620), end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('? ')); return cut.slice(0, end > 200 ? end + 1 : 620); }
-  function spoken(text) { var t = plain(text), h = head(t); return h.length < t.length ? h + ' The rest is on screen, sir.' : t; }
+  function sayable(t) {
+    t = String(t).replace(/<invoke[\s\S]*?<\/invoke>/gi, ' ').replace(/<parameter[\s\S]*?<\/parameter>/gi, ' ').replace(/<\/?br\s*\/?>?/gi, ' ').replace(/<[^<>]{1,300}>/g, ' ').replace(/\baction result\s*:[^\n.]*[.\n]?/gi, ' ').replace(/\b(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|io|ai|app|co|so|dev|uk|us)(?:\/[^\s,)]*)?/gi, ' ').replace(/[ \t]{2,}/g, ' ').trim();
+    return /[a-z0-9]/i.test(t) ? t : 'It is on screen, sir.';
+  }
+  function spoken(text) { var t = sayable(plain(text)), h = head(t); return h.length < t.length ? h + ' The rest is on screen, sir.' : t; }
   /** A browser will not play sound until the page has had a tap or a key press. Until then nothing is spoken,
       and nothing is sent to the voice service either, so nothing is billed for words nobody hears. */
   function say(text, raw) { var t = raw ? String(text) : spoken(text); if (!S.unlocked) return Promise.resolve(); S.said = ears.norm(t); return voice.say(t); }
@@ -246,7 +250,8 @@
     clearTimeout(hearT); var q = stripKin((buf + ' ' + tail).trim()), n = ears.norm(q); buf = tail = ''; if (!q || S.talk !== 'awake') return;
     /* a yes or no to a question Kin asked before spending: short words like "yeah" count here */
     if (pendingConfirm && !echo(q) && pendingConfirm.answer(q)) { showHeard(''); return; }
-    if (n.length < 2 || /^(um+|uh+|hm+|mm+|ah+|oh|er+|okay|ok|yeah|yep|right|so|well|and|the|a|i)$/.test(n)) { showHeard(''); caption(null); return; }
+    var askedNow = S.said && /\?\s*$/.test(String(S.said)) && Date.now() - (S.saidAt || 0) < 60000;
+    if (n.length < 2 || (/^(um+|uh+|hm+|mm+|ah+|oh|er+|okay|ok|yeah|yep|right|so|well|and|the|a|i)$/.test(n) && !(askedNow && /^(okay|ok|yeah|yep|right)$/.test(n)))) { showHeard(''); caption(null); return; }
     /* last line of defence: never send Kin its own words */
     if (echo(q)) { showHeard(''); caption(null); return; }
     /* nothing has passed between us for a while: these words were probably not meant for Kin */
@@ -439,7 +444,7 @@
     /* at the desk: the screen, and tabs, only from the founder's own words; handled here, nothing goes to Claude */
     if (Kin.desk && deskAsk(text)) return;
     /* apps, files and "do it on my computer" need the Jarvis Mac app; in a browser, say so plainly instead of asking Claude */
-    if (Kin.mac && !Kin.mac.available() && Kin.mac.needsMac(text)) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); var mq = localReply(Kin.mac.NEED_TEXT, 'Mac app only'); mq.parentNode.appendChild(Kin.mac.need()); showThread(); return; }
+    if (Kin.mac && !Kin.mac.available() && Kin.mac.needsMac(text) && !panelAsk(text)) { inp.value = ''; lastLen = 0; touch(); addMsg('you', text); var mq = localReply(Kin.mac.NEED_TEXT, 'Mac app only'); mq.parentNode.appendChild(Kin.mac.need()); showThread(); return; }
     /* "check my inbox", "what's on my calendar", "show my drafts": their panels, no model call. Only when that is the
        whole request: "check my email for typos" or "the schedule for the game" go to Claude as usual */
     var mq = mailSearchAsk(text);
@@ -2001,8 +2006,8 @@
     /* checked with Anthropic before it is kept anywhere else: a key Anthropic refuses never goes to the Mac's Keychain */
     if (r.ok && brain.checkKey) { var ck = r.key || kv; $('keyNote').textContent = 'Checking the key with Anthropic…';
       brain.checkKey(ck).then(function (c) {
-        if (c.ok || c.why === 'net') { if (Kin.mac) Kin.mac.saveKey('claude', ck, function () { refreshSettings(); }); refreshSettings();
-          $('keyNote').textContent = c.ok ? 'Anthropic accepted the key, sir. ' + $('keyNote').textContent : 'Saved. I could not reach Anthropic to check it just now; the first question will.'; }
+        if (c.ok || c.why === 'net' || c.why === 'other') { if (Kin.mac) Kin.mac.saveKey('claude', ck, function (sr) { refreshSettings(); if (sr && !sr.ok && !sr.declined && sr.why) $('keyNote').textContent += ' The Mac’s Keychain did not keep a copy (' + String(sr.why).slice(0, 120) + '); this device still has it.'; }); refreshSettings();
+          $('keyNote').textContent = c.ok ? 'Anthropic accepted the key, sir. ' + $('keyNote').textContent : c.why === 'other' ? 'Saved. Anthropic answered the check with ' + c.status + (c.reason ? ': “' + c.reason + '”' : '') + ', so it is not confirmed yet; the first question will tell.' : 'Saved. I could not reach Anthropic to check it just now; the first question will.'; }
         else { brain.dropKey(); refreshSettings(); $('keyNote').textContent = 'Anthropic refused that key' + (c.reason ? ': “' + c.reason + '”' : '') + '. ' + (/oauth/i.test(c.reason) ? 'That is a Claude subscription sign-in, not an API key. ' : '') + 'Make a new key at console.anthropic.com, under API keys, and paste it here. Nothing was saved.'; }
         ck = '';
       }); }
