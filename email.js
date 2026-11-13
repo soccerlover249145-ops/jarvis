@@ -128,7 +128,7 @@
           if (o2.hasGrantedAllScopes && !o2.hasGrantedAllScopes(r, scope)) { fin(rej, new Error('Google gave a different permission than asked: tick the box to ' + (WHAT[scope] || 'allow it') + ' and try again.')); return; }
           tokens[scope] = { v: r.access_token, exp: Date.now() + Math.max(60, (+r.expires_in || 3600) - 60) * 1000 }; fin(res, tokens[scope].v);
         },
-        error_callback: function (e) { fin(rej, new Error('Google sign-in closed (' + ((e && e.type) || 'cancelled') + ').')); } });
+        error_callback: function (e) { fin(rej, new Error((window.jarvisDesk && /popup/.test(String(e && e.type)) ? 'Google sign-in cannot open inside the Mac app yet. Open jarvis.unwebbed.app in Chrome or Safari and connect Google there.' : 'Google sign-in closed (' + ((e && e.type) || 'cancelled') + ').'))); } });
       tc.requestAccessToken();
     });
   }

@@ -400,7 +400,7 @@
        "design a reminder poster" and "thanks for the reminder" are sorted as usual */
     if (/^(?:(?:hey|ok|okay)\s+)?(?:(?:jarvis|kin)[,!.]?\s+)?(?:(?:please|can you|could you|would you|will you)\s+)*(?:remind me|set (?:a |me a |up a )?reminder|don'?t let me forget|ping me|alert me|nudge me|wake me|(?:cancel|stop|delete|remove|change|move)(?: the| my| that)? [^.?!]{0,40}?reminder|stop reminding me|(?:add|put)\s.+\s(?:to|on|onto)\s(?:my|the)\s.+\slist)\b/i.test(String(text).trim())) return Promise.resolve({ route: 'question', how: 'rules', cost: 0 });
     /* a request to do something on the computer (open, show, go to, close ...) needs the tools, never the small-talk model */
-    if (ACT.test(String(text).trim())) return Promise.resolve({ route: 'question', how: 'rules', cost: 0 });
+    if (ACT.test(String(text).trim()) || /\b(?:on|in) my (?:screen|computer|mac|laptop|browser)\b/i.test(String(text))) return Promise.resolve({ route: 'question', how: 'rules', cost: 0 });
     var prev = turns.length >= 2 ? turns[turns.length - 2] : null;
     var body = (prev && prev.role === 'user' ? 'Their previous message: ' + String(prev.content).slice(0, 300) + '\n\n' : '') + 'The message: ' + String(text).slice(0, 1500);
     return c.messages.create({ model: QUICK, max_tokens: 16, system: CLASSIFY, messages: [{ role: 'user', content: body }] }, { signal: opts.signal, timeout: 8000, maxRetries: 0 })
@@ -720,6 +720,8 @@
     if (err && err.code === 'timeout') { noteError({ code: 'timeout', type: 'step time limit', model: model, message: msg }); return { code: 'timeout', text: msg.replace(/\.$/, '') + ', sir.', todo: 'What it spent is counted. Tap Try again, or ask for something simpler.' }; }
     if (err instanceof Anthropic.APIError) noteError({ status: st, type: type, code: 'api', request: err.requestID || (err.headers && err.headers.get && err.headers.get('request-id')) || '', model: model, message: msg });
     if (err instanceof Anthropic.APIConnectionTimeoutError) return { code: 'timeout', text: 'Claude is taking longer than usual, sir.', todo: 'Tap Retry, or ask again in a minute.' };
+    if (err instanceof Anthropic.APIConnectionError && Kin.mac && Kin.mac.isStandIn && Kin.mac.isStandIn(ls.get(KEY))) { ls.del(KEY); client = null; Kin.mac.dropStandIn('claude');
+      return { code: 'key', text: 'The Mac app could not hand over the key it keeps for me, sir. I have cleared it.', todo: 'Paste your Claude key once more in Settings, Brain. I check it with Anthropic as you save it.' }; }
     if (err instanceof Anthropic.APIConnectionError) return { code: 'network', text: 'I cannot reach Anthropic from here, sir. Check the connection.', todo: 'Tap Retry when you are back online.' };
     if (st === 402 || /credit balance|billing|purchase credits|out of credit/i.test(msg)) return { code: 'credit', text: 'Your Anthropic account is out of credit, sir.', todo: 'Add credit at console.anthropic.com, under Billing, then ask again.' };
     if (err instanceof Anthropic.AuthenticationError) { var onMac = !!(Kin.mac && Kin.mac.keptOnMac && Kin.mac.keptOnMac('claude'));

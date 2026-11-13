@@ -72,7 +72,7 @@
           if (r.scope && String(r.scope).split(' ').indexOf(SCOPE) < 0) { rej(fail('Google gave a different permission than the sync folder, so nothing was synced.', 'scope')); return; }
           token = { v: r.access_token, exp: Date.now() + Math.max(60, (+r.expires_in || 3600) - 60) * 1000 }; res(token.v);
         },
-        error_callback: function (e) { rej(fail('Google sign-in closed (' + ((e && e.type) || 'cancelled') + ').', 'closed')); } });
+        error_callback: function (e) { rej(fail((window.jarvisDesk && /popup/.test(String(e && e.type)) ? 'Google sign-in cannot open inside the Mac app yet. Open jarvis.unwebbed.app in Chrome or Safari and connect Google there.' : 'Google sign-in closed (' + ((e && e.type) || 'cancelled') + ').'), 'closed')); } });
       tc.requestAccessToken();
     });
   }
